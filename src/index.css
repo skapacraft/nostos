@@ -1,0 +1,50 @@
+/* Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+   SPDX-License-Identifier: GPL-3.0-or-later */
+
+@import "tailwindcss";
+
+/*
+  Nessun font remoto: solo lo stack di sistema. Un @import da Google Fonts
+  sarebbe una richiesta di rete a ogni avvio, oltre che una violazione della CSP.
+*/
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    background-color: var(--color-zinc-50);
+    color: var(--color-zinc-900);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-color: var(--color-zinc-950);
+      color: var(--color-zinc-100);
+    }
+  }
+
+  /* In un'app desktop la selezione del testo sulla cornice è rumore: la
+     lasciamo attiva solo sui valori, marcati con .selectable. */
+  body {
+    user-select: none;
+    cursor: default;
+  }
+
+  .selectable {
+    user-select: text;
+    cursor: text;
+  }
+}

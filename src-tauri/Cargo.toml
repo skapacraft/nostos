@@ -1,0 +1,45 @@
+[package]
+name = "open-takeout-hub"
+version = "0.1.0"
+description = "Local-first, privacy-focused processor for Google Takeout archives"
+authors = ["SkapaCraft"]
+edition = "2021"
+rust-version = "1.82"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/skapacraft/open-takeout-hub"
+homepage = "https://skapacraft.com"
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "open_takeout_hub_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Nessuna crate HTTP/telemetria: l'app non apre socket di rete.
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2.7.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Google comprime i Takeout con deflate. Disattivare le altre codifiche toglie
+# bzip2, zstd, lzma e ppmd dal grafo: meno superficie, build più rapida.
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+kamadak-exif = "0.6.1"
+walkdir = "2.5.0"
+thiserror = "2.0.19"
+filetime = "0.2.29"
+chrono = { version = "0.4.45", features = ["serde"] }
+little_exif = "0.6.23"
+rayon = "1.12.0"
+blake3 = "1.8.5"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
