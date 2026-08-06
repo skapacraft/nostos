@@ -61,13 +61,52 @@ cargo tree --manifest-path src-tauri/Cargo.toml --edges normal -i reqwest
 # 2. cargo-deny valuta le feature realmente attive, e infatti passa.
 cargo deny --manifest-path src-tauri/Cargo.toml check bans
 
-# 3. Il binario compilato non contiene un solo simbolo di rete.
-nm -aj src-tauri/target/debug/open-takeout-hub | grep -ci reqwest   # 0
-nm -u  src-tauri/target/debug/open-takeout-hub | grep -c '^_socket$' # 0
+# 3. Il binario distribuito non importa un solo simbolo di rete.
+BIN="src-tauri/target/release/bundle/macos/Open Takeout Hub.app/Contents/MacOS/open-takeout-hub"
+for s in _socket _connect _getaddrinfo _bind _listen; do nm -u "$BIN" | grep -c "^$s\$"; done  # tutti 0
 ```
 
-L'ultimo è il più difficile da aggirare: il binario non importa nemmeno
-`socket`, `connect` o `getaddrinfo` dalla libreria di sistema.
+Il terzo è il più difficile da aggirare, e vale sul **bundle di release**, non
+solo sulla build di sviluppo: il binario non importa nemmeno `socket`,
+`connect` o `getaddrinfo` dalla libreria di sistema.
+
+Verificato anche a runtime, con l'applicazione avviata dal bundle e senza alcun
+server di sviluppo attivo:
+
+```bash
+lsof -a -p "$(pgrep -f 'Open Takeout Hub.app/Contents/MacOS')" -i -P -n   # nessuna riga
+```
+
+Attenzione al filtro: `lsof -p PID -i` combina le due condizioni in OR e
+finirebbe per elencare i socket di tutti i demoni di sistema. Serve `-a`.
+
+## 3-bis. Un'altra stringa che sembra una violazione
+
+Nel binario di release compare `ws://localhost:1420`, cioè l'indirizzo dell'hot
+reload di Vite. Anche questa è inerte.
+
+Tauri incorpora l'intera configurazione nel binario, `devCsp` compresa, ma la
+sceglie così (`tauri/src/manager/mod.rs`):
+
+```rust
+fn csp(&self) -> Option<Csp> {
+  if !crate::is_dev() { self.config.app.security.csp.clone() }
+  else { self.config.app.security.dev_csp.clone().or_else(...) }
+}
+```
+
+E `is_dev` è una **costante di compilazione**, non un controllo a runtime:
+
+```rust
+pub const fn is_dev() -> bool { !cfg!(feature = "custom-protocol") }
+```
+
+`tauri build` attiva `custom-protocol`, quindi nel pacchetto distribuito il
+ramo della `devCsp` è codice morto eliminato dal compilatore. Non è una
+questione di configurazione che qualcuno possa cambiare all'avvio.
+
+La prova pratica: il bundle avviato senza server di sviluppo funziona, cioè sta
+servendo gli asset incorporati e non `http://localhost:1420`.
 
 ## 4. Perimetro onesto: il webview
 
