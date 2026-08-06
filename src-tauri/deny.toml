@@ -70,6 +70,11 @@ allow = [
     "MIT-0",
     "MPL-2.0",
     "Unicode-3.0",
+    # Dati dei confini dei fusi orari, derivati da OpenStreetMap e distribuiti
+    # da `tzf-dist`. È una licenza per banche dati, non per codice: consente la
+    # ridistribuzione e obbliga all'attribuzione, che sta nella guida dell'app
+    # e nel README. Non contamina il codice del progetto.
+    "ODbL-1.0",
     "Unlicense",
     "Zlib",
 ]

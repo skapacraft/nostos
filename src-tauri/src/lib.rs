@@ -876,6 +876,20 @@ mod tests {
         // Il file riparato resta un JPEG valido, non un contenitore corrotto.
         let bytes = std::fs::read(&copia).expect("lettura copia");
         assert_eq!(&bytes[..2], &[0xFF, 0xD8], "firma JPEG intatta");
+
+        // Prova decisiva sul fuso: il round trip qui sopra tornerebbe corretto
+        // anche scrivendo UTC, quindi va guardata la stringa dentro al file.
+        // Le coordinate del fixture sono a Milano e la data è di gennaio: sul
+        // posto l'orologio segnava le 13, non le 12 di UTC.
+        let grezzo = String::from_utf8_lossy(&bytes);
+        assert!(
+            grezzo.contains("2020:01:01 13:00:00"),
+            "DateTimeOriginal deve portare l'ora locale del luogo"
+        );
+        assert!(
+            grezzo.contains("+01:00"),
+            "l'offset va dichiarato accanto alla data"
+        );
     }
 
     #[test]
