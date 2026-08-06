@@ -325,11 +325,24 @@ pub fn read_exif(path: &Path) -> Result<ExifData> {
         Err(_) => return Ok(ExifData::default()),
     };
 
+    // Un file che dichiara il proprio offset va interpretato con quello: senza,
+    // l'ora locale verrebbe scambiata per UTC e la foto si sposterebbe nel
+    // tempo della differenza di fuso.
+    let offset_minutes = [Tag::OffsetTimeOriginal, Tag::OffsetTimeDigitized]
+        .iter()
+        .find_map(|tag| exif.get_field(*tag, In::PRIMARY))
+        .and_then(|field| ascii_value(&field.value))
+        .and_then(|raw| parse_offset(&raw));
+
     let taken_at = [Tag::DateTimeOriginal, Tag::DateTimeDigitized, Tag::DateTime]
         .iter()
         .find_map(|tag| exif.get_field(*tag, In::PRIMARY))
         .and_then(|field| ascii_value(&field.value))
-        .and_then(|raw| parse_exif_datetime(&raw));
+        .and_then(|raw| parse_exif_datetime(&raw))
+        .map(|date| match offset_minutes {
+            Some(minutes) => date - chrono::Duration::minutes(minutes as i64),
+            None => date,
+        });
 
     let geo = read_gps(&exif).filter(|g| !g.is_null_island());
 
@@ -411,8 +424,22 @@ fn ascii_value(value: &Value) -> Option<String> {
     }
 }
 
-/// L'EXIF usa `YYYY:MM:DD HH:MM:SS` senza fuso orario: interpretiamo come UTC e
-/// lo dichiariamo, invece di indovinare il fuso locale dello scatto.
+/// Interpreta un offset EXIF nella forma `+01:00` restituendo i minuti.
+fn parse_offset(raw: &str) -> Option<i32> {
+    let raw = raw.trim();
+    let (sign, rest) = match raw.chars().next()? {
+        '+' => (1, &raw[1..]),
+        '-' => (-1, &raw[1..]),
+        _ => return None,
+    };
+    let (hours, minutes) = rest.split_once(':')?;
+    let total = hours.parse::<i32>().ok()? * 60 + minutes.parse::<i32>().ok()?;
+    Some(sign * total)
+}
+
+/// L'EXIF usa `YYYY:MM:DD HH:MM:SS` senza fuso orario. In assenza del tag di
+/// offset resta ambiguo, e lo trattiamo come UTC: è l'unica scelta che non
+/// inventa un fuso.
 fn parse_exif_datetime(raw: &str) -> Option<DateTime<Utc>> {
     NaiveDateTime::parse_from_str(raw.trim(), "%Y:%m:%d %H:%M:%S")
         .ok()
@@ -747,6 +774,50 @@ fn degrees_to_dms(value: f64) -> Vec<uR64> {
     ]
 }
 
+/// Cercatore di fusi orari, costruito una volta sola.
+///
+/// La costruzione carica i poligoni dei fusi in memoria: farla per ogni foto
+/// renderebbe la riparazione inutilizzabile su una libreria grande.
+static TIMEZONE_FINDER: std::sync::OnceLock<tzf_rs::DefaultFinder> = std::sync::OnceLock::new();
+
+/// Converte un istante UTC nell'ora locale del luogo dove è stato scattato.
+///
+/// Restituisce l'ora da scrivere e l'offset in forma `+01:00`.
+///
+/// Questa funzione esiste perché `DateTimeOriginal` **non è UTC**: la specifica
+/// EXIF lo definisce come l'ora locale dell'orologio della fotocamera al
+/// momento dello scatto. Il sidecar di Google invece porta un istante UTC.
+/// Scrivere quell'istante senza conversione sposta indietro ogni foto della
+/// differenza di fuso: uno scatto fatto a Milano alle 14 comparirebbe alle 13.
+fn local_time_and_offset(instant: DateTime<Utc>, geo: Option<GeoPoint>) -> (NaiveDateTime, String) {
+    use chrono::Offset;
+
+    let Some(geo) = geo else {
+        // Senza coordinate il fuso è ignoto. Si scrive l'istante UTC dichiarando
+        // che è UTC: resta un'ora diversa da quella dell'orologio di chi ha
+        // scattato, ma il file non è ambiguo e nessun programma la interpreta
+        // male.
+        return (instant.naive_utc(), "+00:00".to_string());
+    };
+
+    let finder = TIMEZONE_FINDER.get_or_init(tzf_rs::DefaultFinder::new);
+    let name = finder.get_tz_name(geo.longitude, geo.latitude);
+
+    let Ok(zone) = name.parse::<chrono_tz::Tz>() else {
+        return (instant.naive_utc(), "+00:00".to_string());
+    };
+
+    let local = instant.with_timezone(&zone);
+    let seconds = local.offset().fix().local_minus_utc();
+    let sign = if seconds < 0 { '-' } else { '+' };
+    let abs = seconds.abs();
+
+    (
+        local.naive_local(),
+        format!("{sign}{:02}:{:02}", abs / 3600, (abs % 3600) / 60),
+    )
+}
+
 /// Applica i tag EXIF risolti al file indicato.
 ///
 /// Il file passato qui è sempre una copia di lavoro, mai l'originale: chi
@@ -757,9 +828,16 @@ fn write_exif_tags(target: &Path, record: &MediaRecord) -> Result<()> {
     let mut writer = ExifWriter::new_from_path(target).unwrap_or_else(|_| ExifWriter::new());
 
     if let Some(taken_at) = record.resolved_taken_at {
-        let formatted = taken_at.format("%Y:%m:%d %H:%M:%S").to_string();
+        // L'ora va scritta come la leggeva l'orologio sul posto, con l'offset
+        // accanto: è ciò che la specifica EXIF chiede e ciò che i programmi
+        // di gestione foto si aspettano di trovare.
+        let (local, offset) = local_time_and_offset(taken_at, record.resolved_geo);
+        let formatted = local.format("%Y:%m:%d %H:%M:%S").to_string();
+
         writer.set_tag(ExifTag::DateTimeOriginal(formatted.clone()));
         writer.set_tag(ExifTag::CreateDate(formatted));
+        writer.set_tag(ExifTag::OffsetTimeOriginal(offset.clone()));
+        writer.set_tag(ExifTag::OffsetTimeDigitized(offset));
     }
 
     if let Some(geo) = record.resolved_geo {
@@ -1275,6 +1353,73 @@ mod tests {
         // nome. Qui basta accertare che il nome sia l'ultima risorsa.
         assert_eq!(MetadataSource::Exif as u8, 0);
         assert!(parse_date_from_filename("IMG_20200101_120000.jpg").is_some());
+    }
+
+    /// `DateTimeOriginal` è l'ora dell'orologio sul posto, non UTC. Il sidecar
+    /// di Google porta invece un istante UTC: scriverlo senza conversione
+    /// sposterebbe ogni foto indietro della differenza di fuso.
+    #[test]
+    fn converte_listante_utc_nellora_locale_del_luogo() {
+        let istante = DateTime::from_timestamp(1_577_880_000, 0).expect("istante"); // 12:00 UTC
+
+        // Milano a gennaio: CET, un'ora avanti.
+        let milano = GeoPoint {
+            latitude: 45.4642,
+            longitude: 9.19,
+            altitude: None,
+        };
+        let (locale, offset) = local_time_and_offset(istante, Some(milano));
+        assert_eq!(locale.format("%H:%M").to_string(), "13:00");
+        assert_eq!(offset, "+01:00");
+
+        // New York alla stessa data: cinque ore indietro, e il giorno cambia
+        // solo se l'ora lo impone.
+        let new_york = GeoPoint {
+            latitude: 40.7128,
+            longitude: -74.006,
+            altitude: None,
+        };
+        let (locale, offset) = local_time_and_offset(istante, Some(new_york));
+        assert_eq!(locale.format("%H:%M").to_string(), "07:00");
+        assert_eq!(offset, "-05:00");
+
+        // India: mezz'ora di scarto, il caso che rompe le implementazioni che
+        // assumono offset interi.
+        let delhi = GeoPoint {
+            latitude: 28.6139,
+            longitude: 77.209,
+            altitude: None,
+        };
+        let (_, offset) = local_time_and_offset(istante, Some(delhi));
+        assert_eq!(offset, "+05:30");
+
+        // Senza coordinate non si inventa un fuso: si dichiara UTC.
+        let (locale, offset) = local_time_and_offset(istante, None);
+        assert_eq!(locale.format("%H:%M").to_string(), "12:00");
+        assert_eq!(offset, "+00:00");
+    }
+
+    #[test]
+    fn tiene_conto_dellora_legale() {
+        // Stesso luogo, luglio: CEST, due ore avanti invece di una.
+        let luglio = DateTime::from_timestamp(1_593_604_800, 0).expect("istante"); // 2020-07-01 12:00 UTC
+        let milano = GeoPoint {
+            latitude: 45.4642,
+            longitude: 9.19,
+            altitude: None,
+        };
+        let (locale, offset) = local_time_and_offset(luglio, Some(milano));
+        assert_eq!(locale.format("%H:%M").to_string(), "14:00");
+        assert_eq!(offset, "+02:00");
+    }
+
+    #[test]
+    fn interpreta_loffset_dichiarato_nei_file() {
+        assert_eq!(parse_offset("+01:00"), Some(60));
+        assert_eq!(parse_offset("-05:00"), Some(-300));
+        assert_eq!(parse_offset("+05:30"), Some(330));
+        assert_eq!(parse_offset("00:00"), None, "manca il segno");
+        assert_eq!(parse_offset("boh"), None);
     }
 
     #[test]

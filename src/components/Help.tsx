@@ -159,6 +159,28 @@ export function Help({ info, privacy, onClose }: HelpProps) {
         </p>
       </Section>
 
+      <Section title="Fuso orario">
+        <p>
+          I tag EXIF registrano l'ora dell'orologio sul posto, senza dire quale
+          fosse il fuso. Google invece esporta un istante in tempo universale.
+          Scrivere quell'istante così com'è sposterebbe ogni foto: uno scatto
+          fatto a Milano alle 14 comparirebbe alle 13.
+        </p>
+        <p>
+          Quando la foto ha le coordinate, l'app ricava il fuso del luogo e
+          scrive l'ora locale corretta insieme al suo scarto, tenendo conto
+          anche dell'ora legale in vigore quel giorno. Senza coordinate scrive
+          l'ora universale dichiarandola tale: diversa da quella dell'orologio,
+          ma non ambigua.
+        </p>
+        <p className="text-zinc-500 dark:text-zinc-400">
+          I confini dei fusi orari provengono da OpenStreetMap, distribuiti
+          sotto Open Database License (ODbL). I dati sono inclusi
+          nell'applicazione: la ricerca avviene sul tuo computer e non comporta
+          alcuna connessione.
+        </p>
+      </Section>
+
       <Section title="Limiti noti">
         <ul className="list-inside list-disc space-y-1 text-zinc-600 dark:text-zinc-400">
           <li>PNG e GIF: nessuna scrittura EXIF, solo data del file e sidecar.</li>

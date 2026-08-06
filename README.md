@@ -110,7 +110,11 @@ src/
   mancano deduce la data dal nome generato dalla fotocamera
   (`IMG_20200101_120000`, `PXL_...`, screenshot, Signal). Riconcilia data e
   coordinate e **le riscrive nei tag EXIF** di JPEG, HEIC, TIFF e WebP senza
-  ricomprimere l'immagine. La copia riparata può conservare la struttura
+  ricomprimere l'immagine. Quando la foto ha le coordinate, ricava il fuso del
+  luogo e scrive l'ora locale corretta con il suo scarto, tenendo conto
+  dell'ora legale: `DateTimeOriginal` è l'ora dell'orologio sul posto, non
+  l'ora universale, e scriverci dentro un istante UTC sposterebbe ogni foto.
+  La copia riparata può conservare la struttura
   originale oppure essere riorganizzata per anno, per anno e mese, o in una
   cartella sola; i file senza data finiscono in `senza-data/` invece di essere
   infilati in un mese inventato. Riconosce le versioni modificate
@@ -144,7 +148,7 @@ Ogni modifica passa da quattro controlli, eseguiti in CI:
 | --- | --- |
 | `cargo deny check` | nessuna crate di rete, telemetria o updater |
 | `cargo clippy -- -D warnings` | zero warning |
-| `cargo test` | 60 test, compresi end-to-end su Takeout sintetici |
+| `cargo test` | 63 test, compresi end-to-end su Takeout sintetici |
 | `npm run build` | tipi allineati alle struct serde |
 
 I test non si fermano al "non è esploso". La riparazione EXIF viene verificata
@@ -197,6 +201,13 @@ Per tutte le piattaforme c'è `.github/workflows/release.yml`, che su un tag
 (`.msi`, `.nsis` e l'eseguibile portatile) sui rispettivi runner. Il runner
 Linux è fissato a Ubuntu 22.04: compilare su una distro più recente produce
 pacchetti che non partono su quelle in LTS.
+
+## Attribuzioni
+
+I confini dei fusi orari provengono da [OpenStreetMap](https://www.openstreetmap.org/copyright),
+distribuiti dal pacchetto `tzf-dist` sotto
+[Open Database License](https://opendatacommons.org/licenses/odbl/) (ODbL-1.0).
+I dati sono inclusi nell'applicazione e consultati in locale.
 
 ## Autore
 
