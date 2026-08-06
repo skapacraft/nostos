@@ -7,7 +7,12 @@ import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "../lib/api";
 import { toMessage } from "../lib/api";
 import { formatCount, shortenPath } from "../lib/format";
-import type { Progress, RepairReport, WriteMode } from "../types";
+import type {
+  OutputLayout,
+  Progress,
+  RepairReport,
+  WriteMode,
+} from "../types";
 import { ProgressBar } from "./ProgressBar";
 import { RevealButton } from "./RevealButton";
 
@@ -27,6 +32,13 @@ interface PhotoFixerProps {
   onDone: () => void;
   onError: (message: string) => void;
 }
+
+const LAYOUT_LABELS: Record<OutputLayout, string> = {
+  preserve: "Come l'originale",
+  byYear: "Una cartella per anno",
+  byYearMonth: "Anno e mese",
+  flat: "Tutto in una cartella",
+};
 
 const MODE_LABELS: Record<WriteMode, string> = {
   dryRun: "Simulazione",
@@ -50,6 +62,7 @@ export function PhotoFixer({
   onError,
 }: PhotoFixerProps) {
   const [mode, setMode] = useState<WriteMode>("copyToOutput");
+  const [layout, setLayout] = useState<OutputLayout>("preserve");
   const [confirmedInPlace, setConfirmedInPlace] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [report, setReport] = useState<RepairReport | null>(null);
@@ -109,6 +122,7 @@ export function PhotoFixer({
     try {
       const result = await api.repairPhotos(path, {
         mode,
+        layout,
         outputRoot: mode === "copyToOutput" ? outputRoot : null,
         writeExif: true,
         writeFileTimes: true,
@@ -121,7 +135,7 @@ export function PhotoFixer({
       runningRef.current = false;
       setRunning(false);
     }
-  }, [mode, outputRoot, path, onDone, onError]);
+  }, [mode, layout, outputRoot, path, onDone, onError]);
 
   const inPlaceBlocked = mode === "inPlace" && !confirmedInPlace;
   const missingOutput = mode === "copyToOutput" && !outputRoot;
@@ -190,6 +204,31 @@ export function PhotoFixer({
             {outputRoot ? shortenPath(outputRoot, 56) : "nessuna cartella scelta"}
           </span>
         </div>
+      ) : null}
+
+      {mode === "copyToOutput" ? (
+        <label className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-zinc-700 dark:text-zinc-300">Disposizione:</span>
+          <select
+            value={layout}
+            onChange={(event) =>
+              setLayout(event.target.value as OutputLayout)
+            }
+            disabled={running}
+            className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-900 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          >
+            {(Object.keys(LAYOUT_LABELS) as OutputLayout[]).map((value) => (
+              <option key={value} value={value}>
+                {LAYOUT_LABELS[value]}
+              </option>
+            ))}
+          </select>
+          {layout !== "preserve" ? (
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+              I file senza data finiscono in <span className="font-mono">senza-data/</span>.
+            </span>
+          ) : null}
+        </label>
       ) : null}
 
       {mode === "inPlace" ? (

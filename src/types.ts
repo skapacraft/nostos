@@ -189,8 +189,18 @@ export interface PhotoScanReport {
  */
 export type WriteMode = "dryRun" | "copyToOutput" | "inPlace";
 
+/**
+ * Disposizione dell'albero di uscita. Vale solo con `copyToOutput`.
+ *
+ * Conta meno di quanto sembri: una volta scritta la data nell'EXIF, i gestori
+ * di foto ordinano su quella e ignorano le cartelle. Serve a chi tiene le
+ * foto in cartelle semplici, senza un programma che le indicizzi.
+ */
+export type OutputLayout = "preserve" | "byYear" | "byYearMonth" | "flat";
+
 export interface WriteOptions {
   mode: WriteMode;
+  layout: OutputLayout;
   outputRoot: string | null;
   writeExif: boolean;
   writeFileTimes: boolean;

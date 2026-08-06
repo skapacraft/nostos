@@ -1018,6 +1018,89 @@ mod tests {
     }
 
     #[test]
+    fn dispone_luscita_in_ordine_cronologico() {
+        let temp = TempDir::new("layout");
+        let photos = temp.path().join("foto");
+        let uscita = temp.path().join("cronologico");
+
+        // Due foto con lo stesso nome in cartelle diverse, come capita quando
+        // la stessa immagine sta in un album e in una cartella per anno, più
+        // una senza alcuna data ricavabile.
+        write_bytes(&photos.join("a").join("IMG_1.JPG"), MINIMAL_JPEG);
+        write(
+            &photos.join("a").join("IMG_1.JPG.json"),
+            r#"{"photoTakenTime": { "timestamp": "1577880000" }}"#,
+        );
+        write_bytes(&photos.join("b").join("IMG_1.JPG"), MINIMAL_JPEG);
+        write(
+            &photos.join("b").join("IMG_1.JPG.json"),
+            r#"{"photoTakenTime": { "timestamp": "1583064000" }}"#,
+        );
+        write_bytes(&photos.join("senza.JPG"), MINIMAL_JPEG);
+
+        let report = exif_parser::apply_metadata(
+            &photos,
+            &exif_parser::WriteOptions {
+                mode: exif_parser::WriteMode::CopyToOutput,
+                layout: exif_parser::OutputLayout::ByYearMonth,
+                output_root: Some(uscita.clone()),
+                ..Default::default()
+            },
+            &app_state::no_progress,
+        )
+        .expect("uscita cronologica");
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+
+        // 2020-01-01 e 2020-03-01 finiscono in mesi diversi, quindi nessuna
+        // collisione nonostante il nome identico.
+        assert!(uscita.join("2020/01/IMG_1.JPG").is_file());
+        assert!(uscita.join("2020/03/IMG_1.JPG").is_file());
+
+        // Chi non ha data non viene infilato in un mese inventato.
+        assert!(uscita.join("senza-data/senza.JPG").is_file());
+    }
+
+    #[test]
+    fn non_sovrascrive_i_nomi_uguali_nella_stessa_cartella() {
+        let temp = TempDir::new("collisioni-layout");
+        let photos = temp.path().join("foto");
+        let uscita = temp.path().join("piatto");
+
+        // Stesso nome, stessa data, cartelle diverse: nel layout piatto
+        // finirebbero sullo stesso percorso.
+        for sottocartella in ["a", "b", "c"] {
+            write_bytes(&photos.join(sottocartella).join("IMG_1.JPG"), MINIMAL_JPEG);
+            write(
+                &photos.join(sottocartella).join("IMG_1.JPG.json"),
+                r#"{"photoTakenTime": { "timestamp": "1577880000" }}"#,
+            );
+        }
+
+        let report = exif_parser::apply_metadata(
+            &photos,
+            &exif_parser::WriteOptions {
+                mode: exif_parser::WriteMode::CopyToOutput,
+                layout: exif_parser::OutputLayout::Flat,
+                output_root: Some(uscita.clone()),
+                ..Default::default()
+            },
+            &app_state::no_progress,
+        )
+        .expect("uscita piatta");
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+
+        // Tutte e tre devono sopravvivere, con un contatore progressivo.
+        let prodotti = std::fs::read_dir(&uscita)
+            .expect("lettura uscita")
+            .flatten()
+            .count();
+        assert_eq!(prodotti, 3, "nessuna foto deve essere sovrascritta");
+        assert!(uscita.join("IMG_1.JPG").is_file());
+        assert!(uscita.join("IMG_1 (2).JPG").is_file());
+        assert!(uscita.join("IMG_1 (3).JPG").is_file());
+    }
+
+    #[test]
     fn rifiuta_una_destinazione_dentro_la_sorgente() {
         let temp = TempDir::new("ricorsione");
         build_fixture(temp.path());
