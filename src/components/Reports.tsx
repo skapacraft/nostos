@@ -1,7 +1,7 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
   formatBytes,
@@ -17,6 +17,7 @@ import type {
   DriveReport,
   PhotoScanReport,
 } from "../types";
+import { AlbumPanel } from "./AlbumPanel";
 import { FolderCleaner } from "./FolderCleaner";
 import { ExportButton } from "./ExportButton";
 import { PhotoFixer } from "./PhotoFixer";
@@ -58,6 +59,8 @@ export function PhotoReportView({
   onRepaired,
   onError,
 }: PhotoReportProps) {
+  const [albumRisk, setAlbumRisk] = useState(false);
+
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -76,11 +79,21 @@ export function PhotoReportView({
         <Stat
           label="Da riparare"
           value={formatCount(report.needsRepair)}
-          hint="data solo nel sidecar"
+          hint="data non nell'EXIF"
           tone={report.needsRepair > 0 ? "warning" : "neutral"}
         />
         <Stat label="Totale" value={formatBytes(report.totalBytes)} />
       </div>
+
+      <AlbumPanel path={path} onError={onError} onRisk={setAlbumRisk} />
+
+      {report.dateFromFilename > 0 ? (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Per {formatCount(report.dateFromFilename)} file la data è stata
+          dedotta dal nome, perché mancavano sia l'EXIF sia il sidecar. È
+          l'orario che l'app fotocamera ha scritto al momento dello scatto.
+        </p>
+      ) : null}
 
       {report.mediaCount > 0 ? (
         <PhotoFixer
@@ -95,6 +108,7 @@ export function PhotoReportView({
 
       <FolderCleaner
         path={path}
+        albumRisk={albumRisk}
         destination={workingFolder}
         onDestination={onWorkingFolder}
         onCleaned={onRepaired}

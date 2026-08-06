@@ -128,7 +128,8 @@ export interface ArchiveSeries {
 
 // --- Foto ----------------------------------------------------------------
 
-export type MetadataSource = "exif" | "sidecar" | "missing";
+/** In ordine di affidabilità decrescente. */
+export type MetadataSource = "exif" | "sidecar" | "fileName" | "missing";
 
 export interface GeoPoint {
   latitude: number;
@@ -173,6 +174,8 @@ export interface PhotoScanReport {
   withGeo: number;
   needsRepair: number;
   withoutExif: number;
+  /** Data dedotta dal nome del file, ultima risorsa. */
+  dateFromFilename: number;
   totalBytes: number;
   unreadable: string[];
   sample: MediaRecord[];
@@ -374,4 +377,37 @@ export interface RestoreReport {
   restored: number;
   skippedExisting: number;
   failures: string[];
+}
+
+// --- Album di Google Foto -------------------------------------------------
+
+export interface Album {
+  name: string;
+  path: string;
+  files: string[];
+}
+
+/** Una foto presente sia in una cartella per anno sia in uno o più album. */
+export interface AlbumMembership {
+  fileName: string;
+  canonical: string | null;
+  albums: string[];
+}
+
+export interface EditedPair {
+  edited: string;
+  original: string | null;
+  suffix: string;
+}
+
+export interface AlbumIndex {
+  root: string;
+  yearFolders: string[];
+  albums: Album[];
+  specialFolders: string[];
+  memberships: AlbumMembership[];
+  editedPairs: EditedPair[];
+  /** Foto presenti solo in un album: rimuoverle le farebbe sparire. */
+  albumOnly: number;
+  warnings: string[];
 }

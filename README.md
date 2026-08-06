@@ -68,6 +68,7 @@ src-tauri/
     exif_parser.rs   EXIF e sidecar, riconciliazione e riscrittura
     contacts.rs      parser vCard 3.0, deduplica, export
     calendar.rs      parser iCalendar, pulizia, export
+    albums.rs        album, cartelle per anno, versioni modificate
     drive.rs         classificazione, segnaposto, deduplica e quarantena
                      (il motore di pulizia vale per qualsiasi cartella)
 
@@ -83,6 +84,7 @@ src/
     PhotoFixer.tsx     riparazione metadati con scelta della modalità
     ProgressBar.tsx    avanzamento alimentato dagli eventi del backend
     ExportButton.tsx   salvataggio dei file esportati
+    AlbumPanel.tsx     album, manifest dell'appartenenza, versioni modificate
     FolderCleaner.tsx  pulizia di una cartella, con anteprima e annullamento
     Help.tsx           guida in-app e informazioni sulla licenza
     Welcome.tsx        presentazione all'avvio, una volta per sessione
@@ -97,10 +99,20 @@ src/
   (`takeout-...-001.zip`, `-002.zip`, ...) e la unisce in un solo albero,
   segnalando i numeri mancanti di un download incompleto. I percorsi vengono
   normalizzati e le voci che tentano di uscire dalla destinazione rifiutate.
+- **Album**: Google non esporta gli album come informazione a parte, ma come
+  cartelle contenenti una seconda copia della foto. L'app le riconosce,
+  distingue le cartelle per anno (in qualsiasi lingua) dagli album veri, e
+  scrive un manifest dell'appartenenza. Finché quel manifest non esiste, la
+  deduplica sulla cartella foto resta bloccata: i file tornerebbero dalla
+  quarantena, l'appartenenza no.
 - **Foto**: legge EXIF e sidecar JSON (compresi gli schemi
-  `.supplemental-metadata.json` e i duplicati con contatore), riconcilia data e
+  `.supplemental-metadata.json` e i duplicati con contatore), e quando entrambi
+  mancano deduce la data dal nome generato dalla fotocamera
+  (`IMG_20200101_120000`, `PXL_...`, screenshot, Signal). Riconcilia data e
   coordinate e **le riscrive nei tag EXIF** di JPEG, HEIC, TIFF e WebP senza
-  ricomprimere l'immagine. Tre modalità: simulazione, copia riparata in un
+  ricomprimere l'immagine. Riconosce le versioni modificate
+  (`-edited`, `-modificato`, `-modifié`, `-編集済み` e altre) e non le tratta
+  come duplicati. Tre modalità: simulazione, copia riparata in un
   albero separato (predefinita) e riscrittura degli originali, che richiede una
   conferma esplicita.
 - **Contatti**: parser vCard con line folding, prefissi di gruppo ed escaping,
@@ -129,7 +141,7 @@ Ogni modifica passa da quattro controlli, eseguiti in CI:
 | --- | --- |
 | `cargo deny check` | nessuna crate di rete, telemetria o updater |
 | `cargo clippy -- -D warnings` | zero warning |
-| `cargo test` | 48 test, compresi end-to-end su Takeout sintetici |
+| `cargo test` | 58 test, compresi end-to-end su Takeout sintetici |
 | `npm run build` | tipi allineati alle struct serde |
 
 I test non si fermano al "non è esploso". La riparazione EXIF viene verificata

@@ -13,6 +13,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
+  AlbumIndex,
   AppInfo,
   ArchiveEntry,
   ArchiveSeries,
@@ -99,6 +100,14 @@ export const repairPhotos = (path: string, options: WriteOptions) =>
 /** Analizza l'export Contatti. */
 export const scanContacts = (path?: string) =>
   invoke<ContactsReport>("scan_contacts", { path });
+
+/** Ricostruisce album, cartelle per anno e versioni modificate. */
+export const scanAlbums = (path: string) =>
+  invoke<AlbumIndex>("scan_albums", { path });
+
+/** Scrive il manifest degli album, da fare prima di deduplicare. */
+export const exportAlbumManifest = (path: string, destination: string) =>
+  invoke<ExportReport>("export_album_manifest", { path, destination });
 
 /** Analizza l'export Calendario. */
 export const scanCalendar = (path?: string) =>
