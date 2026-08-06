@@ -918,6 +918,88 @@ mod tests {
         assert_eq!(seconds, 1_577_880_000);
     }
 
+    /// La modalità che riscrive gli originali è l'unica irreversibile, quindi
+    /// è quella che merita il test più severo: deve scrivere i tag e allineare
+    /// la data **senza** alterare un solo byte dell'immagine.
+    #[test]
+    fn la_modalita_in_place_riscrive_senza_toccare_i_pixel() {
+        let temp = TempDir::new("in-place");
+        build_fixture(temp.path());
+        let photos = temp.path().join("Takeout").join("Google Foto");
+        let originale = photos.join("IMG_0001.JPG");
+
+        /// Estrae i dati compressi dell'immagine principale, scavalcando i
+        /// segmenti di intestazione. La miniatura dentro l'EXIF ha un proprio
+        /// marcatore SOS, quindi cercare il primo `FFDA` darebbe il risultato
+        /// sbagliato.
+        fn scan_data(path: &Path) -> Vec<u8> {
+            let bytes = std::fs::read(path).expect("lettura JPEG");
+            let mut i = 2; // dopo SOI
+            while i < bytes.len() - 1 && bytes[i] == 0xFF {
+                let marker = bytes[i + 1];
+                // TEM, RST0-7 e SOI non hanno un campo lunghezza.
+                if marker == 0x01 || (0xD0..=0xD8).contains(&marker) {
+                    i += 2;
+                    continue;
+                }
+                let len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
+                if marker == 0xDA {
+                    return bytes[i + 2 + len..].to_vec();
+                }
+                i += 2 + len;
+            }
+            panic!("marcatore SOS non trovato");
+        }
+
+        let pixel_prima = scan_data(&originale);
+        assert!(!pixel_prima.is_empty());
+
+        let report = exif_parser::apply_metadata(
+            &photos,
+            &exif_parser::WriteOptions {
+                mode: exif_parser::WriteMode::InPlace,
+                output_root: None,
+                ..Default::default()
+            },
+            &app_state::no_progress,
+        )
+        .expect("riscrittura in place");
+
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+        assert_eq!(report.exif_written, 1);
+        assert_eq!(report.file_times_written, 1);
+        // In questa modalità non si copia nulla: il sidecar resta dov'è.
+        assert_eq!(report.sidecars_copied, 0);
+
+        // Il file è stato riscritto sul posto, non duplicato altrove.
+        assert!(originale.is_file());
+        assert!(!photos.join(".oth-tmp-IMG_0001.JPG").exists());
+
+        // I dati immagine devono essere identici byte per byte.
+        assert_eq!(
+            scan_data(&originale),
+            pixel_prima,
+            "la riscrittura in place ha alterato i pixel"
+        );
+
+        // I tag sono davvero dentro l'originale, ora.
+        let riletto = exif_parser::read_exif(&originale).expect("rilettura");
+        assert_eq!(
+            riletto.taken_at.expect("data scritta").timestamp(),
+            1_577_880_000
+        );
+        let geo = riletto.geo.expect("coordinate scritte");
+        assert!((geo.latitude - 45.4642).abs() < 1e-4);
+
+        let seconds = std::fs::metadata(&originale)
+            .and_then(|m| m.modified())
+            .expect("mtime")
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch")
+            .as_secs();
+        assert_eq!(seconds, 1_577_880_000);
+    }
+
     #[test]
     fn rifiuta_una_destinazione_dentro_la_sorgente() {
         let temp = TempDir::new("ricorsione");

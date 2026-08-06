@@ -81,6 +81,32 @@ jobs:
         working-directory: src-tauri
         run: cargo test --all-targets
 
+  # Il job Rust gira su Linux e quindi compila i rami `#[cfg(...)]` di Linux,
+  # ma lascerebbe scoperto il codice specifico per Windows: il menu senza
+  # sottomenu applicazione e l'invocazione di `explorer /select,`. Senza questo
+  # job un errore lì si scoprirebbe solo al momento della release.
+  windows:
+    name: Rust su Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test --all-targets
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
