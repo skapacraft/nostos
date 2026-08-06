@@ -11,9 +11,11 @@
 //! Tutte le operazioni sono in sola lettura finché non viene invocata
 //! esplicitamente [`apply_metadata`], che scrive solo nella modalità richiesta.
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use exif::{In, Tag, Value};
@@ -206,11 +208,52 @@ pub enum WriteMode {
     InPlace,
 }
 
+/// Come disporre i file nell'albero di uscita.
+///
+/// Vale solo con [`WriteMode::CopyToOutput`]: le altre modalità non scelgono
+/// dove scrivere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OutputLayout {
+    /// Ricrea la struttura di cartelle dell'originale. È il predefinito.
+    Preserve,
+    /// Una cartella per anno.
+    ByYear,
+    /// Una cartella per anno e una per mese.
+    ByYearMonth,
+    /// Tutto in una cartella sola, in ordine di data nel nome.
+    Flat,
+}
+
+impl OutputLayout {
+    /// Sottocartella di destinazione per un media con la data indicata.
+    ///
+    /// Chi non ha una data finisce in una cartella a parte invece di essere
+    /// buttato in mezzo agli altri: un file senza data non appartiene a nessun
+    /// mese, e fingere il contrario renderebbe l'ordinamento una bugia.
+    fn folder_for(&self, taken_at: Option<DateTime<Utc>>) -> PathBuf {
+        use chrono::Datelike;
+
+        match (self, taken_at) {
+            (Self::Preserve, _) => PathBuf::new(),
+            (_, None) => PathBuf::from("senza-data"),
+            (Self::ByYear, Some(date)) => PathBuf::from(date.year().to_string()),
+            (Self::ByYearMonth, Some(date)) => {
+                PathBuf::from(date.year().to_string()).join(format!("{:02}", date.month()))
+            }
+            (Self::Flat, Some(_)) => PathBuf::new(),
+        }
+    }
+}
+
 /// Parametri della riparazione.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WriteOptions {
     pub mode: WriteMode,
+    /// Disposizione dell'albero di uscita.
+    #[serde(default = "default_layout")]
+    pub layout: OutputLayout,
     /// Radice di destinazione, obbligatoria con [`WriteMode::CopyToOutput`].
     pub output_root: Option<PathBuf>,
     /// Scrive data e coordinate nei tag EXIF del file.
@@ -219,10 +262,15 @@ pub struct WriteOptions {
     pub write_file_times: bool,
 }
 
+fn default_layout() -> OutputLayout {
+    OutputLayout::Preserve
+}
+
 impl Default for WriteOptions {
     fn default() -> Self {
         Self {
             mode: WriteMode::DryRun,
+            layout: OutputLayout::Preserve,
             output_root: None,
             write_exif: true,
             write_file_times: true,
@@ -741,6 +789,40 @@ fn write_exif_tags(target: &Path, record: &MediaRecord) -> Result<()> {
         .map_err(|e| TakeoutError::io(target, e))
 }
 
+/// Sceglie un nome libero nella cartella indicata.
+///
+/// La prenotazione è centralizzata perché la riscrittura è parallela: due
+/// thread che trovassero lo stesso nome libero nello stesso istante
+/// produrrebbero un file solo.
+fn unique_target(
+    folder: &Path,
+    file_name: &str,
+    taken: &Mutex<HashSet<PathBuf>>,
+) -> Result<PathBuf> {
+    let stem = Path::new(file_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(file_name);
+    let extension = Path::new(file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| format!(".{e}"))
+        .unwrap_or_default();
+
+    let mut guard = taken
+        .lock()
+        .map_err(|_| TakeoutError::Task("registro dei nomi non disponibile".to_string()))?;
+
+    let mut candidate = folder.join(file_name);
+    let mut counter = 2;
+    while guard.contains(&candidate) || candidate.exists() {
+        candidate = folder.join(format!("{stem} ({counter}){extension}"));
+        counter += 1;
+    }
+    guard.insert(candidate.clone());
+    Ok(candidate)
+}
+
 /// Esito della scrittura di un singolo media.
 #[derive(Debug, Default)]
 struct WriteOutcome {
@@ -751,19 +833,35 @@ struct WriteOutcome {
 }
 
 /// Scrive i metadati di un singolo media secondo le opzioni indicate.
-fn repair_one(record: &MediaRecord, root: &Path, options: &WriteOptions) -> Result<WriteOutcome> {
+fn repair_one(
+    record: &MediaRecord,
+    root: &Path,
+    options: &WriteOptions,
+    taken: &Mutex<HashSet<PathBuf>>,
+) -> Result<WriteOutcome> {
     let source = record.path.as_path();
 
-    // Destinazione finale: l'originale, oppure il suo omologo nell'albero di
-    // uscita, conservando la struttura di cartelle.
     let destination = match options.mode {
         WriteMode::InPlace => source.to_path_buf(),
         WriteMode::CopyToOutput => {
             let output_root = options.output_root.as_ref().ok_or_else(|| {
                 TakeoutError::Metadata("manca la cartella di destinazione".to_string())
             })?;
-            let relative = source.strip_prefix(root).unwrap_or(source);
-            output_root.join(relative)
+
+            match options.layout {
+                // Struttura originale: il percorso relativo è già univoco.
+                OutputLayout::Preserve => {
+                    let relative = source.strip_prefix(root).unwrap_or(source);
+                    output_root.join(relative)
+                }
+                // Riorganizzando per data, file con lo stesso nome provenienti
+                // da cartelle diverse finiscono insieme: senza un contatore il
+                // secondo sovrascriverebbe il primo in silenzio.
+                layout => {
+                    let folder = output_root.join(layout.folder_for(record.resolved_taken_at));
+                    unique_target(&folder, &record.file_name, taken)?
+                }
+            }
         }
         WriteMode::DryRun => return Ok(WriteOutcome::default()),
     };
@@ -933,13 +1031,14 @@ pub fn apply_metadata(
 
     let done = std::sync::atomic::AtomicUsize::new(0);
     let errors = std::sync::atomic::AtomicUsize::new(0);
+    let taken: Mutex<HashSet<PathBuf>> = Mutex::new(HashSet::new());
     use std::sync::atomic::Ordering::Relaxed;
 
     let outcomes: Vec<PerFile> = pool.install(|| {
         media
             .par_iter()
             .map(|path| {
-                let outcome = process_media(path, root, options);
+                let outcome = process_media(path, root, options, &taken);
                 if outcome.failure.is_some() {
                     errors.fetch_add(1, Relaxed);
                 }
@@ -1009,7 +1108,12 @@ struct PerFile {
 ///
 /// Un singolo file illeggibile non deve fermare l'elaborazione di altre
 /// diecimila foto: l'errore viene registrato e la corsa prosegue.
-fn process_media(path: &Path, root: &Path, options: &WriteOptions) -> PerFile {
+fn process_media(
+    path: &Path,
+    root: &Path,
+    options: &WriteOptions,
+    taken: &Mutex<HashSet<PathBuf>>,
+) -> PerFile {
     let record = match inspect_media(path) {
         Ok(record) => record,
         Err(err) => {
@@ -1020,15 +1124,18 @@ fn process_media(path: &Path, root: &Path, options: &WriteOptions) -> PerFile {
         }
     };
 
-    // Vale la pena scrivere solo se abbiamo qualcosa da scrivere.
+    // "Candidato" significa che c'è qualcosa da scrivere. Non significa che il
+    // file vada ignorato: in modalità copia l'albero di uscita deve contenere
+    // l'intera libreria, comprese le foto che non avevano nulla da riparare.
+    // Ometterle produrrebbe una copia che sembra completa e non lo è.
     let is_candidate = record.resolved_taken_at.is_some() || record.resolved_geo.is_some();
-    if !is_candidate {
+    if !is_candidate && options.mode != WriteMode::CopyToOutput {
         return PerFile::default();
     }
 
     let unsupported = options.write_exif && !is_exif_writable(path);
 
-    match repair_one(&record, root, options) {
+    match repair_one(&record, root, options, taken) {
         Ok(outcome) => PerFile {
             is_candidate,
             exif_written: outcome.exif_written,

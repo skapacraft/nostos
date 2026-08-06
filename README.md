@@ -110,7 +110,10 @@ src/
   mancano deduce la data dal nome generato dalla fotocamera
   (`IMG_20200101_120000`, `PXL_...`, screenshot, Signal). Riconcilia data e
   coordinate e **le riscrive nei tag EXIF** di JPEG, HEIC, TIFF e WebP senza
-  ricomprimere l'immagine. Riconosce le versioni modificate
+  ricomprimere l'immagine. La copia riparata può conservare la struttura
+  originale oppure essere riorganizzata per anno, per anno e mese, o in una
+  cartella sola; i file senza data finiscono in `senza-data/` invece di essere
+  infilati in un mese inventato. Riconosce le versioni modificate
   (`-edited`, `-modificato`, `-modifié`, `-編集済み` e altre) e non le tratta
   come duplicati. Tre modalità: simulazione, copia riparata in un
   albero separato (predefinita) e riscrittura degli originali, che richiede una
@@ -141,7 +144,7 @@ Ogni modifica passa da quattro controlli, eseguiti in CI:
 | --- | --- |
 | `cargo deny check` | nessuna crate di rete, telemetria o updater |
 | `cargo clippy -- -D warnings` | zero warning |
-| `cargo test` | 58 test, compresi end-to-end su Takeout sintetici |
+| `cargo test` | 60 test, compresi end-to-end su Takeout sintetici |
 | `npm run build` | tipi allineati alle struct serde |
 
 I test non si fermano al "non è esploso". La riparazione EXIF viene verificata
