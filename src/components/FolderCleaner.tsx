@@ -19,6 +19,12 @@ import { RevealButton } from "./RevealButton";
 
 interface FolderCleanerProps {
   path: string;
+  /**
+   * Vero se la cartella contiene album la cui appartenenza non è stata
+   * ancora salvata. In quel caso deduplicare distruggerebbe l'unica traccia
+   * di quali foto stavano in quale album.
+   */
+  albumRisk?: boolean;
   /** Cartella di lavoro condivisa con gli altri pannelli. */
   destination: string | null;
   onDestination: (path: string) => void;
@@ -50,6 +56,7 @@ const MODE_HINTS: Record<CleanMode, string> = {
  */
 export function FolderCleaner({
   path,
+  albumRisk = false,
   destination,
   onDestination,
   onCleaned,
@@ -154,6 +161,8 @@ export function FolderCleaner({
   }, [report, onCleaned, onError]);
 
   const needsDestination = mode !== "dryRun" && !destination;
+  // La simulazione resta sempre concessa: non tocca nulla.
+  const blockedByAlbums = albumRisk && mode !== "dryRun";
 
   return (
     <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -237,10 +246,19 @@ export function FolderCleaner({
         </div>
       ) : null}
 
+      {blockedByAlbums ? (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          Questa cartella contiene album. Salva prima il manifest nel pannello
+          qui sopra: la deduplica rimuove le copie negli album, e con esse
+          l'unica traccia di quali foto vi appartenevano. I file tornano dalla
+          quarantena, quell'informazione no.
+        </p>
+      ) : null}
+
       <button
         type="button"
         onClick={run}
-        disabled={running || needsDestination}
+        disabled={running || needsDestination || blockedByAlbums}
         className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
       >
         {running ? "Elaborazione..." : `Avvia: ${MODE_LABELS[mode]}`}

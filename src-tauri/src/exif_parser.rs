@@ -128,14 +128,33 @@ pub struct SidecarData {
     pub geo: Option<GeoPoint>,
 }
 
-/// Origine scelta per il dato finale.
+/// Origine scelta per il dato finale, in ordine di affidabilità decrescente.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MetadataSource {
+    /// Letto dai tag del file: descrive il momento dello scatto.
     Exif,
+    /// Letto dal sidecar JSON: è quanto sa il servizio.
     Sidecar,
+    /// Dedotto dal nome del file, che le app fotocamera generano dall'orologio.
+    FileName,
     Missing,
 }
+
+/// Schemi di data riconosciuti nei nomi generati dalle app fotocamera.
+///
+/// `A` sta per una cifra, ogni altro carattere deve corrispondere esattamente.
+/// Coprono i formati prodotti da Android, Pixel, iOS, screenshot e messaggistica:
+/// `IMG_20200101_120000.jpg`, `PXL_20200101_120000123.jpg`,
+/// `Screenshot_20200101-120000.png`, `signal-2020-01-01-12-00-00.jpg`.
+const FILENAME_DATE_PATTERNS: &[&str] = &[
+    "AAAA-AA-AA-AA-AA-AA",
+    "AAAA_AA_AA_AA_AA_AA",
+    "AAAA-AA-AA-AAAAAA",
+    "AAAAAAAA-AAAAAA",
+    "AAAAAAAA_AAAAAA",
+    "AAAAAAAAAAAAAA",
+];
 
 /// Vista unificata di un media e dei suoi metadati.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +185,8 @@ pub struct PhotoScanReport {
     pub needs_repair: usize,
     /// File senza alcun tag EXIF utile.
     pub without_exif: usize,
+    /// File la cui data è stata dedotta dal nome, ultima risorsa.
+    pub date_from_filename: usize,
     pub total_bytes: u64,
     pub unreadable: Vec<String>,
     /// Campione dei primi record, per l'anteprima nella UI.
@@ -365,6 +386,83 @@ fn geo_from_takeout(raw: &Option<TakeoutGeo>) -> Option<GeoPoint> {
     (!point.is_null_island()).then_some(point)
 }
 
+/// Deduce la data di scatto dal nome del file.
+///
+/// Le app fotocamera scrivono l'orario dell'orologio nel nome, quindi quando
+/// EXIF e sidecar mancano entrambi questa resta l'unica fonte non inventata.
+/// La lettura è deliberatamente severa: la data deve essere valida come data
+/// reale, altrimenti un numero di serie qualsiasi diventerebbe un timestamp.
+pub fn parse_date_from_filename(file_name: &str) -> Option<DateTime<Utc>> {
+    let bytes: Vec<char> = file_name.chars().collect();
+
+    for pattern in FILENAME_DATE_PATTERNS {
+        let pattern: Vec<char> = pattern.chars().collect();
+        if bytes.len() < pattern.len() {
+            continue;
+        }
+
+        for start in 0..=(bytes.len() - pattern.len()) {
+            let window = &bytes[start..start + pattern.len()];
+            let matches = window.iter().zip(pattern.iter()).all(|(c, p)| {
+                if *p == 'A' {
+                    c.is_ascii_digit()
+                } else {
+                    c == p
+                }
+            });
+            if !matches {
+                continue;
+            }
+
+            // Una data preceduta da altre cifre fa parte di un numero più
+            // lungo: è il caso dei numeri di serie, e va scartata.
+            if start > 0 && bytes[start - 1].is_ascii_digit() {
+                continue;
+            }
+
+            // Dopo, invece, qualche cifra è legittima: i Pixel scrivono i
+            // millesimi di secondo in coda (`PXL_20200101_120000123`). Ne
+            // tolleriamo fino a tre; oltre, siamo di nuovo dentro un numero.
+            let trailing = bytes[start + pattern.len()..]
+                .iter()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
+            if trailing > 3 {
+                continue;
+            }
+
+            let digits: String = window.iter().filter(|c| c.is_ascii_digit()).collect();
+            if digits.len() != 14 {
+                continue;
+            }
+            if let Some(parsed) = build_datetime(&digits) {
+                return Some(parsed);
+            }
+        }
+    }
+
+    None
+}
+
+/// Compone una data da quattordici cifre `YYYYMMDDhhmmss`, validandola.
+fn build_datetime(digits: &str) -> Option<DateTime<Utc>> {
+    let year: i32 = digits[0..4].parse().ok()?;
+    let month: u32 = digits[4..6].parse().ok()?;
+    let day: u32 = digits[6..8].parse().ok()?;
+    let hour: u32 = digits[8..10].parse().ok()?;
+    let minute: u32 = digits[10..12].parse().ok()?;
+    let second: u32 = digits[12..14].parse().ok()?;
+
+    // Una fotografia scattata nel 1823 o nel 2400 è un falso positivo.
+    if !(1900..=2100).contains(&year) {
+        return None;
+    }
+
+    let date = chrono::NaiveDate::from_ymd_opt(year, month, day)?;
+    let time = chrono::NaiveTime::from_hms_opt(hour, minute, second)?;
+    Some(Utc.from_utc_datetime(&date.and_time(time)))
+}
+
 /// Individua e legge il sidecar JSON associato al media.
 pub fn read_sidecar(media: &Path) -> Result<Option<SidecarData>> {
     let Some(sidecar_path) = find_sidecar(media) else {
@@ -460,12 +558,19 @@ pub fn inspect_media(path: &Path) -> Result<MediaRecord> {
 
     let sidecar_taken = sidecar.as_ref().and_then(|s| s.taken_at.or(s.created_at));
 
-    // L'EXIF, quando c'è, resta la fonte autorevole: descrive il momento dello
-    // scatto, mentre il sidecar riflette quanto sa il servizio.
-    let (resolved_taken_at, taken_at_source) = match (exif.taken_at, sidecar_taken) {
-        (Some(date), _) => (Some(date), MetadataSource::Exif),
-        (None, Some(date)) => (Some(date), MetadataSource::Sidecar),
-        (None, None) => (None, MetadataSource::Missing),
+    // Ordine di affidabilità: l'EXIF descrive il momento dello scatto, il
+    // sidecar quanto sa il servizio, il nome del file è ciò che ha scritto
+    // l'app fotocamera. Il nome interviene solo quando gli altri due tacciono.
+    let from_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(parse_date_from_filename);
+
+    let (resolved_taken_at, taken_at_source) = match (exif.taken_at, sidecar_taken, from_name) {
+        (Some(date), _, _) => (Some(date), MetadataSource::Exif),
+        (None, Some(date), _) => (Some(date), MetadataSource::Sidecar),
+        (None, None, Some(date)) => (Some(date), MetadataSource::FileName),
+        (None, None, None) => (None, MetadataSource::Missing),
     };
 
     let sidecar_geo = sidecar.as_ref().and_then(|s| s.geo);
@@ -506,7 +611,7 @@ pub fn inspect_media(path: &Path) -> Result<MediaRecord> {
             .to_string(),
         path: path.to_path_buf(),
         size_bytes: metadata.len(),
-        needs_repair: exif.taken_at.is_none() && sidecar_taken.is_some(),
+        needs_repair: exif.taken_at.is_none() && resolved_taken_at.is_some(),
         exif,
         sidecar,
         resolved_taken_at,
@@ -539,6 +644,9 @@ pub fn scan_directory(root: &Path, sample_size: usize) -> Result<PhotoScanReport
                 }
                 if record.exif.is_empty() {
                     report.without_exif += 1;
+                }
+                if record.taken_at_source == MetadataSource::FileName {
+                    report.date_from_filename += 1;
                 }
                 if record.resolved_geo.is_some() {
                     report.with_geo += 1;
@@ -1012,6 +1120,54 @@ mod tests {
              rivedere prima l'eccezione in deny.toml"
         );
         assert!(!is_exif_writable(Path::new("immagine.png")));
+    }
+
+    #[test]
+    fn deduce_la_data_dai_nomi_generati_dalle_fotocamere() {
+        let attesa = 1_577_880_000; // 2020-01-01 12:00:00 UTC
+        for nome in [
+            "IMG_20200101_120000.jpg",
+            "VID_20200101_120000.mp4",
+            "PXL_20200101_120000123.jpg",
+            "Screenshot_20200101-120000.png",
+            "IMG-20200101-WA0001.jpeg",
+            "signal-2020-01-01-12-00-00.jpg",
+            "2020-01-01-120000.heic",
+            "20200101120000.jpg",
+        ] {
+            let parsed = parse_date_from_filename(nome);
+            // `IMG-20200101-WA0001` non porta un orario valido: va rifiutato.
+            if nome.contains("WA0001") {
+                assert!(parsed.is_none(), "{nome} non ha un orario reale");
+                continue;
+            }
+            assert_eq!(
+                parsed.map(|d| d.timestamp()),
+                Some(attesa),
+                "nome non riconosciuto: {nome}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_scambia_numeri_qualsiasi_per_date() {
+        // Data impossibile: mese 13.
+        assert!(parse_date_from_filename("IMG_20201301_120000.jpg").is_none());
+        // Ora impossibile.
+        assert!(parse_date_from_filename("IMG_20200101_250000.jpg").is_none());
+        // Anno fuori intervallo.
+        assert!(parse_date_from_filename("IMG_18000101_120000.jpg").is_none());
+        // Un numero di serie lungo non è una data.
+        assert!(parse_date_from_filename("DSC000202001011200001234.jpg").is_none());
+        assert!(parse_date_from_filename("IMG_1234.jpg").is_none());
+    }
+
+    #[test]
+    fn il_nome_interviene_solo_dopo_exif_e_sidecar() {
+        // L'ordine è verificato sui dati: EXIF batte sidecar, sidecar batte
+        // nome. Qui basta accertare che il nome sia l'ultima risorsa.
+        assert_eq!(MetadataSource::Exif as u8, 0);
+        assert!(parse_date_from_filename("IMG_20200101_120000.jpg").is_some());
     }
 
     #[test]

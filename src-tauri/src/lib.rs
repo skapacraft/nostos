@@ -8,6 +8,7 @@
 //! c'è updater automatico. I dati letti restano sul disco dell'utente e in
 //! memoria per la durata della sessione.
 
+mod albums;
 mod app_state;
 mod calendar;
 mod contacts;
@@ -22,6 +23,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
 
+use albums::AlbumIndex;
 use app_state::{
     trace_dev, AppInfo, AppState, ExportReport, LoadedSource, Phase, Preferences, PrivacyReport,
     Progress, Result, SectionSummary, SourceKind, SourceSummary, TakeoutError, TakeoutSection,
@@ -522,6 +524,19 @@ async fn restore_quarantine(manifest: String) -> Result<RestoreReport> {
     in_background(move || drive::restore_quarantine(Path::new(&manifest))).await
 }
 
+/// Ricostruisce la struttura di un export Google Foto: album, cartelle per
+/// anno e versioni modificate.
+#[tauri::command]
+async fn scan_albums(path: String) -> Result<AlbumIndex> {
+    in_background(move || albums::build_index(Path::new(&path))).await
+}
+
+/// Scrive il manifest degli album, da fare prima di deduplicare.
+#[tauri::command]
+fn export_album_manifest(path: String, destination: String) -> Result<ExportReport> {
+    albums::export_manifest(Path::new(&path), Path::new(&destination))
+}
+
 /// Analizza l'export Calendario.
 #[tauri::command]
 fn scan_calendar(path: Option<String>, state: State<'_, AppState>) -> Result<CalendarReport> {
@@ -671,6 +686,8 @@ pub fn run() {
             clean_drive,
             restore_quarantine,
             scan_calendar,
+            scan_albums,
+            export_album_manifest,
             export_contacts,
             export_calendar,
             privacy_report,
