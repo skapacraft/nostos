@@ -498,6 +498,27 @@ pub fn is_junk(path: &Path) -> bool {
 /// Serve a cercare i file affiancati senza rileggere la cartella ogni volta.
 type DirIndex = HashMap<PathBuf, Vec<String>>;
 
+/// Vero se il file è affiancato a un altro presente nella stessa cartella,
+/// cioè se il suo nome è il nome completo di quel file più un suffisso.
+///
+/// È il rovescio di [`find_companions`]: serve a escludere i sidecar dalla
+/// deduplica, perché non sono file autonomi.
+fn is_companion(path: &Path, index: &DirIndex) -> bool {
+    let (Some(name), Some(parent)) = (path.file_name().and_then(|n| n.to_str()), path.parent())
+    else {
+        return false;
+    };
+    let Some(names) = index.get(parent) else {
+        return false;
+    };
+
+    names.iter().any(|candidate| {
+        candidate.len() < name.len()
+            && name.starts_with(candidate.as_str())
+            && name.as_bytes().get(candidate.len()) == Some(&b'.')
+    })
+}
+
 /// Trova i file affiancati a un media, cioè quelli il cui nome è il nome
 /// completo del media seguito da un suffisso.
 ///
@@ -592,6 +613,24 @@ pub fn plan_clean(
     let mut junk: Vec<PathBuf> = Vec::new();
     let mut dir_index: DirIndex = HashMap::new();
 
+    // L'indice va completo prima di decidere che cosa è deduplicabile: per
+    // riconoscere un sidecar serve sapere se esiste il media a cui appartiene,
+    // e quel media può comparire dopo di lui nell'ordine di scansione.
+    for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if let (Some(parent), Some(name)) = (
+            entry.path().parent(),
+            entry.path().file_name().and_then(|n| n.to_str()),
+        ) {
+            dir_index
+                .entry(parent.to_path_buf())
+                .or_default()
+                .push(name.to_string());
+        }
+    }
+
     for entry in WalkDir::new(root).follow_links(false) {
         let entry = match entry {
             Ok(entry) => entry,
@@ -622,6 +661,16 @@ pub fn plan_clean(
         if options.remove_junk && is_junk(path) {
             plan.reclaimable_bytes += size;
             junk.push(path.to_path_buf());
+            continue;
+        }
+
+        // Un file affiancato non ha vita propria: appartiene al suo media e lo
+        // segue quando viene spostato. Trattarlo come candidato indipendente
+        // permetterebbe di rimuoverne uno perché il sidecar di un'altra foto
+        // ha per caso lo stesso contenuto, lasciando quella foto senza i suoi
+        // metadati. È un errore che non si recupera guardando i file rimasti.
+        if options.move_companions && is_companion(path, &dir_index) {
+            plan.files_kept += 1;
             continue;
         }
 
@@ -1240,6 +1289,32 @@ mod tests {
         assert!(foto
             .join("IMG_1268 2.JPG.supplemental-metadata.json")
             .is_file());
+    }
+
+    /// Due sidecar possono avere contenuto identico anche appartenendo a foto
+    /// diverse. Trattarli come duplicati indipendenti ne rimuoverebbe uno, e la
+    /// foto rimasta senza perderebbe data e coordinate: un danno che, guardando
+    /// i file superstiti, non si vede nemmeno.
+    #[test]
+    fn i_sidecar_non_vengono_deduplicati_tra_loro() {
+        let temp = TempDir::new("sidecar-dedup");
+        let foto = temp.path().join("Google Foto");
+
+        // Due foto diverse, con sidecar dal contenuto identico.
+        write_file(&foto.join("IMG_1.JPG"), "pixel della prima");
+        write_file(&foto.join("IMG_2.JPG"), "pixel della second");
+        write_file(&foto.join("IMG_1.JPG.json"), r#"{"t": "1577880000"}"#);
+        write_file(&foto.join("IMG_2.JPG.json"), r#"{"t": "1577880000"}"#);
+
+        let plan =
+            plan_clean(&foto, &CleanOptions::default(), usize::MAX, &no_progress).expect("piano");
+
+        assert_eq!(
+            plan.duplicate_copies, 0,
+            "i sidecar identici non sono duplicati da rimuovere"
+        );
+        assert_eq!(plan.files_scanned, 4);
+        assert_eq!(plan.files_kept, 4, "resta tutto");
     }
 
     #[test]

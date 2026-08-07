@@ -164,6 +164,19 @@ mette in difficoltà il codice è il numero di file, non di byte. Centomila foto
 sintetiche occupano centocinquanta megabyte e sono una prova più severa di una
 libreria reale della stessa consistenza.
 
+Il percorso dei byte veri ha una misura a parte, che scrive qualche gigabyte:
+
+```bash
+GB=2 /usr/bin/time -l cargo test --release --manifest-path src-tauri/Cargo.toml \
+  misura_su_file_grandi -- --ignored --nocapture
+```
+
+Verifica la velocità di deduplica e riparazione, e soprattutto che un file
+oltre la soglia di riscrittura venga saltato ma copiato lo stesso. Su due
+gigabyte e mezzo di media la memoria allocata resta intorno ai cento megabyte
+(`peak memory footprint`; il `maximum resident set size` comprende la cache
+delle pagine dei file e non misura ciò che alloca il programma).
+
 I test non si fermano al "non è esploso". La riparazione EXIF viene verificata
 rileggendo i tag scritti da un JPEG reale e confrontando le coordinate dopo il
 round trip attraverso gradi, primi e secondi. La quarantena viene verificata
