@@ -151,6 +151,19 @@ Ogni modifica passa da quattro controlli, eseguiti in CI:
 | `cargo test` | 63 test, compresi end-to-end su Takeout sintetici |
 | `npm run build` | tipi allineati alle struct serde |
 
+C'è inoltre una misura su libreria grande, esclusa dalla CI perché genera
+decine di migliaia di file:
+
+```bash
+FOTO=100000 cargo test --release --manifest-path src-tauri/Cargo.toml \
+  misura_su_libreria_grande -- --ignored --nocapture
+```
+
+Non serve un export da cento gigabyte per trovare i guasti di scala: quello che
+mette in difficoltà il codice è il numero di file, non di byte. Centomila foto
+sintetiche occupano centocinquanta megabyte e sono una prova più severa di una
+libreria reale della stessa consistenza.
+
 I test non si fermano al "non è esploso". La riparazione EXIF viene verificata
 rileggendo i tag scritti da un JPEG reale e confrontando le coordinate dopo il
 round trip attraverso gradi, primi e secondi. La quarantena viene verificata

@@ -80,7 +80,9 @@ pub enum FolderKind {
 pub struct Album {
     pub name: String,
     pub path: PathBuf,
-    /// Nomi dei file contenuti, senza percorso.
+    /// Quanti file contiene, sempre completo.
+    pub file_count: usize,
+    /// Campione dei nomi contenuti, troncato per la UI.
     pub files: Vec<String>,
 }
 
@@ -114,8 +116,12 @@ pub struct AlbumIndex {
     pub year_folders: Vec<String>,
     pub albums: Vec<Album>,
     pub special_folders: Vec<String>,
-    /// Foto che compaiono anche in almeno un album.
+    /// Quante foto compaiono anche in almeno un album, conteggio completo.
+    pub membership_count: usize,
+    /// Campione delle appartenenze, troncato per la UI.
     pub memberships: Vec<AlbumMembership>,
+    /// Quante versioni modificate esistono, conteggio completo.
+    pub edited_count: usize,
     pub edited_pairs: Vec<EditedPair>,
     /// Foto presenti solo in un album e in nessuna cartella per anno.
     pub album_only: usize,
@@ -229,7 +235,7 @@ pub fn strip_edited_suffix(file_name: &str) -> Option<(String, String)> {
 }
 
 /// Percorre un export Google Foto e ne ricostruisce la struttura.
-pub fn build_index(root: &Path) -> Result<AlbumIndex> {
+pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
     crate::app_state::require_existing(root)?;
 
     let mut index = AlbumIndex {
@@ -291,6 +297,7 @@ pub fn build_index(root: &Path) -> Result<AlbumIndex> {
                 index.albums.push(Album {
                     name: name.clone(),
                     path: dir.clone(),
+                    file_count: media.len(),
                     files: media,
                 });
             }
@@ -331,16 +338,33 @@ pub fn build_index(root: &Path) -> Result<AlbumIndex> {
         }
     }
 
+    // I conteggi restano completi, gli elenchi no: attraversano il canale IPC
+    // a ogni scansione, e su una libreria vera l'elenco delle appartenenze da
+    // solo vale qualche megabyte di JSON. Il manifest completo si ottiene
+    // esportandolo, che è l'operazione fatta apposta.
+    //
+    // Il taglio va in fondo, dopo che ogni elenco è stato riempito: messo
+    // prima, lasciava passare intatte le versioni modificate, che vengono
+    // raccolte più avanti.
+    index.membership_count = index.memberships.len();
+    index.edited_count = index.edited_pairs.len();
+    index.memberships.truncate(max_items);
+    index.edited_pairs.truncate(max_items);
+    for album in &mut index.albums {
+        album.file_count = album.files.len();
+        album.files.truncate(max_items);
+    }
+
     if index.album_only > 0 {
         index.warnings.push(format!(
             "{} foto compaiono solo dentro un album e in nessuna cartella per anno: rimuoverle dagli album le farebbe sparire del tutto.",
             index.album_only
         ));
     }
-    if !index.memberships.is_empty() {
+    if index.membership_count > 0 {
         index.warnings.push(format!(
             "{} foto sono duplicate tra cartelle per anno e album. Esporta il manifest prima di deduplicare, altrimenti l'appartenenza agli album va persa.",
-            index.memberships.len()
+            index.membership_count
         ));
     }
 
@@ -349,7 +373,9 @@ pub fn build_index(root: &Path) -> Result<AlbumIndex> {
 
 /// Scrive il manifest degli album.
 pub fn export_manifest(root: &Path, destination: &Path) -> Result<ExportReport> {
-    let index = build_index(root)?;
+    // Il manifest deve essere completo: è il documento che conserva il dato,
+    // non l'anteprima mostrata nell'interfaccia.
+    let index = build_index(root, usize::MAX)?;
 
     let manifest = AlbumManifest {
         created_at: Utc::now(),
@@ -455,7 +481,7 @@ mod tests {
         );
         write_file(&foto.join("Cestino").join("nota.txt"), "x");
 
-        let index = build_index(&foto).expect("indice");
+        let index = build_index(&foto, usize::MAX).expect("indice");
 
         assert_eq!(index.year_folders, vec!["Foto da 2026"]);
         assert_eq!(index.albums.len(), 1);

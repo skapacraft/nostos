@@ -38,7 +38,7 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
       .then((result) => {
         if (cancelled) return;
         setIndex(result);
-        onRisk(result.memberships.length > 0);
+        onRisk(result.membershipCount > 0);
       })
       .catch((error) => {
         if (!cancelled) onError(toMessage(error));
@@ -63,7 +63,7 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
       </p>
     );
   }
-  if (!index || (index.albums.length === 0 && index.editedPairs.length === 0)) {
+  if (!index || (index.albums.length === 0 && index.editedCount === 0)) {
     return null;
   }
 
@@ -87,9 +87,9 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
         />
         <Stat
           label="Foto in album"
-          value={formatCount(index.memberships.length)}
+          value={formatCount(index.membershipCount)}
           hint="duplicate altrove"
-          tone={index.memberships.length > 0 ? "warning" : "neutral"}
+          tone={index.membershipCount > 0 ? "warning" : "neutral"}
         />
         <Stat
           label="Solo in album"
@@ -108,13 +108,13 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
         </p>
       ))}
 
-      {index.memberships.length > 0 ? (
+      {index.membershipCount > 0 ? (
         <ExportButton
           label="Salva il manifest degli album"
           defaultName="album.json"
           extension="json"
           filterName="JSON"
-          hint={`Registra a quale album appartiene ciascuna delle ${formatCount(index.memberships.length)} foto duplicate. Da fare prima della deduplica: i file si recuperano dalla quarantena, questa informazione no.`}
+          hint={`Registra a quale album appartiene ciascuna delle ${formatCount(index.membershipCount)} foto duplicate. Da fare prima della deduplica: i file si recuperano dalla quarantena, questa informazione no.`}
           onExport={async (destination) => {
             const report = await api.exportAlbumManifest(path, destination);
             handleExported();
@@ -130,9 +130,9 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
         </p>
       ) : null}
 
-      {index.editedPairs.length > 0 ? (
+      {index.editedCount > 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {formatCount(index.editedPairs.length)} file sono versioni modificate
+          {formatCount(index.editedCount)} file sono versioni modificate
           affiancate all'originale (suffisso{" "}
           <span className="font-mono">{index.editedPairs[0].suffix}</span>). Non
           sono duplicati: hanno pixel diversi e restano entrambi.
@@ -152,7 +152,7 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
               >
                 <span className="truncate">{album.name}</span>
                 <span className="shrink-0 tabular-nums">
-                  {formatCount(album.files.length)}
+                  {formatCount(album.fileCount)}
                 </span>
               </li>
             ))}

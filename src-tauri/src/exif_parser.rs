@@ -190,6 +190,9 @@ pub struct PhotoScanReport {
     /// File la cui data è stata dedotta dal nome, ultima risorsa.
     pub date_from_filename: usize,
     pub total_bytes: u64,
+    /// Quanti file non sono stati letti, conteggio completo.
+    pub unreadable_count: usize,
+    /// Campione dei problemi, troncato per la UI.
     pub unreadable: Vec<String>,
     /// Campione dei primi record, per l'anteprima nella UI.
     pub sample: Vec<MediaRecord>,
@@ -539,8 +542,8 @@ fn build_datetime(digits: &str) -> Option<DateTime<Utc>> {
 }
 
 /// Individua e legge il sidecar JSON associato al media.
-pub fn read_sidecar(media: &Path) -> Result<Option<SidecarData>> {
-    let Some(sidecar_path) = find_sidecar(media) else {
+pub fn read_sidecar(media: &Path, index: Option<&FileIndex>) -> Result<Option<SidecarData>> {
+    let Some(sidecar_path) = find_sidecar(media, index) else {
         return Ok(None);
     };
 
@@ -599,9 +602,26 @@ fn sidecar_candidates(media: &Path) -> Vec<PathBuf> {
     candidates
 }
 
-fn find_sidecar(media: &Path) -> Option<PathBuf> {
+/// Insieme dei percorsi presenti, raccolto una volta sola durante la scansione.
+///
+/// Esiste per non interrogare il filesystem a ogni candidato sidecar: la
+/// versione che chiamava `is_file()` su tre o quattro percorsi per foto
+/// pagava un `stat` dentro cartelle da decine di migliaia di voci, e il costo
+/// della scansione cresceva con il quadrato della libreria invece che in
+/// proporzione.
+pub type FileIndex = std::collections::HashSet<PathBuf>;
+
+/// Vero se il percorso esiste, consultando l'indice quando disponibile.
+fn exists(path: &Path, index: Option<&FileIndex>) -> bool {
+    match index {
+        Some(index) => index.contains(path),
+        None => path.is_file(),
+    }
+}
+
+fn find_sidecar(media: &Path, index: Option<&FileIndex>) -> Option<PathBuf> {
     let candidates = sidecar_candidates(media);
-    let found = candidates.iter().find(|c| c.is_file()).cloned();
+    let found = candidates.iter().find(|c| exists(c, index)).cloned();
 
     if found.is_none() {
         // Il caso più frequente di "riparazione che non fa nulla" è un sidecar
@@ -626,10 +646,10 @@ fn find_sidecar(media: &Path) -> Option<PathBuf> {
 }
 
 /// Costruisce il record unificato di un singolo media.
-pub fn inspect_media(path: &Path) -> Result<MediaRecord> {
+pub fn inspect_media(path: &Path, index: Option<&FileIndex>) -> Result<MediaRecord> {
     let metadata = std::fs::metadata(path).map_err(|e| TakeoutError::io(path, e))?;
     let exif = read_exif(path)?;
-    let sidecar = read_sidecar(path)?;
+    let sidecar = read_sidecar(path, index)?;
 
     let sidecar_taken = sidecar.as_ref().and_then(|s| s.taken_at.or(s.created_at));
 
@@ -702,12 +722,44 @@ pub fn scan_directory(root: &Path, sample_size: usize) -> Result<PhotoScanReport
 
     let mut report = PhotoScanReport::default();
 
+    // Una passata sola raccoglie i percorsi dei media e l'indice di tutto ciò
+    // che esiste, così la ricerca dei sidecar non torna sul filesystem.
+    let mut index = FileIndex::new();
+    let mut media: Vec<PathBuf> = Vec::new();
     for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
-        if !entry.file_type().is_file() || !is_media_file(entry.path()) {
+        if !entry.file_type().is_file() {
             continue;
         }
+        if is_media_file(entry.path()) {
+            media.push(entry.path().to_path_buf());
+        }
+        index.insert(entry.into_path());
+    }
 
-        match inspect_media(entry.path()) {
+    // La lettura è dominata dall'apertura di due file per foto, il media e il
+    // suo sidecar: è lavoro di I/O, e su una libreria grande un solo thread
+    // diventa il collo di bottiglia. Il numero di thread resta lo stesso della
+    // riscrittura, per non moltiplicare le letture concorrenti sul disco.
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(
+            REWRITE_THREADS.min(std::thread::available_parallelism().map_or(1, |n| n.get())),
+        )
+        .build()
+        .map_err(|e| TakeoutError::Task(e.to_string()))?;
+
+    let esiti: Vec<std::result::Result<MediaRecord, (PathBuf, String)>> = pool.install(|| {
+        media
+            .par_iter()
+            .map(|path| {
+                inspect_media(path, Some(&index)).map_err(|err| (path.clone(), err.to_string()))
+            })
+            .collect()
+    });
+
+    // L'aggregazione resta sequenziale e nell'ordine della passata, così il
+    // campione mostrato è sempre lo stesso a parità di libreria.
+    for esito in esiti {
+        match esito {
             Ok(record) => {
                 report.media_count += 1;
                 report.total_bytes += record.size_bytes;
@@ -733,14 +785,18 @@ pub fn scan_directory(root: &Path, sample_size: usize) -> Result<PhotoScanReport
                     report.sample.push(record);
                 }
             }
-            Err(err) => report.unreadable.push(format!(
-                "{}: {err}",
-                entry
-                    .path()
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-            )),
+            Err((path, err)) => {
+                report.unreadable_count += 1;
+                // L'elenco è troncato ma il conteggio no: mandare al frontend
+                // una stringa per file illeggibile significherebbe megabyte di
+                // JSON su una libreria messa male.
+                if report.unreadable.len() < sample_size {
+                    report.unreadable.push(format!(
+                        "{}: {err}",
+                        path.file_name().unwrap_or_default().to_string_lossy()
+                    ));
+                }
+            }
         }
     }
 
@@ -1079,13 +1135,17 @@ pub fn apply_metadata(
         }
     }
 
-    let media: Vec<PathBuf> = WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .flatten()
-        .filter(|e| e.file_type().is_file() && is_media_file(e.path()))
-        .map(|e| e.into_path())
-        .collect();
+    let mut index = FileIndex::new();
+    let mut media: Vec<PathBuf> = Vec::new();
+    for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if is_media_file(entry.path()) {
+            media.push(entry.path().to_path_buf());
+        }
+        index.insert(entry.into_path());
+    }
 
     let total = media.len();
     trace_dev!(
@@ -1116,7 +1176,7 @@ pub fn apply_metadata(
         media
             .par_iter()
             .map(|path| {
-                let outcome = process_media(path, root, options, &taken);
+                let outcome = process_media(path, root, options, &taken, &index);
                 if outcome.failure.is_some() {
                     errors.fetch_add(1, Relaxed);
                 }
@@ -1191,8 +1251,9 @@ fn process_media(
     root: &Path,
     options: &WriteOptions,
     taken: &Mutex<HashSet<PathBuf>>,
+    index: &FileIndex,
 ) -> PerFile {
-    let record = match inspect_media(path) {
+    let record = match inspect_media(path, Some(index)) {
         Ok(record) => record,
         Err(err) => {
             return PerFile {
