@@ -562,6 +562,28 @@ pub fn read_sidecar(media: &Path, index: Option<&FileIndex>) -> Result<Option<Si
     }))
 }
 
+/// Lunghezza massima del nome di un sidecar prodotto da Google, `.json`
+/// compreso.
+///
+/// È il comportamento osservato negli export, non una regola documentata da
+/// Google: se un export dovesse usare un limite diverso, i nomi lunghi
+/// tornerebbero senza sidecar e la scansione lo direbbe contando i file la cui
+/// data viene dedotta dal nome.
+const MAX_SIDECAR_NAME: usize = 46;
+
+const JSON_EXT: &str = ".json";
+
+/// Taglia una stringa a `limite` caratteri senza spezzare un carattere UTF-8.
+///
+/// Contare in byte spaccherebbe le lettere accentate e gli ideogrammi, che nei
+/// nomi dei file ci sono eccome.
+fn tronca(testo: &str, limite: usize) -> &str {
+    match testo.char_indices().nth(limite) {
+        Some((fine, _)) => &testo[..fine],
+        None => testo,
+    }
+}
+
 /// Costruisce i nomi candidati del sidecar.
 ///
 /// Google ha cambiato schema più volte e tronca i nomi lunghi, quindi non
@@ -584,6 +606,30 @@ fn sidecar_candidates(media: &Path) -> Vec<PathBuf> {
         // Variante senza estensione del media: IMG_0001.json
         parent.join(format!("{stem}.json")),
     ];
+
+    // Nomi lunghi: Google accorcia il nome del sidecar fino a farlo stare in
+    // MAX_SIDECAR_NAME caratteri, `.json` compreso. Il taglio cade quasi
+    // sempre dentro `.supplemental-metadata`, che compare mozzato
+    // (`.supplemental-me.json`) o sparisce del tutto lasciando troncato il nome
+    // del media. Senza queste varianti una foto con nome lungo risulta priva di
+    // sidecar e la data finisce per essere dedotta dal nome, che è l'ultima
+    // risorsa e non porta le coordinate.
+    for base in [
+        format!("{file_name}.supplemental-metadata"),
+        file_name.to_string(),
+    ] {
+        // Il conto è in caratteri, non in byte, per la stessa ragione per cui
+        // `tronca` taglia sui confini: un nome con accenti non deve produrre un
+        // candidato diverso solo perché occupa più byte.
+        if base.chars().count() + JSON_EXT.len() <= MAX_SIDECAR_NAME {
+            continue;
+        }
+        let tagliato = tronca(&base, MAX_SIDECAR_NAME - JSON_EXT.len());
+        let candidato = parent.join(format!("{tagliato}{JSON_EXT}"));
+        if !candidates.contains(&candidato) {
+            candidates.push(candidato);
+        }
+    }
 
     // File duplicati: `IMG_0001(1).JPG` ha sidecar `IMG_0001.JPG(1).json`.
     if let Some(open) = stem.rfind('(') {
@@ -1332,6 +1378,57 @@ mod tests {
         assert!(candidates.contains(&PathBuf::from(
             "/foto/IMG_0001.JPG.supplemental-metadata.json"
         )));
+    }
+
+    #[test]
+    fn gestisce_i_nomi_sidecar_troncati() {
+        // Nome corto: nessun troncamento, e nessun candidato inutile in più.
+        let corti = sidecar_candidates(Path::new("/foto/IMG_0001.JPG"));
+        assert!(
+            corti.iter().all(|c| {
+                let nome = c.file_name().unwrap().to_string_lossy();
+                nome.ends_with(".json") && nome.chars().count() <= MAX_SIDECAR_NAME
+            }),
+            "su un nome corto non deve comparire un candidato tagliato"
+        );
+
+        // Nome medio: sta nei 46 caratteri da solo, ma non con l'intero
+        // `.supplemental-metadata` in coda, che quindi arriva mozzato.
+        let medi = sidecar_candidates(Path::new("/foto/PXL_20260115_120000123.jpg"));
+        assert!(
+            medi.contains(&PathBuf::from(
+                "/foto/PXL_20260115_120000123.jpg.supplemental-m.json"
+            )),
+            "atteso il suffisso mozzato, trovati {medi:?}"
+        );
+
+        // Nome lungo: il taglio cade dentro il nome del media stesso.
+        let lunghi = sidecar_candidates(Path::new(
+            "/foto/Foto scattata durante la gita del 04-01-2022.jpg",
+        ));
+        assert!(
+            lunghi.contains(&PathBuf::from(
+                "/foto/Foto scattata durante la gita del 04-01-2.json"
+            )),
+            "atteso il nome tagliato, trovati {lunghi:?}"
+        );
+
+        // Il taglio si conta in caratteri: un nome accentato non deve produrre
+        // un candidato più corto solo perché occupa più byte.
+        let accentati = sidecar_candidates(Path::new(
+            "/foto/Foto della città più bella del mondo intero.jpg",
+        ));
+        let tagliato = accentati
+            .iter()
+            .find(|c| {
+                let nome = c.file_name().unwrap().to_string_lossy();
+                !nome.contains("supplemental") && nome.chars().count() == MAX_SIDECAR_NAME
+            })
+            .unwrap_or_else(|| panic!("nessun candidato tagliato in {accentati:?}"));
+        assert_eq!(
+            tagliato.file_name().unwrap().to_string_lossy(),
+            "Foto della città più bella del mondo inte.json"
+        );
     }
 
     #[test]

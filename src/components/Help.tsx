@@ -74,6 +74,13 @@ export function Help({ info, privacy, onClose }: HelpProps) {
           altri della stessa serie e li unisce in un solo albero, segnalando se
           ne manca qualcuno.
         </p>
+        <p className="text-zinc-500 dark:text-zinc-400">
+          Perché li trovi, gli archivi devono stare tutti nella stessa cartella.
+          Google divide l'export in file autonomi che ripetono la stessa
+          struttura, e le foto di una stessa annata possono essere sparse su più
+          archivi: estrarli uno per uno in cartelle separate lascia il lavoro a
+          metà.
+        </p>
         <p>La struttura attesa è questa:</p>
         <pre className="selectable overflow-x-auto rounded-lg bg-zinc-100 p-3 font-mono text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
           {`Takeout/
@@ -126,7 +133,41 @@ export function Help({ info, privacy, onClose }: HelpProps) {
         </p>
       </Section>
 
-      <Section title="5. Portare via contatti e calendario">
+      <Section title="5. Se lo spazio non basta">
+        <p>
+          La copia riparata è una seconda libreria: se l'export pesa duecento
+          gigabyte, ne servono altri duecento liberi. L'app fa il conto prima di
+          cominciare e si ferma se non ci stanno, invece di riempire il disco a
+          metà lavoro e lasciare una cartella che sembra completa.
+        </p>
+        <p>Quando lo spazio manca ci sono due strade, entrambe proposte a schermo:</p>
+        <ul className="list-inside list-disc space-y-1 text-zinc-600 dark:text-zinc-400">
+          <li>
+            <strong className="font-medium text-zinc-900 dark:text-zinc-100">
+              Riscrivere gli originali sul posto
+            </strong>
+            : servono poche decine di megabyte qualunque sia la libreria, perché
+            i file vengono modificati uno alla volta. In cambio non resta una
+            copia intatta, quindi va confermata a mano.
+          </li>
+          <li>
+            <strong className="font-medium text-zinc-900 dark:text-zinc-100">
+              Procedere a tranche
+            </strong>
+            : l'app elenca le sottocartelle, dice quanto pesa ciascuna e quali
+            entrano nello spazio rimasto, con un pulsante per ripararne una per
+            volta. Liberato spazio, si passa alla successiva.
+          </li>
+        </ul>
+        <p className="text-zinc-500 dark:text-zinc-400">
+          Nell'elenco le annate e gli album sono distinti, perché non pesano allo
+          stesso modo: un album contiene per lo più copie di foto che stanno già
+          in una cartella per anno. Dove l'app trova file presenti solo lì, lo
+          segnala: quella cartella non si può rimandare senza perderli di vista.
+        </p>
+      </Section>
+
+      <Section title="6. Portare via contatti e calendario">
         <p>
           Le sezioni Contatti e Calendario producono un file unico e deduplicato,
           in vCard 3.0 e iCalendar 2.0 standard, senza le estensioni proprietarie

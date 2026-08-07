@@ -74,6 +74,12 @@ pub enum FolderKind {
     Special,
 }
 
+impl FolderKind {
+    pub fn is_year(&self) -> bool {
+        matches!(self, FolderKind::Year(_))
+    }
+}
+
 /// Un album, con i file che vi appartengono.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,6 +174,63 @@ pub fn classify_folder(name: &str) -> FolderKind {
     FolderKind::Album
 }
 
+/// Come `classify_folder`, ma sapendo come questo export chiama le annate.
+///
+/// Terminare con un anno non basta a distinguere `Foto da 2024` da un album
+/// che si chiama `Natale 2024`, e sbagliare non è innocuo: un album scambiato
+/// per annata non finisce nel manifest, cioè si perde proprio il dato che il
+/// manifest esiste per salvare. Con il prefisso dell'export in mano la
+/// distinzione diventa netta.
+pub fn classify_folder_in(name: &str, year_prefix: Option<&str>) -> FolderKind {
+    let normalized = normalize(name.trim());
+
+    if SPECIAL_FOLDERS.iter().any(|s| normalized == *s) {
+        return FolderKind::Special;
+    }
+
+    let Some(year) = trailing_year(&normalized) else {
+        return FolderKind::Album;
+    };
+
+    match year_prefix {
+        Some(prefix) if folder_prefix(&normalized) != prefix => FolderKind::Album,
+        _ => FolderKind::Year(year),
+    }
+}
+
+/// Ricava il prefisso con cui questo export nomina le cartelle per anno.
+///
+/// Google le chiama `Photos from 2020`, `Foto da 2026`, `Fotos de 2019`: il
+/// prefisso cambia con la lingua dell'account, ma dentro lo stesso export è
+/// identico per tutte le annate. Un album con l'anno nel nome ha invece un
+/// prefisso suo, e resta in minoranza.
+///
+/// Restituisce `None` quando non c'è un vincitore netto, cioè quando due
+/// prefissi diversi compaiono lo stesso numero di volte: in quel caso nessuna
+/// scelta sarebbe meglio di un sorteggio, e conviene dirlo invece di decidere.
+fn year_prefix(names: &[String]) -> Option<String> {
+    let mut conteggi: BTreeMap<String, usize> = BTreeMap::new();
+    for name in names {
+        let normalized = normalize(name.trim());
+        if trailing_year(&normalized).is_some() {
+            *conteggi.entry(folder_prefix(&normalized)).or_default() += 1;
+        }
+    }
+
+    let massimo = *conteggi.values().max()?;
+    let mut vincitori = conteggi.iter().filter(|(_, n)| **n == massimo);
+    let (prefisso, _) = vincitori.next()?;
+    vincitori.next().is_none().then(|| prefisso.clone())
+}
+
+/// La parte di nome che precede l'anno finale, senza spazi ai bordi.
+fn folder_prefix(normalized: &str) -> String {
+    normalized
+        .trim_end_matches(|c: char| c.is_ascii_digit())
+        .trim()
+        .to_string()
+}
+
 /// Estrae l'anno finale di un nome di cartella, se plausibile.
 fn trailing_year(name: &str) -> Option<i32> {
     let digits: String = name
@@ -248,23 +311,37 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
     // Nome file -> album in cui compare.
     let mut in_albums: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
-    let entries = std::fs::read_dir(root).map_err(|e| TakeoutError::io(root, e))?;
-
-    for entry in entries.flatten() {
-        let dir = entry.path();
-        if !dir.is_dir() {
+    // Prima passata sui soli nomi: serve a capire come questo export chiama le
+    // annate, prima di decidere cosa sia annata e cosa album.
+    let mut nomi: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(root)
+        .map_err(|e| TakeoutError::io(root, e))?
+        .flatten()
+    {
+        if !entry.path().is_dir() {
             continue;
         }
-        let name = dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default()
-            .to_string();
-        if name.starts_with('.') {
-            continue;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with('.') {
+            nomi.push(name);
         }
+    }
+    nomi.sort();
 
-        let kind = classify_folder(&name);
+    let prefisso = year_prefix(&nomi);
+    if prefisso.is_none() && nomi.iter().filter(|n| classify_folder(n).is_year()).count() > 1 {
+        index.warnings.push(
+            "Più cartelle finiscono con un anno senza condividere un prefisso: \
+             non è possibile dire quali siano annate e quali album con l'anno \
+             nel nome. Sono state trattate tutte come annate, quindi il \
+             manifest potrebbe non registrare l'appartenenza a un album."
+                .to_string(),
+        );
+    }
+
+    for name in nomi {
+        let dir = root.join(&name);
+        let kind = classify_folder_in(&name, prefisso.as_deref());
         let media: Vec<String> = WalkDir::new(&dir)
             .follow_links(false)
             .into_iter()
@@ -406,7 +483,7 @@ pub fn export_manifest(root: &Path, destination: &Path) -> Result<ExportReport> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app_state::testing::{write_file, TempDir, MINIMAL_JPEG};
+    use crate::app_state::testing::{write_bytes, write_file, TempDir, MINIMAL_JPEG};
 
     #[test]
     fn riconosce_le_cartelle_per_anno_in_piu_lingue() {
@@ -416,6 +493,70 @@ mod tests {
         // Un numero che non è un anno non deve ingannare.
         assert_eq!(classify_folder("Corsa dei 1000"), FolderKind::Album);
         assert_eq!(classify_folder("Vacanze in Sicilia"), FolderKind::Album);
+    }
+
+    #[test]
+    fn distingue_un_album_con_l_anno_nel_nome_dalle_annate() {
+        let nomi: Vec<String> = [
+            "Foto da 2019",
+            "Foto da 2020",
+            "Foto da 2021",
+            "Natale 2024",
+            "Vacanze in Sicilia",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        let prefisso = year_prefix(&nomi);
+        assert_eq!(prefisso.as_deref(), Some("foto da"));
+
+        // Senza il prefisso dell'export "Natale 2024" passerebbe per annata, e
+        // la sua appartenenza non finirebbe nel manifest.
+        assert_eq!(classify_folder("Natale 2024"), FolderKind::Year(2024));
+        assert_eq!(
+            classify_folder_in("Natale 2024", prefisso.as_deref()),
+            FolderKind::Album
+        );
+        assert_eq!(
+            classify_folder_in("Foto da 2020", prefisso.as_deref()),
+            FolderKind::Year(2020)
+        );
+        assert_eq!(
+            classify_folder_in("Vacanze in Sicilia", prefisso.as_deref()),
+            FolderKind::Album
+        );
+
+        // Un pari non permette di dire quale prefisso sia quello dell'export:
+        // meglio nessuna risposta che una tirata a sorte.
+        let pari: Vec<String> = ["Foto da 2026", "Natale 2024"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(year_prefix(&pari), None);
+
+        // Una sola cartella che finisce per anno resta un'annata: un export di
+        // Google Foto ne ha sempre almeno una.
+        let sola = vec!["Foto da 2026".to_string(), "Matrimonio".to_string()];
+        assert_eq!(year_prefix(&sola).as_deref(), Some("foto da"));
+    }
+
+    #[test]
+    fn segnala_quando_non_riesce_a_distinguere_annate_e_album() {
+        let temp = TempDir::new("annate-ambigue");
+        let root = temp.path().join("Google Foto");
+        // Due prefissi diversi, una cartella ciascuno: nessun vincitore.
+        for cartella in ["Foto da 2026", "Natale 2024"] {
+            write_bytes(&root.join(cartella).join("IMG_0001.JPG"), MINIMAL_JPEG);
+        }
+
+        let index = build_index(&root, 100).expect("indice");
+        assert_eq!(index.year_folders.len(), 2, "in dubbio restano annate");
+        assert!(
+            index.warnings.iter().any(|w| w.contains("prefisso")),
+            "l'ambiguità va detta, non nascosta: {:?}",
+            index.warnings
+        );
     }
 
     #[test]

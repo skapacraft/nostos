@@ -80,6 +80,9 @@ src-tauri/
     drive.rs         classificazione, segnaposto, deduplica e quarantena
                      (il motore di pulizia vale per qualsiasi cartella)
 
+tools/
+  genera_serie_takeout.py   costruisce una serie multi-archivio di prova
+
 src/
   App.tsx              orchestrazione della sessione
   types.ts             controparte TypeScript delle struct serde
@@ -108,14 +111,19 @@ src/
   segnalando i numeri mancanti di un download incompleto. I percorsi vengono
   normalizzati e le voci che tentano di uscire dalla destinazione rifiutate.
 - **Album**: Google non esporta gli album come informazione a parte, ma come
-  cartelle contenenti una seconda copia della foto. L'app le riconosce,
-  distingue le cartelle per anno (in qualsiasi lingua) dagli album veri, e
+  cartelle contenenti una seconda copia della foto. L'app le riconosce e
+  distingue le cartelle per anno dagli album veri in qualsiasi lingua, senza
+  un elenco di traduzioni: ricava dall'export stesso il prefisso con cui quel
+  export chiama le annate (`Photos from`, `Foto da`, `Fotos de`), così un album
+  chiamato `Natale 2024` resta un album. Poi
   scrive un manifest dell'appartenenza. Finché quel manifest non esiste, la
   deduplica sulla cartella foto resta bloccata: i file tornerebbero dalla
   quarantena, l'appartenenza no.
 - **Foto**: legge EXIF e sidecar JSON (compresi gli schemi
-  `.supplemental-metadata.json` e i duplicati con contatore), e quando entrambi
-  mancano deduce la data dal nome generato dalla fotocamera
+  `.supplemental-metadata.json`, i duplicati con contatore e i nomi che Google
+  accorcia a 46 caratteri, dove il suffisso arriva mozzato o sparisce del
+  tutto), e quando entrambi mancano deduce la data dal nome generato dalla
+  fotocamera
   (`IMG_20200101_120000`, `PXL_...`, screenshot, Signal). Riconcilia data e
   coordinate e **le riscrive nei tag EXIF** di JPEG, HEIC, TIFF e WebP senza
   ricomprimere l'immagine. Quando la foto ha le coordinate, ricava il fuso del
@@ -156,11 +164,11 @@ Ogni modifica passa da quattro controlli, eseguiti in CI:
 | --- | --- |
 | `cargo deny check` | nessuna crate di rete, telemetria o updater |
 | `cargo clippy -- -D warnings` | zero warning |
-| `cargo test` | 63 test, compresi end-to-end su Takeout sintetici |
+| `cargo test` | 69 test, compresi end-to-end su Takeout sintetici |
 | `npm run build` | tipi allineati alle struct serde |
 
-C'è inoltre una misura su libreria grande, esclusa dalla CI perché genera
-decine di migliaia di file:
+Ci sono inoltre quattro misure escluse dalla CI, da lanciare a mano. La prima
+lavora su una libreria grande, perché genera decine di migliaia di file:
 
 ```bash
 FOTO=100000 cargo test --release --manifest-path src-tauri/Cargo.toml \
@@ -192,6 +200,33 @@ oltre la soglia di riscrittura venga saltato ma copiato lo stesso. Su due
 gigabyte e mezzo di media la memoria allocata resta intorno ai cento megabyte
 (`peak memory footprint`; il `maximum resident set size` comprende la cache
 delle pagine dei file e non misura ciò che alloca il programma).
+
+La quarta misura estrae una serie multi-archivio presa dal disco, invece di
+costruirsela da sé. La differenza non è formale: un test che genera i propri
+dati verifica anche le proprie assunzioni, e se un'assunzione è sbagliata resta
+verde lo stesso. Il materiale si prepara con lo script in `tools/`:
+
+```bash
+tools/genera_serie_takeout.py ~/Downloads/prova-multiarchivio
+
+SERIE=~/Downloads/prova-multiarchivio USCITA=~/Downloads/prova-estratta \
+  cargo test --release --manifest-path src-tauri/Cargo.toml \
+  estrazione_di_una_serie_reale -- --ignored --nocapture
+```
+
+Su quindici gigabyte divisi in otto archivi, come li produce Google con
+l'opzione "2 GB": serie riconosciuta partendo da un archivio solo in 0,1 ms,
+estrazione dei 6330 file in 40 secondi a 383 MB/s senza collisioni, scansione
+delle 3237 foto in 1,4 secondi, memoria allocata 107 MB.
+
+Lo script non produce un Takeout di Google: riproduce la struttura, la
+nomenclatura, la divisione a fette e le stranezze note dell'export, ma non le
+scelte del suo scrittore zip. Quelle si verificano solo con un export vero,
+chiesto a Google con la dimensione massima per archivio impostata bassa.
+Vale la pena dirlo perché questa misura ha già trovato due difetti reali che i
+test sintetici non vedevano: i sidecar con il nome accorciato da Google non
+venivano riconosciuti, e un album chiamato `Natale 2024` finiva fra le cartelle
+per anno.
 
 I test non si fermano al "non è esploso". La riparazione EXIF viene verificata
 rileggendo i tag scritti da un JPEG reale e confrontando le coordinate dopo il

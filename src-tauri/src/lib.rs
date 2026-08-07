@@ -1903,6 +1903,174 @@ mod tests {
         println!();
     }
 
+    /// Estrae una serie multi-archivio presa dal disco e ne analizza il
+    /// risultato.
+    ///
+    /// A differenza delle altre misure questa non genera nulla: lavora su
+    /// archivi già esistenti, così da esercitare il percorso completo
+    /// riconoscimento della serie, unione, scansione foto e album su materiale
+    /// che non è stato costruito dagli stessi test che lo verificano.
+    ///
+    /// ```bash
+    /// SERIE=~/Downloads/prova-multiarchivio USCITA=~/Downloads/estratto \
+    ///   cargo test --release estrazione_di_una_serie_reale -- --ignored --nocapture
+    /// ```
+    ///
+    /// `SERIE` può indicare la cartella che contiene gli archivi oppure uno
+    /// qualsiasi di essi: il riconoscimento della serie parte da un archivio
+    /// solo e trova gli altri da sé, ed è proprio quel comportamento che qui
+    /// interessa provare. Senza `USCITA` l'estrazione finisce in una cartella
+    /// temporanea, che viene rimossa alla fine; indicandola invece si può
+    /// riusare l'albero estratto per le prove successive.
+    ///
+    /// Il test è escluso dalla CI perché dipende da file locali e, su una serie
+    /// vera, scrive quanto pesa l'export.
+    #[test]
+    #[ignore = "richiede archivi sul disco: si lancia a mano con SERIE=..."]
+    fn estrazione_di_una_serie_reale() {
+        use std::time::Instant;
+
+        let Ok(serie) = std::env::var("SERIE") else {
+            println!("SERIE non impostata: niente da estrarre.");
+            return;
+        };
+        let serie = PathBuf::from(serie);
+
+        // Un archivio qualsiasi della serie basta: il resto lo trova da sé.
+        let primo = if serie.is_dir() {
+            let mut archivi: Vec<PathBuf> = std::fs::read_dir(&serie)
+                .expect("lettura della cartella indicata")
+                .filter_map(|v| v.ok().map(|v| v.path()))
+                .filter(|p| zip_handler::is_takeout_archive(p))
+                .collect();
+            archivi.sort();
+            archivi
+                .into_iter()
+                .next()
+                .expect("nessun takeout-*.zip nella cartella indicata")
+        } else {
+            serie.clone()
+        };
+
+        let inizio = Instant::now();
+        let trovata = zip_handler::discover_series(&primo).expect("riconoscimento della serie");
+        println!(
+            "\nserie riconosciuta partendo da {}",
+            primo.file_name().unwrap_or_default().to_string_lossy()
+        );
+        println!(
+            "  {} archivi, {:.2} GB compressi, mancanti: {:?}  ({:?})",
+            trovata.archives.len(),
+            trovata.total_compressed_bytes as f64 / 1024.0 / 1024.0 / 1024.0,
+            trovata.missing,
+            inizio.elapsed()
+        );
+        assert!(
+            trovata.missing.is_empty(),
+            "la serie sul disco risulta incompleta"
+        );
+
+        // Con USCITA l'albero resta a disposizione, altrimenti sparisce.
+        let scelta = std::env::var("USCITA").ok();
+        let temporanea = scelta.is_none().then(|| TempDir::new("serie-reale"));
+        let destinazione = match (&scelta, &temporanea) {
+            (Some(percorso), _) => PathBuf::from(percorso),
+            (None, Some(temp)) => temp.path().join("estratto"),
+            (None, None) => unreachable!("senza USCITA la temporanea esiste sempre"),
+        };
+
+        let inizio = Instant::now();
+        let estratto = zip_handler::extract_series(
+            &trovata.archives,
+            &destinazione,
+            &crate::app_state::no_progress,
+        )
+        .expect("estrazione della serie");
+        let durata = inizio.elapsed();
+        let gb = estratto.bytes_written as f64 / 1024.0 / 1024.0 / 1024.0;
+        println!("estrazione in {durata:?}");
+        println!(
+            "  {} file, {} cartelle, {:.2} GB, {:.0} MB/s",
+            estratto.files_written,
+            estratto.dirs_created,
+            gb,
+            gb * 1024.0 / durata.as_secs_f64()
+        );
+        println!(
+            "  scartati per sicurezza: {}, collisioni: {}",
+            estratto.skipped.len(),
+            estratto.collisions.len()
+        );
+        for voce in estratto.skipped.iter().take(5) {
+            println!("    scartato: {voce}");
+        }
+        for voce in estratto.collisions.iter().take(5) {
+            println!("    collisione: {voce}");
+        }
+
+        // Un Takeout unito deve avere una radice sola, non una per archivio.
+        let radice = estratto.destination.join("Takeout");
+        assert!(radice.is_dir(), "manca la radice Takeout nell'albero unito");
+
+        let inizio = Instant::now();
+        let sorgente = analyze_folder(&estratto.destination).expect("analisi dell'albero unito");
+        println!("analisi delle sezioni in {:?}", inizio.elapsed());
+        for sezione in &sorgente.sections {
+            println!(
+                "  {:<16} {:>6} file, {:>6.2} GB",
+                sezione.label,
+                sezione.file_count,
+                sezione.total_bytes as f64 / 1024.0 / 1024.0 / 1024.0
+            );
+        }
+
+        let foto = radice.join("Google Foto");
+        if foto.is_dir() {
+            let inizio = Instant::now();
+            let indice = albums::build_index(&foto, 200).expect("indice degli album");
+            println!("album in {:?}", inizio.elapsed());
+            println!(
+                "  {} album, {} cartelle per anno, {} coppie modificate",
+                indice.albums.len(),
+                indice.year_folders.len(),
+                indice.edited_pairs.len()
+            );
+            assert!(
+                !indice.albums.is_empty() && !indice.year_folders.is_empty(),
+                "annate e album vanno distinti entrambi"
+            );
+
+            let inizio = Instant::now();
+            let scansione = exif_parser::scan_directory(&foto, SAMPLE_SIZE).expect("scansione");
+            println!("scansione foto in {:?}", inizio.elapsed());
+            println!(
+                "  {} media, {:.2} GB, {} con sidecar, {} con coordinate",
+                scansione.media_count,
+                scansione.total_bytes as f64 / 1024.0 / 1024.0 / 1024.0,
+                scansione.with_sidecar,
+                scansione.with_geo
+            );
+            println!(
+                "  {} da riparare, {} senza EXIF, {} con data dal nome, {} illeggibili",
+                scansione.needs_repair,
+                scansione.without_exif,
+                scansione.date_from_filename,
+                scansione.unreadable_count
+            );
+
+            // I sidecar generati da Google esistono per quasi tutti i media:
+            // se qui ne risultassero pochi, il riconoscimento del nome
+            // troncato a 46 caratteri avrebbe smesso di funzionare.
+            assert!(
+                scansione.with_sidecar * 10 > scansione.media_count * 8,
+                "troppi media senza sidecar: {} su {}",
+                scansione.with_sidecar,
+                scansione.media_count
+            );
+        }
+        println!();
+    }
+
     #[test]
     fn rifiuta_una_sorgente_non_riconosciuta() {
         let temp = TempDir::new("ignota");
