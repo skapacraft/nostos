@@ -812,6 +812,25 @@ pub fn clean(
         TakeoutError::Metadata("questa modalità richiede una destinazione".to_string())
     })?;
     check_destination(root, destination)?;
+
+    // In quarantena i file si spostano, quindi lo spazio serve solo se la
+    // destinazione sta su un altro volume; costruendo un albero pulito invece
+    // si duplica quasi tutto, e conviene saperlo prima di cominciare.
+    if options.mode == CleanMode::CopyToOutput {
+        // L'albero pulito contiene tutto tranne ciò che viene scartato, quindi
+        // lo spazio necessario è il totale meno il recuperabile.
+        let totale: u64 = WalkDir::new(root)
+            .follow_links(false)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .sum();
+        let da_scrivere = totale.saturating_sub(plan.reclaimable_bytes);
+        crate::app_state::require_free_space(destination, da_scrivere)?;
+    }
+
     std::fs::create_dir_all(destination).map_err(|e| TakeoutError::io(destination, e))?;
 
     // L'insieme dei file da rimuovere: le copie in eccesso e la spazzatura.
