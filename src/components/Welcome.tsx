@@ -25,6 +25,10 @@ const POINTS: { title: string; body: string }[] = [
     title: "Non cancella niente",
     body: "Le modifiche predefinite scrivono copie altrove e lasciano intatti gli originali. Le operazioni che spostano file sono annullabili.",
   },
+  {
+    title: "Controlla lo spazio prima di partire",
+    body: "Una libreria da centinaia di gigabyte non ci sta due volte sullo stesso disco. L'app se ne accorge prima di cominciare e propone come procedere lo stesso.",
+  },
 ];
 
 /**
