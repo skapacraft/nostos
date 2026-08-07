@@ -33,6 +33,7 @@ import type {
   RepairReport,
   RestoreReport,
   SourceSummary,
+  SpaceEstimate,
   WriteOptions,
 } from "../types";
 
@@ -139,6 +140,10 @@ export const restoreQuarantine = (manifest: string) =>
 
 /** Profilo privacy dichiarato dal backend. */
 export const privacyReport = () => invoke<PrivacyReport>("privacy_report");
+
+/** Conti sullo spazio tra una sorgente e una destinazione. */
+export const estimateSpace = (source: string, destination: string) =>
+  invoke<SpaceEstimate>("estimate_space", { source, destination });
 
 /** Metadati dell'applicazione, per la guida. */
 export const appInfo = () => invoke<AppInfo>("app_info");

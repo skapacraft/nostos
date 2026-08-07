@@ -26,7 +26,8 @@ use walkdir::WalkDir;
 use albums::AlbumIndex;
 use app_state::{
     trace_dev, AppInfo, AppState, ExportReport, LoadedSource, Phase, Preferences, PrivacyReport,
-    Progress, Result, SectionSummary, SourceKind, SourceSummary, TakeoutError, TakeoutSection,
+    Progress, Result, SectionSummary, SourceKind, SourceSummary, SpaceEstimate, TakeoutError,
+    TakeoutSection,
 };
 use calendar::CalendarReport;
 use contacts::ContactsReport;
@@ -555,6 +556,29 @@ fn export_calendar(path: String, destination: String) -> Result<ExportReport> {
     calendar::export_ics(Path::new(&path), Path::new(&destination))
 }
 
+/// Conti sullo spazio, per scegliere la modalità prima di cominciare.
+///
+/// Su una libreria grande la domanda non è se l'operazione funziona, ma se ci
+/// sta: la copia riparata duplica tutto, la riscrittura sul posto no.
+#[tauri::command]
+async fn estimate_space(source: String, destination: String) -> Result<SpaceEstimate> {
+    in_background(move || {
+        let source = Path::new(&source);
+        // Il file più grande decide quanto spazio serve lavorando sul posto.
+        let largest = WalkDir::new(source)
+            .follow_links(false)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .max()
+            .unwrap_or(0);
+        app_state::estimate_space(source, Path::new(&destination), largest)
+    })
+    .await
+}
+
 /// Dati identificativi dell'applicazione, per la guida.
 #[tauri::command]
 fn app_info() -> AppInfo {
@@ -692,6 +716,7 @@ pub fn run() {
             export_calendar,
             privacy_report,
             app_info,
+            estimate_space,
             read_preferences,
             write_preferences,
             reveal_in_file_manager,

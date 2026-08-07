@@ -6,11 +6,12 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import * as api from "../lib/api";
 import { toMessage } from "../lib/api";
-import { formatCount, shortenPath } from "../lib/format";
+import { formatBytes, formatCount, shortenPath } from "../lib/format";
 import type {
   OutputLayout,
   Progress,
   RepairReport,
+  SpaceEstimate,
   WriteMode,
 } from "../types";
 import { ProgressBar } from "./ProgressBar";
@@ -63,6 +64,7 @@ export function PhotoFixer({
 }: PhotoFixerProps) {
   const [mode, setMode] = useState<WriteMode>("copyToOutput");
   const [layout, setLayout] = useState<OutputLayout>("preserve");
+  const [spazio, setSpazio] = useState<SpaceEstimate | null>(null);
   const [confirmedInPlace, setConfirmedInPlace] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [report, setReport] = useState<RepairReport | null>(null);
@@ -102,43 +104,58 @@ export function PhotoFixer({
         multiple: false,
         title: "Dove salvare le foto riparate",
       });
-      if (typeof selected === "string") onOutputRoot(selected);
+      if (typeof selected === "string") {
+        onOutputRoot(selected);
+        // I conti si fanno subito: su una libreria grande la scelta della
+        // modalità dipende da quanto spazio resta, e scoprirlo a metà lavoro
+        // sarebbe la scoperta peggiore possibile.
+        setSpazio(null);
+        api
+          .estimateSpace(path, selected)
+          .then(setSpazio)
+          .catch(() => setSpazio(null));
+      }
     } catch (error) {
       onError(toMessage(error));
     }
-  }, [onOutputRoot, onError]);
+  }, [path, onOutputRoot, onError]);
 
-  const run = useCallback(async () => {
-    if (mode === "copyToOutput" && !outputRoot) {
-      onError("Scegli prima la cartella di destinazione.");
-      return;
-    }
+  const run = useCallback(
+    async (soloQuesta?: string) => {
+      if (mode === "copyToOutput" && !outputRoot) {
+        onError("Scegli prima la cartella di destinazione.");
+        return;
+      }
 
-    setRunning(true);
-    runningRef.current = true;
-    setReport(null);
-    setProgress(null);
+      setRunning(true);
+      runningRef.current = true;
+      setReport(null);
+      setProgress(null);
 
-    try {
-      const result = await api.repairPhotos(path, {
-        mode,
-        layout,
-        outputRoot: mode === "copyToOutput" ? outputRoot : null,
-        writeExif: true,
-        writeFileTimes: true,
-      });
-      setReport(result);
-      if (mode !== "dryRun") onDone();
-    } catch (error) {
-      onError(toMessage(error));
-    } finally {
-      runningRef.current = false;
-      setRunning(false);
-    }
-  }, [mode, layout, outputRoot, path, onDone, onError]);
+      try {
+        const result = await api.repairPhotos(soloQuesta ?? path, {
+          mode,
+          layout,
+          outputRoot: mode === "copyToOutput" ? outputRoot : null,
+          writeExif: true,
+          writeFileTimes: true,
+        });
+        setReport(result);
+        if (mode !== "dryRun") onDone();
+      } catch (error) {
+        onError(toMessage(error));
+      } finally {
+        runningRef.current = false;
+        setRunning(false);
+      }
+    },
+    [mode, layout, outputRoot, path, onDone, onError],
+  );
 
   const inPlaceBlocked = mode === "inPlace" && !confirmedInPlace;
   const missingOutput = mode === "copyToOutput" && !outputRoot;
+  // Inutile far partire un'operazione che il backend rifiuterebbe comunque.
+  const noSpace = mode === "copyToOutput" && spazio !== null && !spazio.copyFits;
 
   return (
     <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -206,6 +223,78 @@ export function PhotoFixer({
         </div>
       ) : null}
 
+      {mode === "copyToOutput" && spazio ? (
+        <div
+          className={[
+            "space-y-2 rounded-lg border p-3 text-sm",
+            spazio.copyFits
+              ? "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-300"
+              : "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200",
+          ].join(" ")}
+        >
+          <p>
+            Libreria {formatBytes(spazio.sourceBytes)}, servono{" "}
+            {formatBytes(spazio.neededForCopy)} per la copia. Sulla destinazione
+            restano {formatBytes(spazio.availableBytes)}.
+          </p>
+          {!spazio.copyFits ? (
+            <>
+              <p className="font-medium">
+                Non ci sta. La copia duplica l'intera libreria, e deduplicare
+                prima recupera in genere una frazione: non basta quando manca
+                l'ordine di grandezza.
+              </p>
+              <p>
+                Due vie d'uscita. La prima è{" "}
+                <strong>Modifica originali</strong>: lavora un file per volta e
+                richiede circa {formatBytes(spazio.neededInPlace)} di spazio,
+                qualunque sia la dimensione della libreria. Fai prima una copia
+                di sicurezza.
+              </p>
+              {spazio.subfolders.some((cartella) => cartella.fits) ? (
+                <div className="space-y-1.5">
+                  <p>
+                    La seconda è <strong>procedere a tranche</strong>: ripari una
+                    cartella, sposti il risultato altrove, passi alla
+                    successiva. Queste ci stanno nello spazio rimasto.
+                  </p>
+                  <ul className="space-y-1">
+                    {spazio.subfolders.map((cartella) => (
+                      <li
+                        key={cartella.path}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-white/60 px-2 py-1 dark:border-amber-900 dark:bg-zinc-900/40"
+                      >
+                        <span className="min-w-0 truncate">
+                          {cartella.name}
+                          <span className="ml-2 text-xs opacity-70">
+                            {formatBytes(cartella.bytes)},{" "}
+                            {formatCount(cartella.fileCount)} file
+                          </span>
+                        </span>
+                        {cartella.fits ? (
+                          <button
+                            type="button"
+                            onClick={() => run(cartella.path)}
+                            disabled={running}
+                            className="shrink-0 rounded border border-amber-500 px-2 py-0.5 text-xs font-medium transition-colors hover:bg-amber-100 disabled:opacity-50 dark:hover:bg-amber-900/40"
+                          >
+                            Ripara solo questa
+                          </button>
+                        ) : (
+                          <span className="shrink-0 text-xs opacity-60">
+                            troppo grande
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       {mode === "copyToOutput" ? (
         <label className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-zinc-700 dark:text-zinc-300">Disposizione:</span>
@@ -249,8 +338,8 @@ export function PhotoFixer({
 
       <button
         type="button"
-        onClick={run}
-        disabled={running || inPlaceBlocked || missingOutput}
+        onClick={() => run()}
+        disabled={running || inPlaceBlocked || missingOutput || noSpace}
         className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
       >
         {running ? "Elaborazione..." : `Avvia: ${MODE_LABELS[mode]}`}
