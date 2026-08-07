@@ -256,7 +256,9 @@ export function PhotoFixer({
                   <p>
                     La seconda è <strong>procedere a tranche</strong>: ripari una
                     cartella, sposti il risultato altrove, passi alla
-                    successiva. Queste ci stanno nello spazio rimasto.
+                    successiva. Comincia dalle cartelle per anno, che
+                    contengono quasi tutto; gli album sono in gran parte copie
+                    delle stesse foto.
                   </p>
                   <ul className="space-y-1">
                     {spazio.subfolders.map((cartella) => (
@@ -264,12 +266,22 @@ export function PhotoFixer({
                         key={cartella.path}
                         className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-white/60 px-2 py-1 dark:border-amber-900 dark:bg-zinc-900/40"
                       >
-                        <span className="min-w-0 truncate">
-                          {cartella.name}
+                        <span className="min-w-0">
+                          <span className="truncate">{cartella.name}</span>
                           <span className="ml-2 text-xs opacity-70">
                             {formatBytes(cartella.bytes)},{" "}
                             {formatCount(cartella.fileCount)} file
+                            {cartella.isYear ? " · annata" : ""}
+                            {cartella.isAlbum && cartella.uniqueHere === 0
+                              ? " · album, solo copie"
+                              : ""}
                           </span>
+                          {cartella.isAlbum && cartella.uniqueHere > 0 ? (
+                            <span className="block text-xs font-medium">
+                              {formatCount(cartella.uniqueHere)} foto stanno
+                              solo qui: saltando questo album le perderesti.
+                            </span>
+                          ) : null}
                         </span>
                         {cartella.fits ? (
                           <button

@@ -455,6 +455,18 @@ pub struct FolderSize {
     pub file_count: usize,
     /// Vero se la copia di questa sola cartella ci sta nello spazio rimasto.
     pub fits: bool,
+    /// Vero se è una cartella per anno: sono queste le tranche da riparare,
+    /// perché contengono quasi tutto.
+    pub is_year: bool,
+    /// Vero se è un album, cioè in gran parte copie di foto già presenti
+    /// altrove.
+    pub is_album: bool,
+    /// Quante foto di questa cartella non esistono in nessuna cartella per
+    /// anno.
+    ///
+    /// È l'unico numero che, se ignorato, fa perdere qualcosa: saltare un
+    /// album per risparmiare spazio è sensato solo finché questo resta a zero.
+    pub unique_here: usize,
 }
 
 /// Conti sullo spazio, per decidere prima di cominciare.
@@ -524,84 +536,6 @@ pub fn require_free_space(destination: &Path, needed: u64) -> Result<()> {
     Err(TakeoutError::NotEnoughSpace {
         needed: required,
         available,
-    })
-}
-
-/// Calcola i conti sullo spazio tra una sorgente e una destinazione.
-pub fn estimate_space(source: &Path, destination: &Path, largest: u64) -> Result<SpaceEstimate> {
-    require_existing(source)?;
-
-    let source_bytes: u64 = walkdir::WalkDir::new(source)
-        .follow_links(false)
-        .into_iter()
-        .flatten()
-        .filter(|e| e.file_type().is_file())
-        .filter_map(|e| e.metadata().ok())
-        .map(|m| m.len())
-        .sum();
-
-    let mut probe = destination;
-    while !probe.exists() {
-        match probe.parent() {
-            Some(parent) => probe = parent,
-            None => break,
-        }
-    }
-    let available_bytes = fs4::available_space(probe).unwrap_or(0);
-    let needed_for_copy = (source_bytes as f64 * MARGINE_DISCO) as u64;
-
-    // Sul posto si lavora su un file per volta e per thread: quattro copie del
-    // file più grande bastano ad avere margine.
-    let needed_in_place = largest.saturating_mul(4).max(64 * 1024 * 1024);
-
-    // Le sottocartelle di primo livello sono le tranche naturali: in un export
-    // Google Foto corrispondono agli anni e agli album.
-    let mut subfolders: Vec<FolderSize> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(source) {
-        for entry in entries.flatten() {
-            let dir = entry.path();
-            if !dir.is_dir() {
-                continue;
-            }
-            let name = dir
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or_default()
-                .to_string();
-            if name.starts_with('.') {
-                continue;
-            }
-
-            let mut bytes = 0u64;
-            let mut file_count = 0usize;
-            for file in walkdir::WalkDir::new(&dir)
-                .follow_links(false)
-                .into_iter()
-                .flatten()
-                .filter(|e| e.file_type().is_file())
-            {
-                file_count += 1;
-                bytes += file.metadata().map(|m| m.len()).unwrap_or(0);
-            }
-
-            subfolders.push(FolderSize {
-                name,
-                path: dir,
-                bytes,
-                file_count,
-                fits: available_bytes >= (bytes as f64 * MARGINE_DISCO) as u64,
-            });
-        }
-    }
-    subfolders.sort_by_key(|f| std::cmp::Reverse(f.bytes));
-
-    Ok(SpaceEstimate {
-        source_bytes,
-        available_bytes,
-        needed_for_copy,
-        copy_fits: available_bytes >= needed_for_copy,
-        needed_in_place,
-        subfolders,
     })
 }
 
