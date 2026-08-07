@@ -441,6 +441,50 @@ pub(crate) fn formatta_byte(bytes: u64) -> String {
     }
 }
 
+/// Una sottocartella della sorgente, con il suo peso.
+///
+/// Serve a lavorare a tranche quando la libreria intera non ci sta: si ripara
+/// una cartella per volta, si sposta il risultato altrove, si passa alla
+/// successiva.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderSize {
+    pub name: String,
+    pub path: PathBuf,
+    pub bytes: u64,
+    pub file_count: usize,
+    /// Vero se la copia di questa sola cartella ci sta nello spazio rimasto.
+    pub fits: bool,
+}
+
+/// Conti sullo spazio, per decidere prima di cominciare.
+///
+/// Serve a rispondere alla domanda che si pone chiunque abbia una libreria
+/// grande: ci sta? E se non ci sta, che cosa posso fare?
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceEstimate {
+    /// Quanto pesa la libreria di origine.
+    pub source_bytes: u64,
+    /// Quanto spazio resta sul volume di destinazione.
+    pub available_bytes: u64,
+    /// Quanto ne servirebbe per la copia, margine compreso.
+    pub needed_for_copy: u64,
+    /// Vero se la copia riparata ci sta.
+    pub copy_fits: bool,
+    /// Spazio extra richiesto dalla riscrittura sul posto.
+    ///
+    /// È un temporaneo per thread, quindi resta nell'ordine delle decine di
+    /// megabyte qualunque sia la dimensione della libreria: è la via
+    /// praticabile quando la copia non ci sta.
+    pub needed_in_place: u64,
+    /// Sottocartelle di primo livello, dalla più pesante alla più leggera.
+    ///
+    /// Quando l'intera libreria non entra, sono le tranche in cui dividere il
+    /// lavoro.
+    pub subfolders: Vec<FolderSize>,
+}
+
 /// Margine di sicurezza richiesto oltre ai byte da scrivere.
 ///
 /// Riempire un disco fino all'ultimo byte non è mai una buona idea: il sistema
@@ -480,6 +524,84 @@ pub fn require_free_space(destination: &Path, needed: u64) -> Result<()> {
     Err(TakeoutError::NotEnoughSpace {
         needed: required,
         available,
+    })
+}
+
+/// Calcola i conti sullo spazio tra una sorgente e una destinazione.
+pub fn estimate_space(source: &Path, destination: &Path, largest: u64) -> Result<SpaceEstimate> {
+    require_existing(source)?;
+
+    let source_bytes: u64 = walkdir::WalkDir::new(source)
+        .follow_links(false)
+        .into_iter()
+        .flatten()
+        .filter(|e| e.file_type().is_file())
+        .filter_map(|e| e.metadata().ok())
+        .map(|m| m.len())
+        .sum();
+
+    let mut probe = destination;
+    while !probe.exists() {
+        match probe.parent() {
+            Some(parent) => probe = parent,
+            None => break,
+        }
+    }
+    let available_bytes = fs4::available_space(probe).unwrap_or(0);
+    let needed_for_copy = (source_bytes as f64 * MARGINE_DISCO) as u64;
+
+    // Sul posto si lavora su un file per volta e per thread: quattro copie del
+    // file più grande bastano ad avere margine.
+    let needed_in_place = largest.saturating_mul(4).max(64 * 1024 * 1024);
+
+    // Le sottocartelle di primo livello sono le tranche naturali: in un export
+    // Google Foto corrispondono agli anni e agli album.
+    let mut subfolders: Vec<FolderSize> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(source) {
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let name = dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+
+            let mut bytes = 0u64;
+            let mut file_count = 0usize;
+            for file in walkdir::WalkDir::new(&dir)
+                .follow_links(false)
+                .into_iter()
+                .flatten()
+                .filter(|e| e.file_type().is_file())
+            {
+                file_count += 1;
+                bytes += file.metadata().map(|m| m.len()).unwrap_or(0);
+            }
+
+            subfolders.push(FolderSize {
+                name,
+                path: dir,
+                bytes,
+                file_count,
+                fits: available_bytes >= (bytes as f64 * MARGINE_DISCO) as u64,
+            });
+        }
+    }
+    subfolders.sort_by_key(|f| std::cmp::Reverse(f.bytes));
+
+    Ok(SpaceEstimate {
+        source_bytes,
+        available_bytes,
+        needed_for_copy,
+        copy_fits: available_bytes >= needed_for_copy,
+        needed_in_place,
+        subfolders,
     })
 }
 

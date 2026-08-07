@@ -52,7 +52,10 @@ Non sono buone intenzioni: sono vincoli verificabili nel codice.
    libreria: su un export da sessanta gigabyte ne servono altrettanti.
    L'operazione viene rifiutata prima di cominciare se non ce n'è abbastanza,
    invece di riempire il disco a metà lavoro e lasciare un albero di uscita
-   che sembra completo.
+   che sembra completo. Quando non ci sta, l'app non si limita a dirlo: propone
+   la riscrittura sul posto, che richiede poche decine di megabyte qualunque
+   sia la libreria, ed elenca le sottocartelle che entrano nello spazio
+   rimasto, con un pulsante per ripararne una per volta.
 9. **Nessuna cancellazione.** Nessuna funzione dell'applicazione elimina file.
    La pulizia di Drive costruisce un albero alternativo oppure sposta in
    quarantena scrivendo un registro che consente di annullare tutto.

@@ -67,6 +67,32 @@ export interface Preferences {
   hideWelcome: boolean;
 }
 
+/**
+ * Conti sullo spazio, per scegliere la modalità prima di cominciare.
+ *
+ * Su una libreria grande la domanda non è se l'operazione funziona, ma se ci
+ * sta: la copia duplica tutto, la riscrittura sul posto no.
+ */
+export interface FolderSize {
+  name: string;
+  path: string;
+  bytes: number;
+  fileCount: number;
+  /** Vero se la copia di questa sola cartella ci sta. */
+  fits: boolean;
+}
+
+export interface SpaceEstimate {
+  sourceBytes: number;
+  availableBytes: number;
+  neededForCopy: number;
+  copyFits: boolean;
+  /** Spazio extra della riscrittura sul posto: decine di megabyte, sempre. */
+  neededInPlace: number;
+  /** Tranche in cui dividere il lavoro quando l'intera libreria non entra. */
+  subfolders: FolderSize[];
+}
+
 /** Metadati dell'applicazione, letti da Cargo.toml a compilazione. */
 export interface AppInfo {
   name: string;
