@@ -1342,6 +1342,180 @@ mod tests {
         println!();
     }
 
+    /// Misura il percorso dei byte veri: hashing, copia e soglia di riscrittura.
+    ///
+    /// È l'altra metà della prova di scala. Quella su centomila foto verifica
+    /// il costo per file; questa verifica il costo per byte, che è dominato dal
+    /// disco ma tocca due punti nostri: `little_exif` carica in memoria
+    /// l'intero file da riscrivere, e i thread sono quattro, quindi il picco
+    /// cresce con la dimensione dei singoli media.
+    ///
+    /// ```bash
+    /// GB=2 cargo test --release misura_su_file_grandi -- --ignored --nocapture
+    /// ```
+    ///
+    /// Il picco di memoria non è misurato da qui: si legge da fuori.
+    ///
+    /// ```bash
+    /// /usr/bin/time -l cargo test --release misura_su_file_grandi -- --ignored --nocapture
+    /// ```
+    ///
+    /// Attenzione a quale numero si guarda. Il `maximum resident set size` su
+    /// macOS comprende le pagine dei file toccati, che appartengono alla cache
+    /// del kernel e vengono recuperate sotto pressione: cresce con la quantità
+    /// di dati letti e scritti, varia tra due esecuzioni identiche, e non dice
+    /// nulla su quanto alloca il programma. Il dato che conta è
+    /// `peak memory footprint`, che misura la memoria anonima: su due gigabyte
+    /// e mezzo di media resta intorno ai cento megabyte, cioè entro il tetto
+    /// che i quattro thread e la soglia di riscrittura dovrebbero garantire.
+    #[test]
+    #[ignore = "scrive qualche gigabyte: si lancia a mano"]
+    fn misura_su_file_grandi() {
+        use std::io::Write;
+        use std::time::Instant;
+
+        /// Dimensione dei media grandi ma ancora riscrivibili.
+        ///
+        /// Sotto la soglia di 128 MB, così passano davvero dalla riscrittura
+        /// EXIF: è il caso che mette alla prova la memoria, perché ogni thread
+        /// ne tiene una copia.
+        const GRANDE: u64 = 64 * 1024 * 1024;
+        /// Sopra la soglia: deve essere saltato, non riscritto.
+        const ENORME: u64 = 200 * 1024 * 1024;
+
+        let gigabyte: u64 = std::env::var("GB")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2);
+        let quanti = ((gigabyte * 1024 * 1024 * 1024) / GRANDE).max(2) as usize;
+
+        let temp = TempDir::new("byte");
+        let root = temp.path().join("Foto da 2024");
+        let uscita = temp.path().join("riparate");
+
+        /// Scrive un JPEG valido della dimensione richiesta.
+        ///
+        /// I byte dopo il marcatore di fine sono ignorati dai decodificatori,
+        /// quindi il file resta leggibile. Il riempimento dipende dal seme, così
+        /// due file della stessa dimensione hanno contenuto diverso e la
+        /// deduplica deve leggerli per intero per scoprirlo.
+        fn scrivi_grande(path: &Path, dimensione: u64, seme: u8) {
+            std::fs::create_dir_all(path.parent().expect("genitore")).expect("cartelle");
+            let file = std::fs::File::create(path).expect("creazione");
+            let mut out = std::io::BufWriter::with_capacity(8 << 20, file);
+            out.write_all(MINIMAL_JPEG).expect("intestazione");
+
+            let blocco = vec![seme; 8 << 20];
+            let mut scritti = MINIMAL_JPEG.len() as u64;
+            while scritti < dimensione {
+                let quanti = (dimensione - scritti).min(blocco.len() as u64) as usize;
+                out.write_all(&blocco[..quanti]).expect("riempimento");
+                scritti += quanti as u64;
+            }
+            out.flush().expect("flush");
+        }
+
+        let inizio = Instant::now();
+        for indice in 0..quanti {
+            let nome = format!("GRANDE_{indice:03}.JPG");
+            scrivi_grande(&root.join(&nome), GRANDE, indice as u8);
+            // Sidecar diversi tra loro, come in un export vero: il titolo
+            // riporta il nome del file e l'istante cambia a ogni foto.
+            write(
+                &root.join(format!("{nome}.supplemental-metadata.json")),
+                &format!(
+                    r#"{{"title": "{nome}", "photoTakenTime": {{"timestamp": "{}"}}, "geoData": {{"latitude": 45.4642, "longitude": 9.19, "altitude": 120.0}}}}"#,
+                    1_577_880_000_i64 + indice as i64
+                ),
+            );
+        }
+        // Una copia identica del primo: duplicato vero da trovare per contenuto.
+        scrivi_grande(&temp.path().join("Album").join("GRANDE_000.JPG"), GRANDE, 0);
+        // E uno oltre la soglia, che deve essere saltato dalla riscrittura.
+        scrivi_grande(&root.join("ENORME.JPG"), ENORME, 200);
+
+        let byte_totali: u64 = WalkDir::new(temp.path())
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .sum();
+        let generazione = inizio.elapsed().as_secs_f64();
+
+        println!("\n=== libreria generata ===");
+        println!("  media grandi: {quanti} da {} MB", GRANDE / 1024 / 1024);
+        println!("  piu' uno da:  {} MB", ENORME / 1024 / 1024);
+        println!("  totale:       {:.2} GB", byte_totali as f64 / 1e9);
+        println!(
+            "  scrittura:    {generazione:.1} s  ({:.0} MB/s)",
+            byte_totali as f64 / 1e6 / generazione
+        );
+
+        println!("\n=== operazioni ===");
+
+        let inizio = Instant::now();
+        let piano = drive::plan_clean(
+            temp.path(),
+            &drive::CleanOptions::default(),
+            MAX_ITEMS,
+            &app_state::no_progress,
+        )
+        .expect("piano");
+        let durata = inizio.elapsed().as_secs_f64();
+        println!(
+            "  deduplica     {durata:>7.2} s   letti {:.2} GB  ({:.0} MB/s)",
+            piano.hashed_bytes as f64 / 1e9,
+            piano.hashed_bytes as f64 / 1e6 / durata
+        );
+        assert_eq!(piano.duplicate_copies, 1, "la copia identica va trovata");
+
+        let inizio = Instant::now();
+        let report = exif_parser::apply_metadata(
+            &root,
+            &exif_parser::WriteOptions {
+                mode: exif_parser::WriteMode::CopyToOutput,
+                output_root: Some(uscita.clone()),
+                ..Default::default()
+            },
+            &app_state::no_progress,
+        )
+        .expect("riparazione");
+        let durata = inizio.elapsed().as_secs_f64();
+        let scritti: u64 = WalkDir::new(&uscita)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .sum();
+        println!(
+            "  riparazione   {durata:>7.2} s   scritti {:.2} GB  ({:.0} MB/s)",
+            scritti as f64 / 1e9,
+            scritti as f64 / 1e6 / durata
+        );
+
+        println!("\n=== esito riparazione ===");
+        println!("  EXIF scritti:        {}", report.exif_written);
+        println!("  oltre la soglia:     {}", report.skipped_too_large);
+        println!("  errori:              {}", report.failures.len());
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+        assert_eq!(
+            report.exif_written, quanti,
+            "i media sotto soglia si riscrivono"
+        );
+        assert_eq!(
+            report.skipped_too_large, 1,
+            "quello sopra soglia va saltato"
+        );
+        // Saltarlo non significa perderlo: la copia deve esserci comunque.
+        assert!(
+            uscita.join("ENORME.JPG").is_file(),
+            "il file oltre soglia va copiato lo stesso"
+        );
+        println!();
+    }
+
     #[test]
     fn rifiuta_una_sorgente_non_riconosciuta() {
         let temp = TempDir::new("ignota");
