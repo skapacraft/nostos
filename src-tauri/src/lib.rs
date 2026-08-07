@@ -25,9 +25,9 @@ use walkdir::WalkDir;
 
 use albums::AlbumIndex;
 use app_state::{
-    trace_dev, AppInfo, AppState, ExportReport, LoadedSource, Phase, Preferences, PrivacyReport,
-    Progress, Result, SectionSummary, SourceKind, SourceSummary, SpaceEstimate, TakeoutError,
-    TakeoutSection,
+    trace_dev, AppInfo, AppState, ExportReport, FolderSize, LoadedSource, Phase, Preferences,
+    PrivacyReport, Progress, Result, SectionSummary, SourceKind, SourceSummary, SpaceEstimate,
+    TakeoutError, TakeoutSection,
 };
 use calendar::CalendarReport;
 use contacts::ContactsReport;
@@ -562,21 +562,130 @@ fn export_calendar(path: String, destination: String) -> Result<ExportReport> {
 /// sta: la copia riparata duplica tutto, la riscrittura sul posto no.
 #[tauri::command]
 async fn estimate_space(source: String, destination: String) -> Result<SpaceEstimate> {
-    in_background(move || {
-        let source = Path::new(&source);
-        // Il file più grande decide quanto spazio serve lavorando sul posto.
-        let largest = WalkDir::new(source)
+    in_background(move || compute_space(Path::new(&source), Path::new(&destination))).await
+}
+
+/// Margine richiesto oltre ai byte da scrivere, come in `require_free_space`.
+const MARGINE_DISCO: f64 = 1.10;
+
+/// Calcola i conti sullo spazio e le tranche in cui dividere il lavoro.
+///
+/// Vive qui e non in `app_state` perché per distinguere una cartella per anno
+/// da un album serve `albums`, e chiamarlo dallo stato condiviso rovescerebbe
+/// la direzione delle dipendenze.
+fn compute_space(source: &Path, destination: &Path) -> Result<SpaceEstimate> {
+    app_state::require_existing(source)?;
+
+    let mut source_bytes = 0u64;
+    let mut largest = 0u64;
+    for entry in WalkDir::new(source)
+        .follow_links(false)
+        .into_iter()
+        .flatten()
+        .filter(|e| e.file_type().is_file())
+    {
+        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        source_bytes += size;
+        largest = largest.max(size);
+    }
+
+    let mut probe = destination;
+    while !probe.exists() {
+        match probe.parent() {
+            Some(parent) => probe = parent,
+            None => break,
+        }
+    }
+    let available_bytes = fs4::available_space(probe).unwrap_or(0);
+    let needed_for_copy = (source_bytes as f64 * MARGINE_DISCO) as u64;
+
+    // Prima passata: i nomi dei media che stanno in una cartella per anno.
+    // Servono per sapere quali foto di un album esistono soltanto lì.
+    let mut nelle_annate: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut cartelle: Vec<(PathBuf, String, albums::FolderKind)> = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(source) {
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let name = dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            let kind = albums::classify_folder(&name);
+
+            if matches!(kind, albums::FolderKind::Year(_)) {
+                for file in WalkDir::new(&dir)
+                    .follow_links(false)
+                    .into_iter()
+                    .flatten()
+                    .filter(|e| e.file_type().is_file())
+                {
+                    if let Some(nome) = file.file_name().to_str() {
+                        nelle_annate.insert(nome.to_string());
+                    }
+                }
+            }
+            cartelle.push((dir, name, kind));
+        }
+    }
+
+    let mut subfolders: Vec<FolderSize> = Vec::new();
+    for (dir, name, kind) in cartelle {
+        let is_album = kind == albums::FolderKind::Album;
+        let mut bytes = 0u64;
+        let mut file_count = 0usize;
+        let mut unique_here = 0usize;
+
+        for file in WalkDir::new(&dir)
             .follow_links(false)
             .into_iter()
             .flatten()
             .filter(|e| e.file_type().is_file())
-            .filter_map(|e| e.metadata().ok())
-            .map(|m| m.len())
-            .max()
-            .unwrap_or(0);
-        app_state::estimate_space(source, Path::new(&destination), largest)
+        {
+            file_count += 1;
+            bytes += file.metadata().map(|m| m.len()).unwrap_or(0);
+
+            // Solo per gli album ha senso chiedersi se la foto esista altrove.
+            if is_album && exif_parser::is_media_file(file.path()) {
+                let assente = file
+                    .file_name()
+                    .to_str()
+                    .is_none_or(|nome| !nelle_annate.contains(nome));
+                if assente {
+                    unique_here += 1;
+                }
+            }
+        }
+
+        subfolders.push(FolderSize {
+            name,
+            path: dir,
+            bytes,
+            file_count,
+            fits: available_bytes >= (bytes as f64 * MARGINE_DISCO) as u64,
+            is_year: matches!(kind, albums::FolderKind::Year(_)),
+            is_album,
+            unique_here,
+        });
+    }
+    subfolders.sort_by_key(|f| std::cmp::Reverse(f.bytes));
+
+    Ok(SpaceEstimate {
+        source_bytes,
+        available_bytes,
+        needed_for_copy,
+        copy_fits: available_bytes >= needed_for_copy,
+        // Sul posto si lavora su un file per volta e per thread.
+        needed_in_place: largest.saturating_mul(4).max(64 * 1024 * 1024),
+        subfolders,
     })
-    .await
 }
 
 /// Dati identificativi dell'applicazione, per la guida.
@@ -1142,6 +1251,55 @@ mod tests {
     /// Su una libreria da decine di gigabyte la copia riparata ne richiede
     /// altrettanti: se il disco si riempie a metà, l'albero di uscita sembra
     /// completo e non lo è. Meglio rifiutare prima di cominciare.
+    /// Lavorando a tranche la tentazione è riparare solo le cartelle per anno,
+    /// perché gli album sono quasi tutti copie. Quel "quasi" è il punto: una
+    /// foto che sta soltanto in un album verrebbe lasciata indietro, e chi
+    /// guarda il risultato non se ne accorgerebbe.
+    #[test]
+    fn distingue_le_annate_dagli_album_e_conta_le_foto_uniche() {
+        let temp = TempDir::new("tranche");
+        let foto = temp.path().join("Google Foto");
+
+        write_bytes(&foto.join("Foto da 2020").join("IMG_1.JPG"), MINIMAL_JPEG);
+        write_bytes(&foto.join("Foto da 2020").join("IMG_2.JPG"), MINIMAL_JPEG);
+        // Album con una copia e una foto che non sta da nessun'altra parte.
+        write_bytes(&foto.join("Vacanze").join("IMG_1.JPG"), MINIMAL_JPEG);
+        write_bytes(&foto.join("Vacanze").join("SOLO_QUI.JPG"), MINIMAL_JPEG);
+        // Album fatto di sole copie: saltarlo non costa nulla.
+        write_bytes(&foto.join("Compleanno").join("IMG_2.JPG"), MINIMAL_JPEG);
+
+        let stima = compute_space(&foto, temp.path()).expect("stima");
+
+        let annata = stima
+            .subfolders
+            .iter()
+            .find(|f| f.name == "Foto da 2020")
+            .expect("annata");
+        assert!(annata.is_year && !annata.is_album);
+        assert_eq!(annata.unique_here, 0, "sulle annate la domanda non si pone");
+
+        let vacanze = stima
+            .subfolders
+            .iter()
+            .find(|f| f.name == "Vacanze")
+            .expect("album");
+        assert!(vacanze.is_album && !vacanze.is_year);
+        assert_eq!(
+            vacanze.unique_here, 1,
+            "SOLO_QUI non esiste in nessuna annata: saltare questo album la perderebbe"
+        );
+
+        let compleanno = stima
+            .subfolders
+            .iter()
+            .find(|f| f.name == "Compleanno")
+            .expect("album");
+        assert_eq!(
+            compleanno.unique_here, 0,
+            "solo copie: si può saltare senza perdere niente"
+        );
+    }
+
     #[test]
     fn rifiuta_se_manca_lo_spazio_sulla_destinazione() {
         let temp = TempDir::new("spazio");

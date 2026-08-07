@@ -80,6 +80,17 @@ export interface FolderSize {
   fileCount: number;
   /** Vero se la copia di questa sola cartella ci sta. */
   fits: boolean;
+  /** Cartella per anno: sono queste le tranche da riparare. */
+  isYear: boolean;
+  /** Album: in gran parte copie di foto già presenti nelle annate. */
+  isAlbum: boolean;
+  /**
+   * Foto di questa cartella che non esistono in nessuna annata.
+   *
+   * È l'unico numero che, se ignorato, fa perdere qualcosa: saltare un album
+   * per risparmiare spazio è sensato solo finché resta a zero.
+   */
+  uniqueHere: number;
 }
 
 export interface SpaceEstimate {
