@@ -38,6 +38,13 @@ pub enum TakeoutError {
     #[error("nessuna sorgente Takeout caricata")]
     NoSource,
 
+    #[error(
+        "spazio insufficiente sulla destinazione: servono {} ma ne restano {}",
+        crate::app_state::formatta_byte(*needed),
+        crate::app_state::formatta_byte(*available)
+    )]
+    NotEnoughSpace { needed: u64, available: u64 },
+
     #[error("elaborazione in background interrotta: {0}")]
     Task(String),
 
@@ -416,6 +423,64 @@ impl Default for PrivacyReport {
             ],
         }
     }
+}
+
+/// Dimensione leggibile, per i messaggi di errore.
+pub(crate) fn formatta_byte(bytes: u64) -> String {
+    const UNITA: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
+    let mut valore = bytes as f64;
+    let mut unita = 0;
+    while valore >= 1000.0 && unita < UNITA.len() - 1 {
+        valore /= 1000.0;
+        unita += 1;
+    }
+    if unita == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{valore:.1} {}", UNITA[unita])
+    }
+}
+
+/// Margine di sicurezza richiesto oltre ai byte da scrivere.
+///
+/// Riempire un disco fino all'ultimo byte non è mai una buona idea: il sistema
+/// ha bisogno di spazio per i propri file temporanei, e su APFS le istantanee
+/// possono trattenere blocchi che sembrano liberi.
+const MARGINE_DISCO: f64 = 1.10;
+
+/// Rifiuta l'operazione se sulla destinazione non c'è spazio sufficiente.
+///
+/// Serve perché la copia riparata duplica l'intera libreria: su un export da
+/// sessanta gigabyte ne servono altrettanti. Senza questo controllo il disco si
+/// riempirebbe a metà lavoro, lasciando un albero di uscita che sembra
+/// completo e non lo è, e l'utente lo scoprirebbe solo contando i file.
+pub fn require_free_space(destination: &Path, needed: u64) -> Result<()> {
+    // Lo spazio si misura sulla cartella esistente più vicina: la destinazione
+    // potrebbe non essere ancora stata creata.
+    let mut probe = destination;
+    while !probe.exists() {
+        match probe.parent() {
+            Some(parent) => probe = parent,
+            None => return Ok(()),
+        }
+    }
+
+    let available = match fs4::available_space(probe) {
+        Ok(bytes) => bytes,
+        // Se il filesystem non sa rispondere non blocchiamo il lavoro: meglio
+        // provare e fallire sul singolo file che rifiutare senza motivo.
+        Err(_) => return Ok(()),
+    };
+
+    let required = (needed as f64 * MARGINE_DISCO) as u64;
+    if available >= required {
+        return Ok(());
+    }
+
+    Err(TakeoutError::NotEnoughSpace {
+        needed: required,
+        available,
+    })
 }
 
 /// Verifica che un percorso ricevuto dal frontend esista davvero.

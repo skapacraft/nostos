@@ -1133,6 +1133,18 @@ pub fn apply_metadata(
                 "la cartella di destinazione non può stare dentro quella di origine".to_string(),
             ));
         }
+
+        // La copia riparata duplica la libreria: meglio dirlo adesso che
+        // riempire il disco a metà lavoro.
+        let da_scrivere: u64 = WalkDir::new(root)
+            .follow_links(false)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .sum();
+        crate::app_state::require_free_space(output_root, da_scrivere)?;
     }
 
     let mut index = FileIndex::new();

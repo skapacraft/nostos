@@ -1114,6 +1114,41 @@ mod tests {
         assert!(uscita.join("IMG_1 (3).JPG").is_file());
     }
 
+    /// Su una libreria da decine di gigabyte la copia riparata ne richiede
+    /// altrettanti: se il disco si riempie a metà, l'albero di uscita sembra
+    /// completo e non lo è. Meglio rifiutare prima di cominciare.
+    #[test]
+    fn rifiuta_se_manca_lo_spazio_sulla_destinazione() {
+        let temp = TempDir::new("spazio");
+        build_fixture(temp.path());
+        let photos = temp.path().join("Takeout").join("Google Foto");
+
+        // Uno spazio richiesto assurdo non può essere disponibile da nessuna
+        // parte, quindi il controllo deve scattare.
+        let esito = app_state::require_free_space(temp.path(), u64::MAX / 2);
+        assert!(esito.is_err(), "va rifiutato prima di scrivere");
+        let messaggio = esito.unwrap_err().to_string();
+        assert!(
+            messaggio.contains("spazio insufficiente"),
+            "il messaggio deve dire cosa manca: {messaggio}"
+        );
+
+        // Con una richiesta plausibile invece passa, e la riparazione procede.
+        app_state::require_free_space(temp.path(), 1024).expect("mille byte ci stanno");
+
+        let report = exif_parser::apply_metadata(
+            &photos,
+            &exif_parser::WriteOptions {
+                mode: exif_parser::WriteMode::CopyToOutput,
+                output_root: Some(temp.path().join("uscita")),
+                ..Default::default()
+            },
+            &app_state::no_progress,
+        )
+        .expect("riparazione");
+        assert!(report.failures.is_empty());
+    }
+
     #[test]
     fn rifiuta_una_destinazione_dentro_la_sorgente() {
         let temp = TempDir::new("ricorsione");
@@ -1512,6 +1547,175 @@ mod tests {
         assert!(
             uscita.join("ENORME.JPG").is_file(),
             "il file oltre soglia va copiato lo stesso"
+        );
+        println!();
+    }
+
+    /// Misura contatti e calendario su volumi realistici.
+    ///
+    /// Hanno un profilo opposto a quello delle foto: pochissimi file, ma
+    /// grandi, e ciascuno viene letto interamente in memoria prima di essere
+    /// interpretato. Il rischio non è il numero di aperture, è la dimensione
+    /// del singolo file e il costo della deduplica, che confronta ogni scheda
+    /// con quelle già viste.
+    ///
+    /// ```bash
+    /// CONTATTI=20000 EVENTI=50000 cargo test --release misura_su_rubrica_grande -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "genera file di decine di megabyte: si lancia a mano"]
+    fn misura_su_rubrica_grande() {
+        use std::time::Instant;
+
+        let contatti: usize = std::env::var("CONTATTI")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20_000);
+        let eventi: usize = std::env::var("EVENTI")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(50_000);
+
+        let temp = TempDir::new("rubrica");
+        let radice = temp.path().join("Takeout");
+
+        let inizio = Instant::now();
+
+        // Rubrica: un solo .vcf, come lo esporta Google. Una scheda su dieci è
+        // un duplicato con la stessa email, il caso che la deduplica deve
+        // riconoscere; una su sette ha una riga lunga, che obbliga il parser a
+        // ricomporre il line folding.
+        let mut vcf = String::with_capacity(contatti * 180);
+        for indice in 0..contatti {
+            // Una scheda su dieci ripete l'identità della precedente: è il caso
+            // reale di chi ha salvato due volte lo stesso contatto.
+            let chi = if indice % 10 == 9 { indice - 1 } else { indice };
+            vcf.push_str("BEGIN:VCARD\r\nVERSION:3.0\r\n");
+            vcf.push_str(&format!("FN:Persona Numero {chi}\r\n"));
+            vcf.push_str(&format!("N:Numero;Persona{chi};;;\r\n"));
+            vcf.push_str(&format!("EMAIL;TYPE=INTERNET:persona{chi}@example.com\r\n"));
+            vcf.push_str(&format!(
+                "TEL;TYPE=CELL:+39 320 {:07}\r\n",
+                chi % 10_000_000
+            ));
+            if indice % 7 == 0 {
+                // Riga spezzata secondo la regola del folding.
+                vcf.push_str("NOTE:Appunto lungo che continua\r\n  sulla riga successiva\r\n");
+            }
+            vcf.push_str("END:VCARD\r\n");
+        }
+        write(&radice.join("Contatti").join("Tutti i contatti.vcf"), &vcf);
+
+        // Calendario: cinque file, come cinque calendari dell'account. Un
+        // evento su otto è ricorrente, uno su venti è di giornata intera, e
+        // ciascuno porta proprietà proprietarie di Google da rimuovere.
+        for calendario in 0..5 {
+            let quanti = eventi / 5;
+            let mut ics = String::with_capacity(quanti * 260);
+            ics.push_str("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Google Inc//EN\r\n");
+            for indice in 0..quanti {
+                let giorno = (indice % 28) + 1;
+                let mese = (indice % 12) + 1;
+                let anno = 2018 + (indice % 8);
+                ics.push_str("BEGIN:VEVENT\r\n");
+                ics.push_str(&format!("UID:evento-{calendario}-{indice}@google.com\r\n"));
+                if indice % 20 == 0 {
+                    ics.push_str(&format!(
+                        "DTSTART;VALUE=DATE:{anno}{mese:02}{giorno:02}\r\n"
+                    ));
+                } else {
+                    ics.push_str(&format!(
+                        "DTSTART;TZID=Europe/Rome:{anno}{mese:02}{giorno:02}T090000\r\n"
+                    ));
+                    ics.push_str(&format!(
+                        "DTEND;TZID=Europe/Rome:{anno}{mese:02}{giorno:02}T100000\r\n"
+                    ));
+                }
+                ics.push_str(&format!("SUMMARY:Impegno numero {indice}\r\n"));
+                ics.push_str("LOCATION:Ufficio\r\n");
+                ics.push_str("X-GOOGLE-CONFERENCE:https://meet.google.com/abc-defg-hij\r\n");
+                if indice % 8 == 0 {
+                    ics.push_str("RRULE:FREQ=WEEKLY;COUNT=10\r\n");
+                }
+                ics.push_str(
+                    "BEGIN:VALARM\r\nACTION:DISPLAY\r\nSUMMARY:Promemoria\r\nEND:VALARM\r\n",
+                );
+                ics.push_str("END:VEVENT\r\n");
+            }
+            ics.push_str("END:VCALENDAR\r\n");
+            write(
+                &radice
+                    .join("Calendario")
+                    .join(format!("calendario-{calendario}.ics")),
+                &ics,
+            );
+        }
+
+        let byte: u64 = WalkDir::new(&radice)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .sum();
+
+        println!("\n=== generati ===");
+        println!("  contatti:  {contatti} in un solo .vcf");
+        println!("  eventi:    {eventi} in 5 .ics");
+        println!("  byte:      {:.1} MB", byte as f64 / 1e6);
+        println!("  scrittura: {:.1} s", inizio.elapsed().as_secs_f64());
+
+        fn misura<T: serde::Serialize>(nome: &str, lavoro: impl FnOnce() -> T) -> T {
+            let inizio = Instant::now();
+            let esito = lavoro();
+            let json = serde_json::to_string(&esito).unwrap_or_default();
+            println!(
+                "  {nome:<24} {:>6.2} s   report {:>7.2} MB",
+                inizio.elapsed().as_secs_f64(),
+                json.len() as f64 / 1e6
+            );
+            esito
+        }
+
+        println!("\n=== operazioni ===");
+        let rubrica = misura("scansione contatti", || {
+            contacts::scan_directory(&radice.join("Contatti"), SAMPLE_SIZE).expect("contatti")
+        });
+        let agenda = misura("scansione calendario", || {
+            calendar::scan_directory(&radice.join("Calendario"), SAMPLE_SIZE).expect("calendario")
+        });
+
+        let uscita = temp.path().join("uscita");
+        misura("export vCard", || {
+            contacts::export_vcf(&radice.join("Contatti"), &uscita.join("contatti.vcf"))
+                .expect("export contatti")
+        });
+        misura("export iCalendar", || {
+            calendar::export_ics(&radice.join("Calendario"), &uscita.join("calendario.ics"))
+                .expect("export calendario")
+        });
+
+        println!("\n=== esito ===");
+        println!(
+            "  contatti: {} letti, {} unici, {} duplicati",
+            rubrica.total, rubrica.unique, rubrica.duplicates
+        );
+        println!(
+            "  eventi:   {} letti, {} unici, {} proprietà rimosse",
+            agenda.total, agenda.unique, agenda.dropped_properties
+        );
+
+        // La deduplica deve riconoscere le schede ripetute, non contarle a caso.
+        assert!(rubrica.duplicates > 0, "i duplicati vanno trovati");
+        assert_eq!(rubrica.total, contatti);
+        assert_eq!(agenda.total, eventi);
+        // Gli allarmi non devono essere scambiati per eventi.
+        assert!(
+            agenda.sample.iter().all(|e| e
+                .summary
+                .as_deref()
+                .is_some_and(|s| s.starts_with("Impegno"))),
+            "il SUMMARY del VALARM non deve sovrascrivere quello dell'evento"
         );
         println!();
     }

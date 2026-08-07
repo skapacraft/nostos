@@ -48,7 +48,12 @@ Non sono buone intenzioni: sono vincoli verificabili nel codice.
    durata della sessione. Ogni scrittura su disco nasce da un'azione esplicita:
    estrazione di un archivio, riparazione delle foto, export di contatti o
    calendario, quarantena di Drive.
-8. **Nessuna cancellazione.** Nessuna funzione dell'applicazione elimina file.
+8. **Controllo dello spazio prima di scrivere.** La copia riparata duplica la
+   libreria: su un export da sessanta gigabyte ne servono altrettanti.
+   L'operazione viene rifiutata prima di cominciare se non ce n'è abbastanza,
+   invece di riempire il disco a metà lavoro e lasciare un albero di uscita
+   che sembra completo.
+9. **Nessuna cancellazione.** Nessuna funzione dell'applicazione elimina file.
    La pulizia di Drive costruisce un albero alternativo oppure sposta in
    quarantena scrivendo un registro che consente di annullare tutto.
 
@@ -171,7 +176,15 @@ GB=2 /usr/bin/time -l cargo test --release --manifest-path src-tauri/Cargo.toml 
   misura_su_file_grandi -- --ignored --nocapture
 ```
 
-Verifica la velocità di deduplica e riparazione, e soprattutto che un file
+Una terza misura copre contatti e calendario, che hanno il profilo opposto:
+pochissimi file ma grandi, letti interamente in memoria.
+
+```bash
+CONTATTI=20000 EVENTI=50000 cargo test --release --manifest-path src-tauri/Cargo.toml \
+  misura_su_rubrica_grande -- --ignored --nocapture
+```
+
+La misura sui byte verifica la velocità di deduplica e riparazione, e soprattutto che un file
 oltre la soglia di riscrittura venga saltato ma copiato lo stesso. Su due
 gigabyte e mezzo di media la memoria allocata resta intorno ai cento megabyte
 (`peak memory footprint`; il `maximum resident set size` comprende la cache
