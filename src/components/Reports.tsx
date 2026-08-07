@@ -146,9 +146,9 @@ export function PhotoReportView({
         </div>
       ) : null}
 
-      {report.unreadable.length > 0 ? (
+      {report.unreadableCount > 0 ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          {formatCount(report.unreadable.length)} file non leggibili sono stati
+          {formatCount(report.unreadableCount)} file non leggibili sono stati
           ignorati.
         </p>
       ) : null}

@@ -503,7 +503,7 @@ async fn plan_drive_clean(
 ) -> Result<CleanPlan> {
     in_background(move || {
         let sink = progress_emitter(app);
-        drive::plan_clean(Path::new(&path), &options, &sink)
+        drive::plan_clean(Path::new(&path), &options, MAX_ITEMS, &sink)
     })
     .await
 }
@@ -528,7 +528,7 @@ async fn restore_quarantine(manifest: String) -> Result<RestoreReport> {
 /// anno e versioni modificate.
 #[tauri::command]
 async fn scan_albums(path: String) -> Result<AlbumIndex> {
-    in_background(move || albums::build_index(Path::new(&path))).await
+    in_background(move || albums::build_index(Path::new(&path), MAX_ITEMS)).await
 }
 
 /// Scrive il manifest degli album, da fare prima di deduplicare.
@@ -1173,6 +1173,173 @@ mod tests {
         assert_eq!(report.duplicate_groups.len(), 1);
         assert_eq!(report.duplicate_groups[0].paths.len(), 2);
         assert!(!report.warnings.is_empty(), "il segnaposto va segnalato");
+    }
+
+    /// Misura il comportamento su una libreria di dimensioni realistiche.
+    ///
+    /// Escluso dalla CI perché genera decine di migliaia di file. Si lancia a
+    /// mano, eventualmente scegliendo quante foto produrre:
+    ///
+    /// ```bash
+    /// FOTO=50000 cargo test --release misura_su_libreria_grande -- --ignored --nocapture
+    /// ```
+    ///
+    /// Va lanciato in release, e non per pignoleria: in debug il codice Rust è
+    /// oltre un ordine di grandezza più lento, quindi i tempi non direbbero
+    /// nulla di utile, e la diagnostica di sviluppo stamperebbe una riga per
+    /// ogni file sommergendo il risultato.
+    ///
+    /// Vale la pena chiarire perché non serve un export da cento gigabyte.
+    /// Quello che mette in difficoltà questo codice è il **numero di file**,
+    /// non il numero di byte: cento gigabyte di video sono duecento file, cioè
+    /// nulla. Con un JPEG da 889 byte se ne generano centomila in centocinquanta
+    /// megabyte, ottenendo una prova più severa di una libreria reale della
+    /// stessa consistenza.
+    ///
+    /// La misura che conta di più non è il tempo ma la dimensione dei report
+    /// serializzati: sono ciò che attraversa il canale IPC verso l'interfaccia
+    /// a ogni scansione, e un elenco senza tetto lì diventa megabyte di JSON.
+    #[test]
+    #[ignore = "genera decine di migliaia di file: si lancia a mano"]
+    fn misura_su_libreria_grande() {
+        use std::time::Instant;
+
+        let foto_totali: usize = std::env::var("FOTO")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20_000);
+
+        let temp = TempDir::new("scala");
+        let root = temp.path().join("Takeout").join("Google Foto");
+
+        // Struttura simile a un export vero: cartelle per anno, album che
+        // ripetono una parte delle foto, versioni modificate, e una quota
+        // senza data ricavabile.
+        let anni = [2019, 2020, 2021, 2022, 2023];
+        let album = [
+            "Vacanze in Sicilia",
+            "Compleanno di Anna",
+            "Montagna 2021",
+            "Matrimonio",
+        ];
+
+        let inizio = Instant::now();
+        let mut nomi: Vec<(String, usize)> = Vec::with_capacity(foto_totali);
+
+        /// Produce un JPEG valido ma diverso da tutti gli altri, mantenendo la
+        /// stessa dimensione.
+        ///
+        /// I byte in coda dopo il marcatore di fine sono ignorati dai
+        /// decodificatori, quindi il file resta leggibile. Serve a evitare che
+        /// il fixture sia tutto identico: in quel caso l'hash li unirebbe in un
+        /// unico gruppo enorme e la misura non direbbe nulla sul caso reale.
+        /// Con dimensione uguale e contenuto diverso invece si ottiene lo
+        /// scenario più oneroso per la deduplica, che deve leggere ogni file
+        /// per scoprire che sono tutti distinti.
+        fn jpeg_unico(indice: usize) -> Vec<u8> {
+            let mut bytes = MINIMAL_JPEG.to_vec();
+            bytes.extend_from_slice(&(indice as u64).to_le_bytes());
+            bytes
+        }
+
+        for indice in 0..foto_totali {
+            let anno = anni[indice % anni.len()];
+            let mese = (indice % 12) + 1;
+            let giorno = (indice % 28) + 1;
+            let nome = format!("IMG_{anno}{mese:02}{giorno:02}_{:06}.JPG", indice % 240_000);
+            let cartella = root.join(format!("Foto da {anno}"));
+
+            write_bytes(&cartella.join(&nome), &jpeg_unico(indice));
+
+            // Una foto su cinque resta senza sidecar: dovrà cavarsela con la
+            // data dedotta dal nome.
+            if indice % 5 != 0 {
+                let istante = 1_577_880_000 + (indice as i64 * 37);
+                // Una su tre ha le coordinate, quindi passa dalla conversione
+                // di fuso orario, che è il percorso più costoso.
+                let geo = if indice % 3 == 0 {
+                    r#", "geoData": {"latitude": 45.4642, "longitude": 9.19, "altitude": 120.0}"#
+                } else {
+                    ""
+                };
+                write(
+                    &cartella.join(format!("{nome}.supplemental-metadata.json")),
+                    &format!(r#"{{"photoTakenTime": {{"timestamp": "{istante}"}}{geo}}}"#),
+                );
+            }
+
+            // Una foto su venti ha una versione modificata accanto.
+            if indice % 20 == 0 {
+                let modificata = nome.replace(".JPG", "-modificato.JPG");
+                // Una versione modificata ha pixel diversi: non è un duplicato.
+                write_bytes(
+                    &cartella.join(&modificata),
+                    &jpeg_unico(indice + foto_totali),
+                );
+            }
+
+            nomi.push((nome, indice));
+        }
+
+        // Un decimo delle foto compare anche in un album: è il caso che rende
+        // necessario il manifest.
+        // Questi sì che sono duplicati veri: copia identica della foto che sta
+        // già nella cartella per anno.
+        for (nome, indice) in nomi.iter().filter(|(_, i)| i % 10 == 0) {
+            let scelto = album[indice % album.len()];
+            write_bytes(&root.join(scelto).join(nome), &jpeg_unico(*indice));
+        }
+
+        let file_totali = WalkDir::new(&root)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .count();
+        let byte_totali: u64 = WalkDir::new(&root)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .sum();
+
+        println!("\n=== libreria generata ===");
+        println!("  foto:        {foto_totali}");
+        println!("  file totali: {file_totali}");
+        println!("  byte:        {:.1} MB", byte_totali as f64 / 1e6);
+        println!("  generazione: {:.1} s", inizio.elapsed().as_secs_f64());
+
+        /// Misura durata e peso del report serializzato, cioè quanto passa
+        /// davvero dal canale IPC.
+        fn misura<T: serde::Serialize>(nome: &str, lavoro: impl FnOnce() -> T) {
+            let inizio = Instant::now();
+            let esito = lavoro();
+            let durata = inizio.elapsed();
+            let json = serde_json::to_string(&esito).unwrap_or_default();
+            println!(
+                "  {nome:<22} {:>7.2} s   report {:>8.2} MB",
+                durata.as_secs_f64(),
+                json.len() as f64 / 1e6
+            );
+        }
+
+        println!("\n=== operazioni ===");
+        misura("scansione foto", || {
+            exif_parser::scan_directory(&root, SAMPLE_SIZE).expect("scansione")
+        });
+        misura("indice album", || {
+            albums::build_index(&root, MAX_ITEMS).expect("indice")
+        });
+        misura("piano di pulizia", || {
+            drive::plan_clean(
+                &root,
+                &drive::CleanOptions::default(),
+                MAX_ITEMS,
+                &app_state::no_progress,
+            )
+            .expect("piano")
+        });
+        println!();
     }
 
     #[test]

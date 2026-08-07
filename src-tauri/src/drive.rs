@@ -493,6 +493,11 @@ pub fn is_junk(path: &Path) -> bool {
         || JUNK_PREFIXES.iter().any(|prefix| name.starts_with(prefix))
 }
 
+/// Nomi dei file contenuti in ogni cartella, raccolti durante la scansione.
+///
+/// Serve a cercare i file affiancati senza rileggere la cartella ogni volta.
+type DirIndex = HashMap<PathBuf, Vec<String>>;
+
 /// Trova i file affiancati a un media, cioè quelli il cui nome è il nome
 /// completo del media seguito da un suffisso.
 ///
@@ -500,29 +505,28 @@ pub fn is_junk(path: &Path) -> bool {
 /// da `IMG_1268 2.JPG.supplemental-metadata.json`. La regola è volutamente
 /// stretta, sul nome completo con estensione, così `IMG_1268.JPG` non cattura
 /// per errore i file di `IMG_1268 2.JPG`.
-fn find_companions(media: &Path) -> Vec<PathBuf> {
+///
+/// La ricerca avviene sull'indice già in memoria e non sul filesystem: la
+/// versione che rileggeva la cartella a ogni chiamata costava il prodotto tra
+/// il numero di duplicati e il numero di file nella loro cartella, e su una
+/// libreria di ventimila foto portava il piano di pulizia da un secondo a
+/// quasi sette minuti.
+fn find_companions(media: &Path, index: &DirIndex) -> Vec<PathBuf> {
     let Some(name) = media.file_name().and_then(|n| n.to_str()) else {
         return Vec::new();
     };
     let Some(parent) = media.parent() else {
         return Vec::new();
     };
-    let prefix = format!("{name}.");
-
-    let Ok(entries) = std::fs::read_dir(parent) else {
+    let Some(names) = index.get(parent) else {
         return Vec::new();
     };
+    let prefix = format!("{name}.");
 
-    entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_file())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .map(|n| n.starts_with(&prefix))
-                .unwrap_or(false)
-        })
+    names
+        .iter()
+        .filter(|candidate| candidate.starts_with(&prefix))
+        .map(|candidate| parent.join(candidate))
         .collect()
 }
 
@@ -574,6 +578,7 @@ fn choose_kept(paths: &mut Vec<PathBuf>) -> PathBuf {
 pub fn plan_clean(
     root: &Path,
     options: &CleanOptions,
+    max_items: usize,
     progress: ProgressSink<'_>,
 ) -> Result<CleanPlan> {
     crate::app_state::require_existing(root)?;
@@ -585,6 +590,7 @@ pub fn plan_clean(
 
     let mut by_size: HashMap<u64, Vec<PathBuf>> = HashMap::new();
     let mut junk: Vec<PathBuf> = Vec::new();
+    let mut dir_index: DirIndex = HashMap::new();
 
     for entry in WalkDir::new(root).follow_links(false) {
         let entry = match entry {
@@ -601,6 +607,17 @@ pub fn plan_clean(
         let path = entry.path();
         plan.files_scanned += 1;
         let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+
+        // L'indice si riempie qui, sfruttando una passata che stiamo già
+        // facendo, invece di rileggere le cartelle più avanti.
+        if let (Some(parent), Some(name)) =
+            (path.parent(), path.file_name().and_then(|n| n.to_str()))
+        {
+            dir_index
+                .entry(parent.to_path_buf())
+                .or_default()
+                .push(name.to_string());
+        }
 
         if options.remove_junk && is_junk(path) {
             plan.reclaimable_bytes += size;
@@ -691,7 +708,7 @@ pub fn plan_clean(
     if options.move_companions {
         for group in &plan.duplicate_groups {
             for copy in &group.copies {
-                for companion in find_companions(copy) {
+                for companion in find_companions(copy, &dir_index) {
                     plan.companion_files += 1;
                     plan.reclaimable_bytes +=
                         std::fs::metadata(&companion).map(|m| m.len()).unwrap_or(0);
@@ -702,6 +719,11 @@ pub fn plan_clean(
 
     plan.duplicate_groups
         .sort_by_key(|g| std::cmp::Reverse(g.size_bytes * g.copies.len() as u64));
+
+    // I conteggi restano completi, l'elenco no: è quello che attraversa il
+    // canale IPC verso l'interfaccia, e su una libreria vera diventerebbe
+    // qualche megabyte di JSON a ogni scansione.
+    plan.duplicate_groups.truncate(max_items);
 
     progress(Progress::new(Phase::Done, to_hash, to_hash, 0));
     Ok(plan)
@@ -723,7 +745,8 @@ pub fn clean(
     options: &CleanOptions,
     progress: ProgressSink<'_>,
 ) -> Result<CleanReport> {
-    let plan = plan_clean(root, options, progress)?;
+    // Qui l'elenco dei duplicati serve intero, non troncato per la UI.
+    let plan = plan_clean(root, options, usize::MAX, progress)?;
 
     let mut report = CleanReport {
         mode: Some(options.mode),
@@ -743,12 +766,28 @@ pub fn clean(
     std::fs::create_dir_all(destination).map_err(|e| TakeoutError::io(destination, e))?;
 
     // L'insieme dei file da rimuovere: le copie in eccesso e la spazzatura.
+    let mut dir_index: DirIndex = HashMap::new();
+    for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if let (Some(parent), Some(name)) = (
+            entry.path().parent(),
+            entry.path().file_name().and_then(|n| n.to_str()),
+        ) {
+            dir_index
+                .entry(parent.to_path_buf())
+                .or_default()
+                .push(name.to_string());
+        }
+    }
+
     let mut removable: Vec<(PathBuf, QuarantineReason)> = Vec::new();
     for group in &plan.duplicate_groups {
         for copy in &group.copies {
             removable.push((copy.clone(), QuarantineReason::Duplicate));
             if options.move_companions {
-                for companion in find_companions(copy) {
+                for companion in find_companions(copy, &dir_index) {
                     removable.push((companion, QuarantineReason::Companion));
                 }
             }
@@ -996,7 +1035,8 @@ mod tests {
         let temp = TempDir::new("drive-piano");
         let drive = build_drive(temp.path());
 
-        let plan = plan_clean(&drive, &CleanOptions::default(), &no_progress).expect("piano");
+        let plan =
+            plan_clean(&drive, &CleanOptions::default(), usize::MAX, &no_progress).expect("piano");
 
         assert_eq!(plan.files_scanned, 7);
         assert_eq!(plan.junk_files, 3, "DS_Store, AppleDouble e __MACOSX");
@@ -1211,8 +1251,19 @@ mod tests {
         write_file(&foto.join("IMG_1268 2.JPG"), "b");
         write_file(&foto.join("IMG_1268 2.JPG.json"), "sidecar del secondo");
 
+        // L'indice è quello che `plan_clean` costruisce durante la scansione.
+        let mut indice: DirIndex = HashMap::new();
+        indice.insert(
+            foto.clone(),
+            std::fs::read_dir(&foto)
+                .expect("lettura cartella")
+                .flatten()
+                .filter_map(|e| e.file_name().to_str().map(str::to_string))
+                .collect(),
+        );
+
         // `IMG_1268.JPG` non deve rivendicare i file di `IMG_1268 2.JPG`.
-        let compagni = find_companions(&foto.join("IMG_1268.JPG"));
+        let compagni = find_companions(&foto.join("IMG_1268.JPG"), &indice);
         assert_eq!(compagni.len(), 1);
         assert!(compagni[0].ends_with("IMG_1268.JPG.json"));
     }

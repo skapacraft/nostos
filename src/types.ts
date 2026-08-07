@@ -177,6 +177,9 @@ export interface PhotoScanReport {
   /** Data dedotta dal nome del file, ultima risorsa. */
   dateFromFilename: number;
   totalBytes: number;
+  /** Conteggio completo dei file illeggibili. */
+  unreadableCount: number;
+  /** Campione dei problemi, troncato per l'interfaccia. */
   unreadable: string[];
   sample: MediaRecord[];
 }
@@ -363,6 +366,7 @@ export interface CleanPlan {
   duplicateCopies: number;
   junkFiles: number;
   companionFiles: number;
+  /** `duplicateGroups` è troncato per l'interfaccia: i conteggi sopra no. */
   reclaimableBytes: number;
   hashedBytes: number;
   duplicateGroups: ContentDuplicateGroup[];
@@ -394,6 +398,9 @@ export interface RestoreReport {
 export interface Album {
   name: string;
   path: string;
+  /** Quanti file contiene, conteggio completo. */
+  fileCount: number;
+  /** Campione dei nomi, troncato per l'interfaccia. */
   files: string[];
 }
 
@@ -415,7 +422,12 @@ export interface AlbumIndex {
   yearFolders: string[];
   albums: Album[];
   specialFolders: string[];
+  /** Conteggio completo delle appartenenze. */
+  membershipCount: number;
+  /** Campione delle appartenenze, troncato per l'interfaccia. */
   memberships: AlbumMembership[];
+  /** Conteggio completo delle versioni modificate. */
+  editedCount: number;
   editedPairs: EditedPair[];
   /** Foto presenti solo in un album: rimuoverle le farebbe sparire. */
   albumOnly: number;
