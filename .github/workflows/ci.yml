@@ -277,7 +277,7 @@ jobs:
           workspaces: src-tauri
 
       # Windows ships `python`, not `python3`: the action puts both on PATH.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
