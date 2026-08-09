@@ -16,6 +16,7 @@ import type {
 } from "../types";
 import { ProgressBar } from "./ProgressBar";
 import { RevealButton } from "./RevealButton";
+import { SidecarSweep } from "./SidecarSweep";
 
 interface PhotoFixerProps {
   /** Cartella dei media da riparare. */
@@ -361,7 +362,9 @@ export function PhotoFixer({
         <ProgressBar progress={progress} label="Foto elaborate" />
       ) : null}
 
-      {report ? <RepairSummary report={report} onError={onError} /> : null}
+      {report ? (
+        <RepairSummary report={report} onError={onError} sourcePath={path} />
+      ) : null}
     </div>
   );
 }
@@ -369,9 +372,12 @@ export function PhotoFixer({
 function RepairSummary({
   report,
   onError,
+  sourcePath,
 }: {
   report: RepairReport;
   onError: (message: string) => void;
+  /** Cartella riparata, dove restano i sidecar dopo una riscrittura. */
+  sourcePath: string;
 }) {
   const isDryRun = report.mode === "dryRun";
 
@@ -431,6 +437,15 @@ function RepairSummary({
             ))}
           </ul>
         </details>
+      ) : null}
+
+      {/*
+        Solo dopo una riscrittura degli originali: nella copia riparata il
+        sidecar viene conservato apposta accanto ai formati in cui non
+        scriviamo l'EXIF, quindi lì non è di troppo.
+      */}
+      {report.mode === "inPlace" && report.exifWritten > 0 ? (
+        <SidecarSweep path={sourcePath} onError={onError} />
       ) : null}
     </div>
   );
