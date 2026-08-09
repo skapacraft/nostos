@@ -49,6 +49,12 @@ const APP_NAME: &str = "Open Takeout Hub";
 /// Identifier of the menu item that opens the guide.
 const MENU_HELP_ID: &str = "guida";
 
+/// Identifier of the menu item that opens the problem report.
+const MENU_REPORT_ID: &str = "oth-report";
+
+/// Event with which the menu asks the frontend to show the problem report.
+const SHOW_REPORT_EVENT: &str = "takeout://mostra-segnalazione";
+
 /// Event with which the menu asks the frontend to show the guide.
 const SHOW_HELP_EVENT: &str = "takeout://mostra-guida";
 
@@ -86,6 +92,14 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
         None::<&str>,
     )?;
 
+    let segnala = MenuItem::with_id(
+        app,
+        MENU_REPORT_ID,
+        "Segnala un problema...",
+        true,
+        None::<&str>,
+    )?;
+
     let modifica = Submenu::with_items(
         app,
         "Modifica",
@@ -113,7 +127,7 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
         ],
     )?;
 
-    let aiuto = Submenu::with_items(app, "Aiuto", true, &[&guida])?;
+    let aiuto = Submenu::with_items(app, "Aiuto", true, &[&guida, &segnala])?;
 
     #[cfg(target_os = "macos")]
     {
@@ -738,6 +752,145 @@ fn write_preferences(app: AppHandle, preferences: Preferences) -> Result<()> {
     Ok(())
 }
 
+/// Writes text to a path the user chose in the save dialog.
+///
+/// The same trust model as the other exports: the path never comes from the
+/// frontend's own idea of where to write, it comes from a system dialog the
+/// user opened. Kept generic because a problem report is plain text and does
+/// not deserve a format of its own.
+#[tauri::command]
+fn save_text_file(path: String, content: String) -> Result<()> {
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| TakeoutError::io(parent, e))?;
+    }
+    std::fs::write(&path, content).map_err(|e| TakeoutError::io(&path, e))?;
+    Ok(())
+}
+
+/// Address a problem report is sent to.
+///
+/// Compiled in and never composed from anything the user or a file supplies:
+/// the one argument that reaches the system is a `mailto:` built around this
+/// constant, so there is no address an archive could redirect a report to.
+const SUPPORT_EMAIL: &str = "support@skapacraft.com";
+
+/// Percent-encodes a string for use inside a `mailto:` URL.
+///
+/// Written by hand rather than pulled from a crate: it is fifteen lines, and a
+/// project that bans network crates by name should not add a dependency to
+/// escape two fields.
+///
+/// Everything outside the unreserved set of RFC 3986 is encoded, which covers
+/// the newlines that would otherwise let a subject inject extra mail headers.
+fn percent_encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() * 2);
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+/// Opens the system mail client on a pre-filled problem report.
+///
+/// This hands a `mailto:` to the operating system, which is not a network
+/// connection made by this process: nothing is sent until the user presses send
+/// in their own mail client, and they see the whole text first. That
+/// distinction is the reason it does not break the promise in section 1 of
+/// PRIVACY_AUDIT.md, and it is recorded in section 7b alongside the file
+/// manager button.
+///
+/// `tauri-plugin-opener` stays banned in `deny.toml`: it opens arbitrary URLs
+/// in a browser, while this builds one address that cannot be influenced from
+/// outside.
+#[tauri::command]
+fn compose_support_email(subject: String, body: String) -> Result<()> {
+    let url = format!(
+        "mailto:{}?subject={}&body={}",
+        SUPPORT_EMAIL,
+        percent_encode(&subject),
+        percent_encode(&body)
+    );
+
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut c = std::process::Command::new("open");
+        c.arg(&url);
+        c
+    };
+
+    // `rundll32 url.dll,FileProtocolHandler` is the documented way to hand a
+    // URL to Windows. `start` would need a shell, and a shell is exactly what
+    // this project does not want between itself and the system.
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut c = std::process::Command::new("rundll32");
+        c.arg("url.dll,FileProtocolHandler").arg(&url);
+        c
+    };
+
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+
+    command
+        .spawn()
+        .map_err(|e| TakeoutError::Task(format!("mail client did not start: {e}")))?;
+    Ok(())
+}
+
+/// The environment a problem report should mention.
+///
+/// Deliberately small: the operating system, the architecture and the version.
+/// No machine name, no user name, no locale, nothing that identifies a person
+/// rather than a configuration.
+#[tauri::command]
+fn report_environment() -> String {
+    format!(
+        "{} {} / {}",
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
+/// Replaces the user's home directory with `~` in a diagnostic line.
+///
+/// Error messages carry the path that failed, which is genuinely useful and
+/// also contains the account name. Redacting the prefix keeps the shape of the
+/// path, which is what helps, and drops the part that identifies whoever sent
+/// the report.
+#[tauri::command]
+fn redact_home(app: AppHandle, lines: Vec<String>) -> Vec<String> {
+    use tauri::Manager;
+
+    let home = app
+        .path()
+        .home_dir()
+        .ok()
+        .map(|h| h.display().to_string())
+        .unwrap_or_default();
+
+    lines
+        .into_iter()
+        .map(|line| {
+            if home.is_empty() {
+                line
+            } else {
+                line.replace(&home, "~")
+            }
+        })
+        .collect()
+}
+
 /// Reveals a path in the system file manager.
 ///
 /// It does not use `tauri-plugin-opener`, which stays banned in `deny.toml`
@@ -805,10 +958,12 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(|app, event| {
+            // The menu knows nothing of the UI state: it merely asks, and the
+            // frontend decides what to show.
             if event.id() == MENU_HELP_ID {
-                // The menu knows nothing of the UI state: it merely asks, and the
-                // frontend decides how to show the guide.
                 let _ = app.emit(SHOW_HELP_EVENT, ());
+            } else if event.id() == MENU_REPORT_ID {
+                let _ = app.emit(SHOW_REPORT_EVENT, ());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -839,6 +994,10 @@ pub fn run() {
             read_preferences,
             write_preferences,
             reveal_in_file_manager,
+            compose_support_email,
+            report_environment,
+            redact_home,
+            save_text_file,
         ])
         .run(tauri::generate_context!())
         .expect("errore durante l'avvio dell'applicazione Tauri");
@@ -2202,6 +2361,32 @@ mod tests {
             written += 1;
         }
         written
+    }
+
+    /// The encoding is what stops a report from becoming a mail header.
+    ///
+    /// A subject carrying a newline could otherwise close the `subject` field
+    /// and open a `bcc`, which would turn a support address into a way of
+    /// sending someone else's diagnostics somewhere else. The body is written
+    /// by the user and the errors come from paths on their disk, so neither is
+    /// trusted enough to interpolate raw.
+    #[test]
+    fn the_mailto_encoding_leaves_no_way_to_inject_a_header() {
+        // Newlines and carriage returns are the injection vector.
+        assert_eq!(percent_encode("a\r\nbcc:someone"), "a%0D%0Abcc%3Asomeone");
+
+        // The separators of the URL itself must not survive either.
+        assert_eq!(percent_encode("a&b=c?d"), "a%26b%3Dc%3Fd");
+
+        // Only the unreserved set of RFC 3986 goes through untouched.
+        assert_eq!(percent_encode("Az0-_.~"), "Az0-_.~");
+
+        // Non-ASCII is encoded byte by byte, so an accented folder name in a
+        // path does not break the URL.
+        assert_eq!(percent_encode("città"), "citt%C3%A0");
+
+        // A space is not unreserved: left raw it would truncate the argument.
+        assert_eq!(percent_encode("due parole"), "due%20parole");
     }
 
     #[test]

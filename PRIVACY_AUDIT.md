@@ -195,13 +195,13 @@ it the operation would not be reversible.
   placeholders are shown as text. Opening them would mean a connection to
   Google, and that is a decision for the user to make outside this application.
 
-## 7b. The only action towards the operating system
+## 7b. The two actions towards the operating system
 
-The "Show in Finder" button invokes an external program: `open -R` on macOS,
-`explorer /select,` on Windows, `xdg-open` on the folder on Linux.
+**Revealing a path.** The "Show in Finder" button invokes an external program:
+`open -R` on macOS, `explorer /select,` on Windows, `xdg-open` on the folder on
+Linux.
 
-It is the single point where the application reaches out to the system, and the
-constraints are deliberately tight:
+The constraints are deliberately tight:
 
 - the program invoked is **fixed in the code**, not a string anyone could
   influence;
@@ -212,10 +212,40 @@ constraints are deliberately tight:
   file would open it with the default application, which is a different thing
   from revealing it.
 
+**Opening a problem report.** The "Report a problem" button hands a `mailto:`
+to the system, which opens the user's own mail client on a pre-filled message.
+
+This is not a network connection made by this process. Nothing leaves the
+machine until the user presses send in an application that is not this one, and
+the whole text is on screen before that: the report is shown in full, and can be
+edited, precisely because a privacy tool that sent diagnostics its user had not
+read would be a contradiction.
+
+The constraints match the ones above:
+
+- the address is a **compile-time constant**, `support@skapacraft.com`. Nothing
+  in an archive, a filename or a preference can redirect a report elsewhere;
+- subject and body are percent-encoded down to the unreserved set of RFC 3986,
+  which is what stops a newline in a path from closing the `subject` field and
+  opening a `bcc`. The test `the_mailto_encoding_leaves_no_way_to_inject_a_header`
+  fails if that encoding is ever loosened;
+- it does not go through a shell. On Windows the URL goes to
+  `rundll32 url.dll,FileProtocolHandler` rather than `start`, which would need
+  one;
+- the home directory is replaced with `~` before the text is composed, so the
+  account name does not travel with the paths that failed.
+
+The report holds the version, the operating system, the architecture, what the
+user typed, and the error messages seen during the session. Those messages are
+kept in memory and bounded to the last twenty: nothing is written to disk unless
+the user chooses to save the report, in which case the path comes from the save
+dialog like every other export.
+
 `tauri-plugin-opener` and `tauri-plugin-shell` remain banned in `deny.toml`: the
-first can also open URLs in the browser, the second can run arbitrary commands.
-Revealing a folder in the file manager is a local action and involves no
-connection, so it does not dent the promise in section 1.
+first can also open arbitrary URLs in a browser, the second can run arbitrary
+commands. What is here is one fixed address and one fixed program, which is a
+different thing. Neither action involves a connection made by this process, so
+neither dents the promise in section 1.
 
 ## 8. Known and accepted advisories
 

@@ -9,6 +9,23 @@ Nothing has been published yet: the `0.1.0` below describes the state of the
 code, not a distributed binary. It still lacks signing with an Apple Developer
 ID certificate, without which Gatekeeper refuses the macOS package.
 
+### Added
+
+- **Report a problem**, from the Help menu. The application cannot send
+  anything: `tauri-plugin-http` and `tauri-plugin-opener` are both banned, so
+  there is no API to post to and no browser to open. It therefore prepares the
+  report and the person carries it, by mail to `support@skapacraft.com` with a
+  subject already filled in, or as a file saved wherever they choose.
+- The text is shown in full and can be edited before anything happens. Paths are
+  redacted, with the home directory replaced by `~`, and the errors seen during
+  the session are kept in memory, bounded to the last twenty, so nothing new is
+  written to disk.
+- The `mailto:` handoff is documented in section 7b of `PRIVACY_AUDIT.md`
+  alongside the file manager button, with the same constraints: a compile-time
+  address, no shell, and percent-encoding strict enough that a newline in a path
+  cannot open a mail header. The test
+  `the_mailto_encoding_leaves_no_way_to_inject_a_header` guards that.
+
 ### Changed
 
 - The backend no longer composes user-facing sentences. Warnings, errors,
@@ -24,6 +41,12 @@ ID certificate, without which Gatekeeper refuses the macOS package.
   matching text fails the frontend build rather than showing a raw code on
   screen.
 - Repository documentation, source comments and identifiers are in English.
+- `cargo deny` now reports unsound advisories (`unsound = "all"`). It did not
+  before: with `version = 2` it reports vulnerabilities and stays silent on
+  informational advisories unless asked, which is how RUSTSEC-2024-0429 against
+  `glib` reached Dependabot while this check said "advisories ok". The advisory
+  cannot be fixed here, since Tauri 2 requires `gtk ^0.18` and the first patched
+  `glib` is 0.20.0; the reasoning sits next to the exception in `deny.toml`.
   Test names, local variables, the helper script and the environment variables
   of the manual measurements were renamed: `FOTO` is now `PHOTOS`, `SERIE` is
   `SERIES`, `USCITA` is `OUTPUT`, `CARTELLA` is `FOLDER`, and

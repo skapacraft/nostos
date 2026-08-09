@@ -1,14 +1,20 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { PRIVACY_NOTES } from "../lib/messages";
+import { ProblemReport } from "./ProblemReport";
 import type { AppInfo, PrivacyReport } from "../types";
 
 interface HelpProps {
   info: AppInfo | null;
   privacy: PrivacyReport | null;
+  /** Errors seen this session, for the problem report. */
+  errors: string[];
+  /** True when the guide was opened from "Report a problem" in the menu. */
+  openReport: boolean;
+  onError: (message: string) => void;
   onClose: () => void;
 }
 
@@ -32,7 +38,23 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
  * plugin for opening URLs, and a link that does nothing would be worse than
  * an address you can copy.
  */
-export function Help({ info, privacy, onClose }: HelpProps) {
+export function Help({
+  info,
+  privacy,
+  errors,
+  openReport,
+  onError,
+  onClose,
+}: HelpProps) {
+  // Opened from the menu item, the guide should land on the report rather than
+  // asking the reader to scroll past five sections to find it.
+  const reportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (openReport) {
+      reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [openReport]);
+
   return (
     <div className="space-y-8">
       <header className="flex items-start justify-between gap-4">
@@ -194,6 +216,12 @@ export function Help({ info, privacy, onClose }: HelpProps) {
           intermedi.
         </p>
       </Section>
+
+      <div ref={reportRef}>
+        <Section title="Segnala un problema">
+          <ProblemReport info={info} errors={errors} onError={onError} />
+        </Section>
+      </div>
 
       <Section title="Privacy">
         <p>

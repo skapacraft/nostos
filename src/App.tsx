@@ -40,6 +40,7 @@ export default function App() {
   const [privacy, setPrivacy] = useState<PrivacyReport | null>(null);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [openReport, setOpenReport] = useState(false);
   // The welcome screen shows once per session: remembering the choice
   // would need a preferences file, which this app does not write.
   // `null` until we know what the user chose: showing the modal and then
@@ -50,6 +51,19 @@ export default function App() {
   const [workingFolder, setWorkingFolder] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Errors seen this session, for the problem report.
+   *
+   * In memory and bounded: it disappears when the window closes, like every
+   * other result, so it adds nothing to what section 6 of PRIVACY_AUDIT.md
+   * says gets written to disk.
+   */
+  const [errorLog, setErrorLog] = useState<string[]>([]);
+
+  const reportError = useCallback((message: string) => {
+    setError(message);
+    setErrorLog((previous) => [...previous, message].slice(-20));
+  }, []);
 
   useEffect(() => {
     api
@@ -75,6 +89,32 @@ export default function App() {
     }
   }, []);
 
+  // The "Report a problem" menu item opens the guide already on that section.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    api
+      .onShowReport(() => {
+        setShowWelcome(false);
+        setOpenReport(true);
+        setShowHelp(true);
+      })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   // The "Guide" menu item arrives as an event from the backend.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -83,6 +123,7 @@ export default function App() {
     api
       .onShowHelp(() => {
         setShowWelcome(false);
+        setOpenReport(false);
         setShowHelp(true);
       })
       .then((fn) => {
@@ -108,7 +149,7 @@ export default function App() {
       setSummary(await api.loadSource(path));
     } catch (err) {
       setSummary(null);
-      setError(toMessage(err));
+      reportError(toMessage(err));
     } finally {
       setBusy(false);
     }
@@ -119,7 +160,7 @@ export default function App() {
     try {
       await api.closeSource();
     } catch (err) {
-      setError(toMessage(err));
+      reportError(toMessage(err));
     } finally {
       setSummary(null);
       setAnalysis(null);
@@ -165,11 +206,11 @@ export default function App() {
           });
           break;
         default:
-          setError(`Nessun analizzatore per la sezione ${section.dirName}.`);
+          reportError(`Nessun analizzatore per la sezione ${section.dirName}.`);
       }
     } catch (err) {
       setAnalysis(null);
-      setError(toMessage(err));
+      reportError(toMessage(err));
     } finally {
       setBusy(false);
     }
@@ -184,7 +225,7 @@ export default function App() {
         data: await api.scanPhotos(analysis.path),
       });
     } catch (err) {
-      setError(toMessage(err));
+      reportError(toMessage(err));
     }
   }, [analysis]);
 
@@ -194,7 +235,7 @@ export default function App() {
     try {
       setAnalysis({ ...analysis, data: await api.scanDrive(analysis.path) });
     } catch (err) {
-      setError(toMessage(err));
+      reportError(toMessage(err));
     }
   }, [analysis]);
 
@@ -263,6 +304,9 @@ export default function App() {
           <Help
             info={info}
             privacy={privacy}
+            errors={errorLog}
+            openReport={openReport}
+            onError={reportError}
             onClose={() => setShowHelp(false)}
           />
         ) : summary ? (
