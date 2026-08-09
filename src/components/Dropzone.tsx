@@ -15,12 +15,12 @@ interface DropzoneProps {
 }
 
 /**
- * Area di trascinamento per cartelle e archivi Takeout.
+ * Drop area for Takeout folders and archives.
  *
- * Il drag & drop HTML5 nel webview non espone il percorso reale del file, solo
- * un handle del browser: i percorsi arrivano dall'evento nativo di Tauri, che
- * copre l'intera finestra. Gli handler HTML servono soltanto a impedire il
- * comportamento predefinito del webview.
+ * HTML5 drag and drop inside the webview does not expose the real file path,
+ * only a browser handle: the paths come from the native Tauri event, which
+ * covers the whole window. The HTML handlers exist only to prevent the
+ * webview default behaviour.
  */
 export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
   const [hovering, setHovering] = useState(false);
@@ -49,8 +49,8 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
         }
       })
       .then((fn) => {
-        // In StrictMode l'effetto viene montato due volte: se il cleanup è già
-        // passato, la registrazione arrivata in ritardo va annullata subito.
+        // In StrictMode the effect is mounted twice: if the cleanup has already
+        // run, a registration arriving late has to be cancelled at once.
         if (cancelled) {
           void fn();
           return;

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-/** Formattazioni condivise, tutte in locale italiano e senza dipendenze. */
+/** Shared formatting helpers, all in Italian locale and dependency-free. */
 
 const NUMBER = new Intl.NumberFormat("it-IT");
 const DATE = new Intl.DateTimeFormat("it-IT", {
@@ -12,7 +12,7 @@ const DATE = new Intl.DateTimeFormat("it-IT", {
 
 const UNITS = ["B", "kB", "MB", "GB", "TB"] as const;
 
-/** Dimensione leggibile in unità decimali, come le mostra il sistema. */
+/** Human-readable size in decimal units, as the system shows them. */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
 
@@ -32,8 +32,8 @@ export function formatCount(value: number): string {
 }
 
 /**
- * Le date arrivano in UTC dal backend e vengono mostrate in UTC: convertirle al
- * fuso locale falserebbe l'ora di scatto, che nell'EXIF non ha fuso orario.
+ * Dates arrive in UTC from the backend and are shown in UTC: converting them to
+ * the local zone would falsify the capture time, which in EXIF has no zone.
  */
 export function formatDate(iso: string | null): string {
   if (!iso) return "non disponibile";
@@ -42,7 +42,7 @@ export function formatDate(iso: string | null): string {
   return `${DATE.format(parsed)} UTC`;
 }
 
-/** Accorcia un percorso lungo tenendo inizio e fine leggibili. */
+/** Shortens a long path keeping the start and the end readable. */
 export function shortenPath(path: string, maxLength = 64): string {
   if (path.length <= maxLength) return path;
   const head = path.slice(0, Math.floor(maxLength / 2) - 2);

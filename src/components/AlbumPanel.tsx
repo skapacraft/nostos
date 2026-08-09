@@ -9,21 +9,22 @@ import { formatCount } from "../lib/format";
 import type { AlbumIndex } from "../types";
 import { ExportButton } from "./ExportButton";
 import { Stat } from "./Stat";
+import { Notices } from "./Notices";
 
 interface AlbumPanelProps {
   path: string;
   onError: (message: string) => void;
-  /** Comunica al pannello di pulizia se l'appartenenza è ancora a rischio. */
+  /** Tells the cleanup panel whether membership is still at risk. */
   onRisk: (unsaved: boolean) => void;
 }
 
 /**
- * Album di Google Foto.
+ * Google Photos albums.
  *
- * Google non esporta gli album come metadato: li esporta come cartelle che
- * contengono una seconda copia della foto. Deduplicare senza aver prima
- * salvato l'appartenenza cancella l'unica traccia rimasta di quali foto
- * stavano in quale album, e quella non si recupera dalla quarantena.
+ * Google does not export albums as metadata: it exports them as folders
+ * containing a second copy of the photo. Deduplicating without having saved
+ * the membership first erases the only remaining trace of which photos were
+ * in which album, and that does not come back from quarantine.
  */
 export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
   const [index, setIndex] = useState<AlbumIndex | null>(null);
@@ -99,14 +100,7 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
         />
       </div>
 
-      {index.warnings.map((warning) => (
-        <p
-          key={warning}
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-        >
-          {warning}
-        </p>
-      ))}
+      <Notices items={index.warnings} />
 
       {index.membershipCount > 0 ? (
         <ExportButton

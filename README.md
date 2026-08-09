@@ -1,286 +1,286 @@
 # Nostos
 
-Applicazione desktop local-first per elaborare gli export di Google Takeout.
-Analizza foto, contatti e Drive senza che un solo byte lasci il computer.
+A local-first desktop application for processing Google Takeout exports.
+It analyses photos, contacts and Drive without a single byte leaving your
+computer.
 
-## Perché
+## Why
 
-Un Takeout è un archivio grezzo e poco navigabile: le foto perdono l'EXIF e
-portano la data in un sidecar JSON, i contatti arrivano come vCard con
-duplicati, Drive contiene segnaposto che non includono il contenuto. Gli
-strumenti online che risolvono questi problemi chiedono di caricare l'intero
-export su un server di terze parti, cioè esattamente i dati che si stava
-cercando di riprendere in mano.
+A Takeout is a raw, hard-to-navigate archive: photos lose their EXIF and carry
+the date in a JSON sidecar, contacts arrive as vCards full of duplicates, Drive
+contains placeholders that hold no content. The online tools that solve these
+problems ask you to upload the entire export to a third-party server, which is
+precisely the data you were trying to take back into your own hands.
 
-Nostos fa lo stesso lavoro in locale.
+Nostos does the same work locally.
 
 ## Stack
 
-| Livello  | Tecnologia                                   |
-| -------- | -------------------------------------------- |
-| Shell    | Tauri 2                                      |
-| Backend  | Rust stable, edition 2021                    |
-| Frontend | React 19, TypeScript 5.8, Vite 7             |
-| Stili    | Tailwind CSS 4 (plugin Vite, nessun PostCSS) |
+| Layer    | Technology                                |
+| -------- | ----------------------------------------- |
+| Shell    | Tauri 2                                   |
+| Backend  | Rust stable, 2021 edition                 |
+| Frontend | React 19, TypeScript 5.8, Vite 7          |
+| Styling  | Tailwind CSS 4 (Vite plugin, no PostCSS)  |
 
-## Garanzie di privacy
+## Privacy guarantees
 
-Non sono buone intenzioni: sono vincoli verificabili nel codice.
+These are not good intentions. They are constraints you can verify in the code.
 
-1. **Nessuna crate di rete.** Nel grafo delle dipendenze Rust non esiste un
-   client HTTP. Verificabile con `cargo tree`.
-2. **Nessuna telemetria e nessun crash reporter.** Nessun identificativo di
-   installazione viene generato o salvato.
-3. **Nessun updater automatico.** `createUpdaterArtifacts` è disattivato e il
-   plugin updater non è installato.
-4. **CSP restrittiva.** `connect-src` è limitato al canale IPC locale: anche una
-   `fetch` introdotta per errore nel frontend verrebbe bloccata dal webview.
-   Vedi `app.security.csp` in `src-tauri/tauri.conf.json`.
-5. **Nessun apri-collegamenti.** Il plugin `opener` incluso nel template è stato
-   rimosso: gli URL trovati nei segnaposto di Drive sono mostrati come testo e
-   non sono cliccabili.
-6. **Permessi minimi.** La capability della finestra concede `core:default`,
-   `dialog:allow-open` e `dialog:allow-save`, cioè i due selettori di sistema.
-   Il frontend non ha accesso diretto al filesystem: ogni lettura e ogni
-   scrittura passano da un comando Rust esplicito, e il percorso arriva sempre
-   da una finestra scelta dall'utente.
-7. **Nessuna persistenza implicita.** I risultati vivono in memoria per la
-   durata della sessione. Ogni scrittura su disco nasce da un'azione esplicita:
-   estrazione di un archivio, riparazione delle foto, export di contatti o
-   calendario, quarantena di Drive.
-8. **Controllo dello spazio prima di scrivere.** La copia riparata duplica la
-   libreria: su un export da sessanta gigabyte ne servono altrettanti.
-   L'operazione viene rifiutata prima di cominciare se non ce n'è abbastanza,
-   invece di riempire il disco a metà lavoro e lasciare un albero di uscita
-   che sembra completo. Quando non ci sta, l'app non si limita a dirlo: propone
-   la riscrittura sul posto, che richiede poche decine di megabyte qualunque
-   sia la libreria, ed elenca le sottocartelle che entrano nello spazio
-   rimasto, con un pulsante per ripararne una per volta.
-9. **Nessuna cancellazione.** Nessuna funzione dell'applicazione elimina file.
-   La pulizia di Drive costruisce un albero alternativo oppure sposta in
-   quarantena scrivendo un registro che consente di annullare tutto. Vale anche
-   per i sidecar rimasti indietro dopo una riparazione: vengono spostati, mai
-   rimossi, e solo dopo aver riletto il file per accertarsi che il loro
-   contenuto ci sia davvero.
+1. **No network crates.** There is no HTTP client anywhere in the Rust
+   dependency graph. Check it with `cargo tree`.
+2. **No telemetry and no crash reporter.** No installation identifier is ever
+   generated or stored.
+3. **No auto-updater.** `createUpdaterArtifacts` is disabled and the updater
+   plugin is not installed.
+4. **Restrictive CSP.** `connect-src` is limited to the local IPC channel, so
+   even a `fetch` added to the frontend by mistake would be blocked by the
+   webview. See `app.security.csp` in `src-tauri/tauri.conf.json`.
+5. **No link opener.** The `opener` plugin that ships with the template has been
+   removed: URLs found inside Drive placeholders are shown as text and are not
+   clickable.
+6. **Minimal permissions.** The window capability grants `core:default`,
+   `dialog:allow-open` and `dialog:allow-save`, that is the two system pickers
+   and nothing else. The frontend has no direct filesystem access: every read
+   and every write goes through an explicit Rust command, and the path always
+   comes from a dialog the user opened.
+7. **No implicit persistence.** Results live in memory for the duration of the
+   session. Every write to disk originates from an explicit action: extracting
+   an archive, repairing photos, exporting contacts or calendar, quarantining
+   Drive files.
+8. **Free space is checked before writing.** A repaired copy duplicates the
+   library: a sixty gigabyte export needs another sixty free. The operation is
+   refused before it starts when there is not enough room, rather than filling
+   the disk halfway through and leaving an output tree that looks complete.
+   When it does not fit the app does more than say so: it offers in-place
+   rewriting, which needs a few dozen megabytes no matter how large the
+   library, and lists the subfolders that do fit in the space left, with a
+   button to repair them one at a time.
+9. **Nothing is ever deleted.** No function in this application removes files.
+   Drive cleanup either builds an alternative tree or moves files to quarantine,
+   writing a ledger that lets you undo everything. The same holds for sidecars
+   left behind after a repair: they are moved, never removed, and only after the
+   file has been read back to confirm their content really is inside it.
 
-Il comando `privacy_report` espone questa dichiarazione alla UI, che la mostra
-nel badge "Offline" dell'intestazione.
+The `privacy_report` command exposes this declaration to the UI, which shows it
+behind the "Offline" badge in the header.
 
-## Struttura
+## Layout
 
 ```
 src-tauri/
-  deny.toml          il divieto di rete, in forma eseguibile
-  fixtures/          JPEG reale usato dai test di scrittura EXIF
+  deny.toml          the network ban, in executable form
+  fixtures/          real JPEG used by the EXIF writing tests
   src/
-    lib.rs           composition root: stato, comandi, eventi, plugin
-    app_state.rs     stato condiviso, errori, avanzamento, sezioni
-    zip_handler.rs   serie di archivi, merge, protezione zip-slip
-    exif_parser.rs   EXIF e sidecar, riconciliazione e riscrittura
-    contacts.rs      parser vCard 3.0, deduplica, export
-    calendar.rs      parser iCalendar, pulizia, export
-    albums.rs        album, cartelle per anno, versioni modificate
-    drive.rs         classificazione, segnaposto, deduplica e quarantena
-                     (il motore di pulizia vale per qualsiasi cartella)
+    lib.rs           composition root: state, commands, events, plugins
+    app_state.rs     shared state, errors, progress, sections, notices
+    zip_handler.rs   archive series, merging, zip-slip protection
+    exif_parser.rs   EXIF and sidecars, reconciliation and rewriting
+    contacts.rs      vCard 3.0 parser, deduplication, export
+    calendar.rs      iCalendar parser, cleanup, export
+    albums.rs        albums, year folders, edited versions
+    drive.rs         classification, placeholders, dedup and quarantine
+                     (the cleanup engine works on any folder)
 
 tools/
-  genera_serie_takeout.py   costruisce una serie multi-archivio di prova
+  generate_takeout_series.py   builds a multi-archive test series
 
 src/
-  App.tsx              orchestrazione della sessione
-  types.ts             controparte TypeScript delle struct serde
-  lib/api.ts           unico punto di contatto con il backend (IPC)
-  lib/format.ts        formattazioni condivise
+  App.tsx              session orchestration
+  types.ts             TypeScript counterpart of the serde structs
+  lib/api.ts           the only point of contact with the backend (IPC)
+  lib/format.ts        shared formatting helpers
+  lib/messages.ts      every string the backend describes as a code
   components/
-    Dropzone.tsx       area di trascinamento su eventi nativi Tauri
-    SourcePanel.tsx    riepilogo sorgente ed elenco sezioni
-    Reports.tsx        viste dei report foto, contatti, calendario, Drive
-    PhotoFixer.tsx     riparazione metadati con scelta della modalità
-    ProgressBar.tsx    avanzamento alimentato dagli eventi del backend
-    ExportButton.tsx   salvataggio dei file esportati
-    AlbumPanel.tsx     album, manifest dell'appartenenza, versioni modificate
-    FolderCleaner.tsx  pulizia di una cartella, con anteprima e annullamento
-    Help.tsx           guida in-app e informazioni sulla licenza
-    SidecarSweep.tsx   mette da parte i JSON il cui contenuto è nei file
-    Welcome.tsx        presentazione all'avvio, una volta per sessione
-    Stat.tsx           riquadro numerico
+    Dropzone.tsx       drop area built on native Tauri events
+    SourcePanel.tsx    source summary and section list
+    Reports.tsx        photo, contacts, calendar and Drive report views
+    PhotoFixer.tsx     metadata repair with mode selection
+    ProgressBar.tsx    progress fed by backend events
+    ExportButton.tsx   saving exported files
+    AlbumPanel.tsx     albums, membership manifest, edited versions
+    FolderCleaner.tsx  folder cleanup, with preview and undo
+    Notices.tsx        non-blocking warnings emitted by the backend
+    Help.tsx           in-app guide and licence information
+    SidecarSweep.tsx   sets aside JSONs whose content is now in the files
+    Welcome.tsx        first-run introduction, dismissable for good
+    Stat.tsx           numeric tile
 ```
 
-## Cosa fa oggi
+## What it does today
 
-- **Sorgente**: riconosce una cartella `Takeout/` estratta o un archivio
-  `takeout-*.zip`, elenca le sezioni con conteggi e dimensioni.
-- **Archivi**: dato un archivio qualsiasi ricostruisce l'intera serie
-  (`takeout-...-001.zip`, `-002.zip`, ...) e la unisce in un solo albero,
-  segnalando i numeri mancanti di un download incompleto. I percorsi vengono
-  normalizzati e le voci che tentano di uscire dalla destinazione rifiutate.
-- **Album**: Google non esporta gli album come informazione a parte, ma come
-  cartelle contenenti una seconda copia della foto. L'app le riconosce e
-  distingue le cartelle per anno dagli album veri in qualsiasi lingua, senza
-  un elenco di traduzioni: ricava dall'export stesso il prefisso con cui quel
-  export chiama le annate (`Photos from`, `Foto da`, `Fotos de`), così un album
-  chiamato `Natale 2024` resta un album. Poi
-  scrive un manifest dell'appartenenza. Finché quel manifest non esiste, la
-  deduplica sulla cartella foto resta bloccata: i file tornerebbero dalla
-  quarantena, l'appartenenza no.
-- **Foto**: legge EXIF e sidecar JSON (compresi gli schemi
-  `.supplemental-metadata.json`, i duplicati con contatore e i nomi che Google
-  accorcia a 46 caratteri, dove il suffisso arriva mozzato o sparisce del
-  tutto), e quando entrambi mancano deduce la data dal nome generato dalla
-  fotocamera
-  (`IMG_20200101_120000`, `PXL_...`, screenshot, Signal). **Riscrive nei tag EXIF** di
-  JPEG, HEIC, TIFF e WebP, senza ricomprimere l'immagine, tutto ciò che il
-  sidecar contiene e che ha una sede nei metadati: data, coordinate,
-  descrizione (`ImageDescription`), volti riconosciuti (`XPKeywords`) e la
-  stella dei preferiti (`Rating`). Restano fuori solo il conteggio delle
-  visualizzazioni e l'indirizzo su Google Foto, che nei metadati non hanno dove
-  stare: l'app lo dichiara invece di lasciarlo scoprire.
-  Quando la foto ha le coordinate, ricava il fuso del
-  luogo e scrive l'ora locale corretta con il suo scarto, tenendo conto
-  dell'ora legale: `DateTimeOriginal` è l'ora dell'orologio sul posto, non
-  l'ora universale, e scriverci dentro un istante UTC sposterebbe ogni foto.
-  La copia riparata può conservare la struttura
-  originale oppure essere riorganizzata per anno, per anno e mese, o in una
-  cartella sola; i file senza data finiscono in `senza-data/` invece di essere
-  infilati in un mese inventato. Riconosce le versioni modificate
-  (`-edited`, `-modificato`, `-modifié`, `-編集済み` e altre) e non le tratta
-  come duplicati. Tre modalità: simulazione, copia riparata in un
-  albero separato (predefinita) e riscrittura degli originali, che richiede una
-  conferma esplicita.
-- **Contatti**: parser vCard con line folding, prefissi di gruppo ed escaping,
-  deduplica per email o telefono normalizzato, export in un vCard 3.0 standard.
-- **Calendario**: parser iCalendar che non confonde gli allarmi con gli eventi,
-  deduplica per UID e occorrenza, rimuove le proprietà `X-GOOGLE-*` ed esporta
-  un `.ics` conforme, con line folding corretto.
-- **Drive**: classificazione per categoria, rilevamento dei segnaposto
-  `.gdoc`/`.gsheet` che non contengono dati, e pulizia con deduplica **per
-  contenuto**: due file con lo stesso nome e la stessa dimensione ma contenuto
-  diverso restano entrambi. Nessuna modalità cancella: o si costruisce un albero
-  pulito altrove, o si sposta in quarantena con un registro che permette di
-  rimettere tutto a posto con un clic. Quando un media viene rimosso il suo
-  sidecar JSON lo segue, per non lasciare file orfani.
-- **Sidecar messi da parte a riparazione conclusa**: dopo una riscrittura degli
-  originali i `.json` restano nella cartella, e l'app propone di spostarli.
-  Sposta solo quelli che non sono più l'unica copia di qualcosa, e non si fida
-  di quanto ha riferito la riparazione: rilegge ogni file per verificare che il
-  dato ci sia davvero. Restano dove sono quelli di PNG, GIF e video, quelli
-  delle foto non riparate e quelli che portano dati senza una sede nei tag.
-  Non è una cancellazione: scrive lo stesso registro della quarantena e si
-  annulla con un clic.
-- **La pulizia vale per qualsiasi sezione**, non solo Drive: è disponibile anche
-  su Google Foto, dove gli export contengono spesso lo stesso scatto duplicato
-  perché presente in più album.
-- **Guida integrata**, raggiungibile dal pulsante nell'intestazione e dal menu
-  Aiuto, con una presentazione all'avvio per chi apre l'app la prima volta.
+- **Source**: recognises an extracted `Takeout/` folder or a `takeout-*.zip`
+  archive, and lists the sections with counts and sizes.
+- **Archives**: given any single archive it reconstructs the whole series
+  (`takeout-...-001.zip`, `-002.zip`, ...) and merges it into one tree, flagging
+  the missing numbers of an incomplete download. Paths are normalised and
+  entries trying to escape the destination are rejected.
+- **Albums**: Google does not export albums as separate information but as
+  folders containing a second copy of the photo. The app recognises them and
+  tells year folders from real albums in any language, without a table of
+  translations: it derives from the export itself the prefix that export uses
+  for years (`Photos from`, `Foto da`, `Fotos de`), so an album called
+  `Christmas 2024` stays an album. It then writes a membership manifest. Until
+  that manifest exists, deduplication on the photo folder stays blocked: the
+  files would come back from quarantine, the membership would not.
+- **Photos**: reads EXIF and JSON sidecars (including the
+  `.supplemental-metadata.json` schemas, the duplicates with a counter, and the
+  names Google shortens to 46 characters, where the suffix arrives truncated or
+  disappears entirely), and when both are missing it derives the date from the
+  camera-generated filename (`IMG_20200101_120000`, `PXL_...`, screenshots,
+  Signal). It **writes into the EXIF tags** of JPEG, HEIC, TIFF and WebP,
+  without recompressing the image, everything the sidecar holds that has a home
+  in the metadata: date, coordinates, description (`ImageDescription`),
+  recognised faces (`XPKeywords`) and the favourite star (`Rating`). Only the
+  view count and the Google Photos URL are left out, because metadata has
+  nowhere to put them, and the app says so rather than letting you find out.
+  When a photo carries coordinates, the app derives the local time zone and
+  writes the correct wall-clock time with its offset, accounting for daylight
+  saving: `DateTimeOriginal` is the time the clock showed on the spot, not
+  universal time, and writing a UTC instant into it would shift every photo.
+  The repaired copy can keep the original structure or be reorganised by year,
+  by year and month, or into a single folder; files without a date end up in
+  `no-date/` rather than being filed under an invented month. It recognises
+  edited versions (`-edited`, `-modificato`, `-modifié`, `-編集済み` and others)
+  and does not treat them as duplicates. Three modes: dry run, repaired copy in
+  a separate tree (the default), and rewriting the originals, which requires an
+  explicit confirmation.
+- **Contacts**: a vCard parser that handles line folding, group prefixes and
+  escaping, deduplicates by email or normalised phone number, and exports a
+  standard vCard 3.0.
+- **Calendar**: an iCalendar parser that does not mistake alarms for events,
+  deduplicates by UID and occurrence, strips `X-GOOGLE-*` properties and exports
+  a conformant `.ics` with correct line folding.
+- **Drive**: classification by category, detection of the `.gdoc`/`.gsheet`
+  placeholders that hold no data, and cleanup with deduplication **by content**:
+  two files with the same name and size but different content both survive. No
+  mode deletes: either a clean tree is built elsewhere, or files move to
+  quarantine with a ledger that puts everything back with one click. When a
+  media file is removed its JSON sidecar follows it, so no orphans are left
+  behind.
+- **Sidecars set aside once a repair is done**: after rewriting the originals
+  the `.json` files remain in the folder, and the app offers to move them. It
+  moves only those that are no longer the sole copy of anything, and it does not
+  take the repair's own word for it: every file is read back to verify the data
+  really is there. The sidecars of PNG, GIF and video files stay, as do those of
+  photos that were not repaired and those carrying data with no home in the
+  tags. This is not a deletion: it writes the same ledger as quarantine and
+  undoes with one click.
+- **Cleanup works on any section**, not just Drive: it is available on Google
+  Photos too, where exports often contain the same shot several times because it
+  belongs to several albums.
+- **Built-in guide**, reachable from the header button and the Help menu, with a
+  first-run introduction for anyone opening the app for the first time.
 
-## Qualità
+## Quality
 
-Ogni modifica passa da quattro controlli, eseguiti in CI:
+Every change goes through four checks, all of them run in CI:
 
-| Controllo | Cosa garantisce |
+| Check | What it guarantees |
 | --- | --- |
-| `cargo deny check` | nessuna crate di rete, telemetria o updater |
-| `cargo clippy -- -D warnings` | zero warning |
-| `cargo test` | 71 test, compresi end-to-end su Takeout sintetici |
-| `npm run build` | tipi allineati alle struct serde |
+| `cargo deny check` | no network, telemetry or updater crates |
+| `cargo clippy -- -D warnings` | zero warnings |
+| `cargo test` | 71 tests, including end-to-end runs on synthetic Takeouts |
+| `npm run build` | types aligned with the serde structs |
 
-Ci sono inoltre cinque misure escluse dalla CI, da lanciare a mano. La prima
-lavora su una libreria grande, perché genera decine di migliaia di file:
+There are also five measurements excluded from CI, meant to be run by hand. The
+first works on a large library, because it generates tens of thousands of files:
 
 ```bash
-FOTO=100000 cargo test --release --manifest-path src-tauri/Cargo.toml \
-  misura_su_libreria_grande -- --ignored --nocapture
+PHOTOS=100000 cargo test --release --manifest-path src-tauri/Cargo.toml \
+  measures_a_large_library -- --ignored --nocapture
 ```
 
-Non serve un export da cento gigabyte per trovare i guasti di scala: quello che
-mette in difficoltà il codice è il numero di file, non di byte. Centomila foto
-sintetiche occupano centocinquanta megabyte e sono una prova più severa di una
-libreria reale della stessa consistenza.
+You do not need a hundred gigabyte export to find scaling problems: what puts
+this code under strain is the number of files, not the number of bytes. A
+hundred thousand synthetic photos take a hundred and fifty megabytes and are a
+harsher test than a real library of the same size.
 
-Il percorso dei byte veri ha una misura a parte, che scrive qualche gigabyte:
+The real-bytes path has a measurement of its own, which writes a few gigabytes:
 
 ```bash
 GB=2 /usr/bin/time -l cargo test --release --manifest-path src-tauri/Cargo.toml \
-  misura_su_file_grandi -- --ignored --nocapture
+  measures_large_files -- --ignored --nocapture
 ```
 
-Una terza misura copre contatti e calendario, che hanno il profilo opposto:
-pochissimi file ma grandi, letti interamente in memoria.
+A third one covers contacts and calendar, which have the opposite profile: very
+few files, but large, and read into memory in one piece.
 
 ```bash
-CONTATTI=20000 EVENTI=50000 cargo test --release --manifest-path src-tauri/Cargo.toml \
-  misura_su_rubrica_grande -- --ignored --nocapture
+CONTACTS=20000 EVENTS=50000 cargo test --release --manifest-path src-tauri/Cargo.toml \
+  measures_a_large_address_book -- --ignored --nocapture
 ```
 
-La misura sui byte verifica la velocità di deduplica e riparazione, e soprattutto che un file
-oltre la soglia di riscrittura venga saltato ma copiato lo stesso. Su due
-gigabyte e mezzo di media la memoria allocata resta intorno ai cento megabyte
-(`peak memory footprint`; il `maximum resident set size` comprende la cache
-delle pagine dei file e non misura ciò che alloca il programma).
+The bytes measurement checks deduplication and repair throughput, and above all
+that a file past the rewrite threshold is skipped but still copied. On two and a
+half gigabytes of media, allocated memory stays around a hundred megabytes
+(`peak memory footprint`; `maximum resident set size` includes the file page
+cache and does not measure what the program allocates).
 
-La quarta misura estrae una serie multi-archivio presa dal disco, invece di
-costruirsela da sé. La differenza non è formale: un test che genera i propri
-dati verifica anche le proprie assunzioni, e se un'assunzione è sbagliata resta
-verde lo stesso. Il materiale si prepara con lo script in `tools/`:
+The fourth extracts a multi-archive series taken from disk rather than building
+one for itself. The difference is not cosmetic: a test that generates its own
+data also validates its own assumptions, and if an assumption is wrong the test
+stays green anyway. The material is prepared with the script in `tools/`:
 
 ```bash
-tools/genera_serie_takeout.py ~/Downloads/prova-multiarchivio
+tools/generate_takeout_series.py ~/Downloads/prova-multiarchivio
 
-SERIE=~/Downloads/prova-multiarchivio USCITA=~/Downloads/prova-estratta \
+SERIES=~/Downloads/prova-multiarchivio OUTPUT=~/Downloads/prova-estratta \
   cargo test --release --manifest-path src-tauri/Cargo.toml \
-  estrazione_di_una_serie_reale -- --ignored --nocapture
+  extracts_a_real_series -- --ignored --nocapture
 ```
 
-Su quindici gigabyte divisi in otto archivi, come li produce Google con
-l'opzione "2 GB": serie riconosciuta partendo da un archivio solo in 0,1 ms,
-estrazione dei 6330 file in 40 secondi a 383 MB/s senza collisioni, scansione
-delle 3237 foto in 1,4 secondi, memoria allocata 107 MB.
+On fifteen gigabytes split across eight archives, the way Google produces them
+with the "2 GB" option: the series is recognised from a single archive in
+0.1 ms, 6330 files are extracted in 40 seconds at 383 MB/s with no collisions,
+3237 photos are scanned in 1.4 seconds, and allocated memory peaks at 107 MB.
 
-La quinta ripara una cartella vera e poi mette da parte i sidecar applicati,
-lavorando su una copia così che l'originale resti intatto:
+The fifth repairs a real folder and then sets aside the applied sidecars,
+working on a copy so the original stays untouched:
 
 ```bash
-CARTELLA="~/Downloads/prova-estratta/Takeout/Google Foto/Foto da 2019" \
+FOLDER="~/Downloads/prova-estratta/Takeout/Google Foto/Foto da 2019" \
   cargo test --release --manifest-path src-tauri/Cargo.toml \
-  ripara_e_mette_da_parte_i_sidecar -- --ignored --nocapture
+  repairs_then_sets_the_sidecars_aside -- --ignored --nocapture
 ```
 
-Lo script non produce un Takeout di Google: riproduce la struttura, la
-nomenclatura, la divisione a fette e le stranezze note dell'export, ma non le
-scelte del suo scrittore zip. Quelle si verificano solo con un export vero,
-chiesto a Google con la dimensione massima per archivio impostata bassa.
-Vale la pena dirlo perché questa misura ha già trovato due difetti reali che i
-test sintetici non vedevano: i sidecar con il nome accorciato da Google non
-venivano riconosciuti, e un album chiamato `Natale 2024` finiva fra le cartelle
-per anno.
+The script does not produce a Google Takeout: it reproduces the structure, the
+naming, the splitting into slices and the known quirks of the export, but not
+the choices of Google's own zip writer. Those can only be verified against a
+real export, requested from Google with the maximum archive size set low. This
+is worth stating because that measurement has already found two genuine defects
+the synthetic tests could not see: sidecars whose names Google had shortened
+were not being recognised, and an album called `Christmas 2024` was ending up
+among the year folders.
 
-I test non si fermano al "non è esploso". La riparazione EXIF viene verificata
-rileggendo i tag scritti da un JPEG reale e confrontando le coordinate dopo il
-round trip attraverso gradi, primi e secondi. La quarantena viene verificata
-prendendo un'istantanea di percorsi e contenuti prima dell'operazione e
-pretendendo che il ripristino la riproduca identica.
+The tests do not stop at "it did not blow up". EXIF repair is verified by
+reading back the tags written into a real JPEG and comparing the coordinates
+after a round trip through degrees, minutes and seconds. Quarantine is verified
+by taking a snapshot of paths and contents before the operation and demanding
+that the restore reproduce it exactly.
 
-## Cosa non fa ancora
+## What it does not do yet
 
-- **PNG**: escluso di proposito dalla riscrittura EXIF. Vedi
-  [PRIVACY_AUDIT.md](PRIVACY_AUDIT.md), sezione 8.
-- **Video**: i metadati stanno negli atomi del contenitore, non in EXIF. Per
-  loro resta l'allineamento della data di modifica.
-- **Mail e YouTube**: riconosciute nel riepilogo, senza analizzatore. Un `.mbox`
-  di Gmail richiede un indice su disco, cioè un progetto a sé.
-- Analisi diretta dentro l'archivio: le sezioni di uno ZIP vanno estratte prima.
+- **PNG**: deliberately excluded from EXIF rewriting. See
+  [PRIVACY_AUDIT.md](PRIVACY_AUDIT.md), section 8.
+- **Video**: the metadata lives in container atoms, not in EXIF. For those, only
+  the modification date is aligned.
+- **Mail and YouTube**: recognised in the summary, with no analyser. A Gmail
+  `.mbox` needs an on-disk index, which is a project of its own.
+- Analysing sections directly inside the archive: a ZIP has to be extracted
+  first.
 
-## Sviluppo
+## Development
 
-Prerequisiti: Node 20 o superiore, toolchain Rust stable, Xcode Command Line
-Tools su macOS.
+Prerequisites: Node 20 or newer, a stable Rust toolchain, and the Xcode Command
+Line Tools on macOS.
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Altri comandi utili:
+Other useful commands:
 
 ```bash
 npm run build
@@ -289,43 +289,66 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo deny --manifest-path src-tauri/Cargo.toml check
 ```
 
-## Distribuzione
+## Distribution
 
-I bundle di Tauri non si compilano da una piattaforma all'altra: da macOS non
-escono `.msi` né `.deb`. La build locale produce il pacchetto del solo sistema
-su cui gira:
+Tauri bundles do not cross-compile between platforms: macOS will not produce
+`.msi` or `.deb`. A local build produces the package for the system it runs on:
 
 ```bash
 npm run tauri build
 ```
 
-Su macOS il passaggio finale, quello che impagina la finestra del `.dmg`, usa
-AppleScript per parlare con il Finder. Va lanciato da un terminale autorizzato a
-inviare Apple Events: da un processo che non lo è fallisce con l'errore -1743
-dopo aver comunque prodotto il `.app`, che resta utilizzabile.
+On macOS the final step, the one that lays out the `.dmg` window, uses
+AppleScript to talk to the Finder. It has to run from a terminal authorised to
+send Apple Events: from a process that is not, it fails with error -1743 after
+having produced the `.app`, which remains usable.
 
-Per tutte le piattaforme c'è `.github/workflows/release.yml`, che su un tag
-`v*` costruisce macOS (universale), Linux (`.deb` e `.AppImage`) e Windows
-(`.msi`, `.nsis` e l'eseguibile portatile) sui rispettivi runner. Il runner
-Linux è fissato a Ubuntu 22.04: compilare su una distro più recente produce
-pacchetti che non partono su quelle in LTS.
+For every platform there is `.github/workflows/release.yml`, which on a `v*` tag
+builds macOS (universal), Linux (`.deb` and `.AppImage`) and Windows (`.msi`,
+`.nsis` and the portable executable) on their respective runners. The Linux
+runner is pinned to Ubuntu 22.04: building on a newer distribution produces
+packages that will not start on LTS ones.
 
-## Attribuzioni
+## Language
 
-I confini dei fusi orari provengono da [OpenStreetMap](https://www.openstreetmap.org/copyright),
-distribuiti dal pacchetto `tzf-dist` sotto
-[Open Database License](https://opendatacommons.org/licenses/odbl/) (ODbL-1.0).
-I dati sono inclusi nell'applicazione e consultati in locale.
+The interface is currently Italian only. English is the intended default, with
+Italian, German, French and Spanish to follow.
 
-## Autore
+The groundwork is done: the Rust backend never composes a sentence. It reports
+codes and numbers, and the wording is chosen on the side that displays it, so
+everything a user reads lives in `src/lib/messages.ts` and in the components.
+That separation is enforced by the type system rather than by convention:
+adding a variant in Rust without the matching text fails the frontend build.
 
-Sviluppato da **SkapaCraft** ([skapacraft.com](https://skapacraft.com)).
+Nothing is fetched at runtime. Translations are bundled, because reaching out
+to a translation service would contradict the one promise this application
+makes.
 
-## Licenza
+## Acknowledgements
 
-Copyright (C) 2026 SkapaCraft. GPL-3.0-or-later, vedi [LICENSE](LICENSE).
+The list of suffixes Google appends to edited photos comes from
+[GooglePhotosTakeoutHelper](https://github.com/TheLastGimbus/GooglePhotosTakeoutHelper)
+(Apache-2.0).
 
-La scelta è deliberata: la GPL impedisce che qualcuno prenda questo codice, ci
-aggiunga telemetria e lo ridistribuisca come binario proprietario. Per
-un'applicazione la cui unica promessa è "non ti sorveglia", una licenza
-permissiva sarebbe una contraddizione.
+Time zone boundaries come from
+[timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder),
+built from [OpenStreetMap](https://www.openstreetmap.org/copyright) data and
+reaching this application through the `tzf-rs` crate. The data is licensed
+under the [Open Database License](https://opendatacommons.org/licenses/odbl/)
+(ODbL-1.0), bundled with the application and consulted locally.
+
+The full list, dependencies included, is in
+[ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
+
+## Author
+
+Built by **SkapaCraft** ([skapacraft.com](https://skapacraft.com)).
+
+## Licence
+
+Copyright (C) 2026 SkapaCraft. GPL-3.0-or-later, see [LICENSE](LICENSE).
+
+The choice is deliberate: the GPL prevents anyone from taking this code, adding
+telemetry to it and redistributing it as a proprietary binary. For an
+application whose only promise is "it does not watch you", a permissive licence
+would be a contradiction.

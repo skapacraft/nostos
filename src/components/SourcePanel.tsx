@@ -2,18 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { formatBytes, formatCount, shortenPath } from "../lib/format";
-import type { SectionSummary, SourceSummary, TakeoutSectionId } from "../types";
+import type { SectionSummary, SourceSummary, TakeoutSection } from "../types";
 import { Stat } from "./Stat";
+import { Notices } from "./Notices";
+import { SECTION_LABELS } from "../lib/messages";
 
-/** Sezioni per cui esiste un analizzatore dedicato. */
-const ANALYZABLE: TakeoutSectionId[] = [
+/** Sections for which a dedicated analyser exists. */
+const ANALYZABLE: TakeoutSection[] = [
   "googlePhotos",
   "contacts",
   "drive",
   "calendar",
 ];
 
-export function isAnalyzable(section: TakeoutSectionId): boolean {
+export function isAnalyzable(section: TakeoutSection): boolean {
   return ANALYZABLE.includes(section);
 }
 
@@ -72,18 +74,7 @@ export function SourcePanel({
         />
       </div>
 
-      {summary.warnings.length > 0 ? (
-        <ul className="space-y-2">
-          {summary.warnings.map((warning) => (
-            <li
-              key={warning}
-              className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-            >
-              {warning}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <Notices items={summary.warnings} />
 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
@@ -112,7 +103,7 @@ export function SourcePanel({
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       {section.fileCount > 0
                         ? `${formatCount(section.fileCount)} file, ${formatBytes(section.totalBytes)}`
-                        : section.label}
+                        : SECTION_LABELS[section.section]}
                     </p>
                   </div>
 

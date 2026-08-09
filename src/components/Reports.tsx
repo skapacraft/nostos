@@ -22,6 +22,8 @@ import { FolderCleaner } from "./FolderCleaner";
 import { ExportButton } from "./ExportButton";
 import { PhotoFixer } from "./PhotoFixer";
 import { Stat } from "./Stat";
+import { Notices } from "./Notices";
+import { CATEGORY_LABELS } from "../lib/messages";
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
@@ -39,11 +41,11 @@ function Card({ children }: { children: ReactNode }) {
   );
 }
 
-// --- Foto ----------------------------------------------------------------
+// --- Photos --------------------------------------------------------------
 
 interface PhotoReportProps {
   report: PhotoScanReport;
-  /** Cartella analizzata, su cui agisce la riparazione. */
+  /** The analysed folder, the one the repair acts on. */
   path: string;
   workingFolder: string | null;
   onWorkingFolder: (path: string) => void;
@@ -156,7 +158,7 @@ export function PhotoReportView({
   );
 }
 
-// --- Contatti ------------------------------------------------------------
+// --- Contacts ------------------------------------------------------------
 
 interface ContactsReportProps {
   report: ContactsReport;
@@ -267,14 +269,7 @@ export function DriveReportView({
         />
       </div>
 
-      {report.warnings.map((warning) => (
-        <p
-          key={warning}
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-        >
-          {warning}
-        </p>
-      ))}
+      <Notices items={report.warnings} />
 
       <FolderCleaner
         path={path}
@@ -295,7 +290,7 @@ export function DriveReportView({
                   className="flex items-center justify-between px-4 py-2.5 text-sm"
                 >
                   <span className="text-zinc-700 dark:text-zinc-300">
-                    {category.label}
+                    {CATEGORY_LABELS[category.category]}
                   </span>
                   <span className="tabular-nums text-zinc-500 dark:text-zinc-400">
                     {formatCount(category.fileCount)} file ·{" "}
@@ -361,7 +356,7 @@ export function DriveReportView({
   );
 }
 
-// --- Calendario ----------------------------------------------------------
+// --- Calendar ------------------------------------------------------------
 
 interface CalendarReportProps {
   report: CalendarReport;
@@ -369,7 +364,7 @@ interface CalendarReportProps {
   onError: (message: string) => void;
 }
 
-/** Rende leggibile una data iCalendar grezza (`20200101T120000Z`). */
+/** Renders a raw iCalendar date readable (`20200101T120000Z`). */
 function formatIcsDate(raw: string | null): string {
   if (!raw || raw.length < 8) return "data non disponibile";
   const day = `${raw.slice(6, 8)}/${raw.slice(4, 6)}/${raw.slice(0, 4)}`;
@@ -440,14 +435,7 @@ export function CalendarReportView({
         </div>
       ) : null}
 
-      {report.warnings.map((warning) => (
-        <p
-          key={warning}
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-        >
-          {warning}
-        </p>
-      ))}
+      <Notices items={report.warnings} />
     </div>
   );
 }

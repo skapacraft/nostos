@@ -1,15 +1,15 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Lettura e pulizia dell'export Calendario di Google (iCalendar, RFC 5545).
+//! Reading and cleaning the Google Calendar export (iCalendar, RFC 5545).
 //!
-//! Google esporta un `.ics` per ogni calendario dell'account. I file sono
-//! utilizzabili così come sono, ma portano due fastidi per chi migra altrove:
-//! proprietà proprietarie `X-GOOGLE-*` che nessun altro servizio interpreta, e
-//! lo stesso evento ripetuto quando due calendari condividono un invito.
+//! Google exports one `.ics` per calendar in the account. The files are usable
+//! as they are, but they carry two annoyances for anyone migrating elsewhere:
+//! proprietary `X-GOOGLE-*` properties that no other service understands, and
+//! the same event repeated when two calendars share an invitation.
 //!
-//! Il formato di content line è lo stesso di vCard, quindi unfolding, escaping
-//! e divisione delle proprietà arrivano da [`crate::contacts`].
+//! The content line format is the same as vCard, so unfolding, escaping and
+//! property splitting all come from [`crate::contacts`].
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -17,20 +17,20 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::app_state::{ExportReport, Result, TakeoutError};
+use crate::app_state::{ExportReport, Notice, Result, TakeoutError};
 use crate::contacts::{split_property, unescape, unfold};
 
-/// Lunghezza massima di una riga prima del folding, in ottetti (RFC 5545).
+/// Maximum line length before folding, in octets (RFC 5545).
 const FOLD_WIDTH: usize = 75;
 
-/// Proprietà che vengono rimosse durante la pulizia.
+/// Properties removed during cleanup.
 ///
-/// Sono estensioni di Google senza significato fuori dai suoi servizi: le
-/// lasciamo fuori dal file esportato invece di trascinarle in Proton o
-/// Nextcloud, dove diventano rumore.
+/// They are Google extensions with no meaning outside its services: we leave
+/// them out of the exported file rather than dragging them into Proton or
+/// Nextcloud, where they become noise.
 const DROPPED_PREFIXES: &[&str] = &["X-GOOGLE-", "X-MICROSOFT-", "X-EVOLUTION-"];
 
-/// Proprietà di un evento conservate nell'export pulito, in ordine di scrittura.
+/// Event properties kept in the clean export, in writing order.
 const KEPT_PROPERTIES: &[&str] = &[
     "UID",
     "DTSTAMP",
@@ -56,7 +56,7 @@ const KEPT_PROPERTIES: &[&str] = &[
     "RECURRENCE-ID",
 ];
 
-/// Un evento, ridotto ai campi che sopravvivono alla pulizia.
+/// An event, reduced to the fields that survive the cleanup.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CalendarEvent {
@@ -64,12 +64,12 @@ pub struct CalendarEvent {
     pub summary: Option<String>,
     pub location: Option<String>,
     pub description: Option<String>,
-    /// Inizio, nella forma grezza dell'iCalendar (`20200101T120000Z`).
+    /// Start, in the raw iCalendar form (`20200101T120000Z`).
     pub start: Option<String>,
     pub end: Option<String>,
     pub is_recurring: bool,
     pub is_all_day: bool,
-    /// Righe conservate, già normalizzate, pronte per la riscrittura.
+    /// Kept lines, already normalised and ready to be written back.
     #[serde(skip)]
     lines: Vec<(String, String)>,
 }
@@ -79,8 +79,8 @@ impl CalendarEvent {
         self.uid.is_none() && self.summary.is_none() && self.start.is_none()
     }
 
-    /// Chiave di deduplica: l'UID identifica l'evento, ma un'occorrenza singola
-    /// di una serie ricorrente ha lo stesso UID e un `RECURRENCE-ID` diverso.
+    /// Deduplication key: the UID identifies the event, but a single occurrence of
+    /// a recurring series shares that UID with a different `RECURRENCE-ID`.
     fn dedup_key(&self) -> Option<String> {
         let uid = self.uid.as_ref()?;
         let recurrence = self
@@ -93,7 +93,7 @@ impl CalendarEvent {
     }
 }
 
-/// Esito della lettura di uno o più file iCalendar.
+/// Outcome of reading one or more iCalendar files.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CalendarReport {
@@ -103,34 +103,34 @@ pub struct CalendarReport {
     pub duplicates: usize,
     pub recurring: usize,
     pub all_day: usize,
-    /// Proprietà proprietarie rimosse durante la pulizia.
+    /// Proprietary properties removed during cleanup.
     pub dropped_properties: usize,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Notice>,
     pub sample: Vec<CalendarEvent>,
 }
 
-/// Vero se la proprietà va scartata perché specifica di un fornitore.
+/// True if the property should be dropped as vendor-specific.
 fn is_dropped(name: &str) -> bool {
     DROPPED_PREFIXES
         .iter()
         .any(|prefix| name.starts_with(prefix))
 }
 
-/// Vero se la proprietà va conservata nell'export pulito.
+/// True if the property should be kept in the clean export.
 ///
-/// Il confronto ignora i parametri: `DTSTART;VALUE=DATE` resta `DTSTART`.
+/// The comparison ignores parameters: `DTSTART;VALUE=DATE` stays `DTSTART`.
 fn is_kept(name: &str) -> bool {
     let base = name.split(';').next().unwrap_or(name);
     KEPT_PROPERTIES.contains(&base)
 }
 
-/// Interpreta il contenuto di un file iCalendar.
+/// Parses the contents of an iCalendar file.
 pub fn parse_ics(content: &str) -> (Vec<CalendarEvent>, usize) {
     let mut events = Vec::new();
     let mut current: Option<CalendarEvent> = None;
     let mut dropped = 0usize;
-    // Gli allarmi sono blocchi annidati dentro l'evento: le loro proprietà non
-    // vanno confuse con quelle dell'evento che le contiene.
+    // Alarms are blocks nested inside the event: their properties must not be
+    // confused with those of the event containing them.
     let mut inside_alarm = false;
 
     for line in unfold(content) {
@@ -176,9 +176,9 @@ pub fn parse_ics(content: &str) -> (Vec<CalendarEvent>, usize) {
             continue;
         }
 
-        // La riga completa (con parametri) va conservata per la riscrittura: in
-        // `DTSTART;TZID=Europe/Rome` il fuso orario sta nei parametri, e
-        // buttarlo sposterebbe l'evento di ore.
+        // The full line, parameters included, has to be kept for rewriting: in
+        // `DTSTART;TZID=Europe/Rome` the time zone lives in the parameters, and
+        // throwing it away would shift the event by hours.
         let full_name = trimmed
             .split_once(':')
             .map(|(head, _)| head.to_string())
@@ -197,7 +197,7 @@ pub fn parse_ics(content: &str) -> (Vec<CalendarEvent>, usize) {
             "LOCATION" => event.location = Some(value),
             "DESCRIPTION" => event.description = Some(value),
             "DTSTART" => {
-                // `VALUE=DATE` senza orario significa evento di giornata intera.
+                // `VALUE=DATE` with no time means an all-day event.
                 event.is_all_day =
                     full_name.to_ascii_uppercase().contains("VALUE=DATE") && !value.contains('T');
                 event.start = Some(value);
@@ -211,13 +211,13 @@ pub fn parse_ics(content: &str) -> (Vec<CalendarEvent>, usize) {
     (events, dropped)
 }
 
-/// Legge un singolo file `.ics`.
+/// Reads a single `.ics` file.
 pub fn parse_file(path: &Path) -> Result<(Vec<CalendarEvent>, usize)> {
     let content = std::fs::read_to_string(path).map_err(|e| TakeoutError::io(path, e))?;
     Ok(parse_ics(&content))
 }
 
-/// Raccoglie i file `.ics` sotto `root`, oppure il singolo file indicato.
+/// Collects the `.ics` files under `root`, or the single file given.
 fn collect_ics(root: &Path) -> Vec<PathBuf> {
     if root.is_file() {
         return vec![root.to_path_buf()];
@@ -238,7 +238,7 @@ fn collect_ics(root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Legge tutti i calendari sotto `root` e restituisce report ed eventi unici.
+/// Reads every calendar under `root` and returns a report and unique events.
 fn collect_events(root: &Path) -> Result<(CalendarReport, Vec<CalendarEvent>)> {
     crate::app_state::require_existing(root)?;
 
@@ -271,7 +271,9 @@ fn collect_events(root: &Path) -> Result<(CalendarReport, Vec<CalendarEvent>)> {
                     }
                 }
             }
-            Err(err) => report.warnings.push(err.to_string()),
+            Err(err) => report
+                .warnings
+                .push(Notice::read_failed(file.display(), err)),
         }
     }
 
@@ -279,18 +281,18 @@ fn collect_events(root: &Path) -> Result<(CalendarReport, Vec<CalendarEvent>)> {
     Ok((report, unique))
 }
 
-/// Analizza i calendari sotto `root`.
+/// Analyses the calendars under `root`.
 pub fn scan_directory(root: &Path, sample_size: usize) -> Result<CalendarReport> {
     let (mut report, unique) = collect_events(root)?;
     report.sample = unique.into_iter().take(sample_size).collect();
     Ok(report)
 }
 
-/// Spezza una riga secondo la regola di folding di RFC 5545.
+/// Splits a line according to the folding rule of RFC 5545.
 ///
-/// Il limite è in ottetti, non in caratteri: tagliare a metà di una sequenza
-/// UTF-8 produrrebbe un file illeggibile, quindi il taglio avanza per confini
-/// di carattere.
+/// The limit is in octets, not characters: cutting in the middle of a UTF-8
+/// sequence would produce an unreadable file, so the cut advances by character
+/// boundaries.
 fn fold_line(line: &str) -> String {
     if line.len() <= FOLD_WIDTH {
         return line.to_string();
@@ -314,27 +316,27 @@ fn fold_line(line: &str) -> String {
     out
 }
 
-/// Scrive un calendario iCalendar 2.0 pulito.
+/// Writes a clean iCalendar 2.0 file.
 ///
-/// Il file prodotto contiene solo proprietà standard, un evento per UID e le
-/// righe ripiegate come prescritto: è importabile su Proton, Tuta e Nextcloud
-/// senza passaggi intermedi.
+/// The file produced holds only standard properties, one event per UID and
+/// lines folded as prescribed: it imports into Proton, Tuta and Nextcloud with
+/// no intermediate step.
 pub fn export_ics(root: &Path, destination: &Path) -> Result<ExportReport> {
     let (_, events) = collect_events(root)?;
 
     let mut out = String::new();
     out.push_str("BEGIN:VCALENDAR\r\n");
     out.push_str("VERSION:2.0\r\n");
-    out.push_str("PRODID:-//Nostos//IT\r\n");
+    out.push_str("PRODID:-//Nostos//EN\r\n");
     out.push_str("CALSCALE:GREGORIAN\r\n");
 
-    // I valori vengono riscritti come sono stati letti, cioè ancora protetti
-    // dall'escaping del file di origine. Ri-applicarlo qui produrrebbe un
-    // doppio escaping e trasformerebbe "Milano\, Italia" in "Milano\\, Italia".
+    // Values are written back as they were read, that is still protected by the
+    // escaping of the source file. Applying it again here would produce double
+    // escaping and turn "Milano\, Italia" into "Milano\\, Italia".
     for event in &events {
         out.push_str("BEGIN:VEVENT\r\n");
-        // L'ordine segue KEPT_PROPERTIES, così file diversi prodotti dallo
-        // stesso input risultano identici e confrontabili con un diff.
+        // The order follows KEPT_PROPERTIES, so different files produced from the
+        // same input come out identical and comparable with a diff.
         for wanted in KEPT_PROPERTIES {
             for (name, value) in &event.lines {
                 let base = name.split(';').next().unwrap_or(name).to_ascii_uppercase();
@@ -373,11 +375,11 @@ mod tests {
          RRULE:FREQ=YEARLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 
     #[test]
-    fn legge_gli_eventi_di_base() {
+    fn reads_basic_events() {
         let (events, dropped) = parse_ics(SAMPLE);
 
         assert_eq!(events.len(), 2);
-        assert_eq!(dropped, 1, "la proprietà X-GOOGLE- va scartata");
+        assert_eq!(dropped, 1, "the X-GOOGLE- property has to be dropped");
 
         assert_eq!(events[0].uid.as_deref(), Some("evento-1@google.com"));
         assert_eq!(events[0].summary.as_deref(), Some("Riunione"));
@@ -386,43 +388,40 @@ mod tests {
     }
 
     #[test]
-    fn non_confonde_gli_allarmi_con_levento() {
+    fn does_not_confuse_alarms_with_the_event() {
         let (events, _) = parse_ics(SAMPLE);
-        // Il VALARM ha un proprio SUMMARY: non deve sovrascrivere quello
-        // dell'evento che lo contiene.
+        // The VALARM has a SUMMARY of its own: it must not overwrite the one
+        // belonging to the event that contains it.
         assert_eq!(events[0].summary.as_deref(), Some("Riunione"));
     }
 
     #[test]
-    fn riconosce_ricorrenze_e_giornate_intere() {
+    fn recognises_recurrences_and_all_day_events() {
         let (events, _) = parse_ics(SAMPLE);
-        assert!(events[1].is_recurring, "RRULE indica una ricorrenza");
-        assert!(
-            events[1].is_all_day,
-            "VALUE=DATE indica una giornata intera"
-        );
+        assert!(events[1].is_recurring, "RRULE marks a recurrence");
+        assert!(events[1].is_all_day, "VALUE=DATE marks an all-day event");
     }
 
     #[test]
-    fn deduplica_per_uid() {
+    fn deduplicates_by_uid() {
         let doppio = format!("{SAMPLE}{SAMPLE}");
         let temp = crate::app_state::testing::TempDir::new("cal-dedup");
         let file = temp.path().join("calendario.ics");
         crate::app_state::testing::write_file(&file, &doppio);
 
-        let report = scan_directory(temp.path(), 10).expect("scansione");
+        let report = scan_directory(temp.path(), 10).expect("scan");
         assert_eq!(report.total, 4);
         assert_eq!(report.duplicates, 2);
         assert_eq!(report.unique, 2);
     }
 
     #[test]
-    fn esporta_un_ics_pulito_e_rileggibile() {
+    fn exports_a_clean_readable_ics() {
         let temp = crate::app_state::testing::TempDir::new("cal-export");
         let file = temp.path().join("calendario.ics");
         crate::app_state::testing::write_file(&file, SAMPLE);
 
-        let destination = temp.path().join("uscita").join("calendar_cleaned.ics");
+        let destination = temp.path().join("output").join("calendar_cleaned.ics");
         let report = export_ics(temp.path(), &destination).expect("export");
         assert_eq!(report.written, 2);
 
@@ -431,35 +430,35 @@ mod tests {
         assert!(content.ends_with("END:VCALENDAR\r\n"));
         assert!(
             !content.contains("X-GOOGLE-"),
-            "le proprietà proprietarie non devono sopravvivere"
+            "the proprietary properties must not survive"
         );
         assert!(
             !content.contains("Promemoria allarme"),
-            "i VALARM non vengono riportati"
+            "VALARMs are not carried over"
         );
-        // Il fuso orario nei parametri va conservato.
+        // The time zone in the parameters must be preserved.
         assert!(content.contains("DTSTART;VALUE=DATE:20200315"));
 
-        // Prova del nove: il file prodotto deve essere rileggibile da noi stessi.
+        // The acid test: the file we produce must be readable back by ourselves.
         let (rilette, _) = parse_ics(&content);
         assert_eq!(rilette.len(), 2);
         assert_eq!(rilette[0].summary.as_deref(), Some("Riunione"));
     }
 
     #[test]
-    fn ripiega_le_righe_lunghe_senza_spezzare_i_caratteri() {
+    fn folds_long_lines_without_splitting_characters() {
         let lunga = format!("DESCRIPTION:{}", "à".repeat(100));
         let folded = fold_line(&lunga);
 
-        assert!(folded.contains("\r\n "), "la riga va ripiegata");
+        assert!(folded.contains("\r\n "), "the line has to be folded");
         for segment in folded.split("\r\n") {
             assert!(
                 segment.len() <= FOLD_WIDTH + 1,
-                "segmento troppo lungo: {} ottetti",
+                "segment too long: {} octets",
                 segment.len()
             );
         }
-        // Nessun carattere deve essere stato troncato a metà.
+        // No character may have been cut in half.
         let ricomposta = folded.replace("\r\n ", "");
         assert_eq!(ricomposta, lunga);
     }

@@ -7,7 +7,7 @@ import type { AppInfo } from "../types";
 
 interface WelcomeProps {
   info: AppInfo | null;
-  /** Riceve `true` se l'utente ha chiesto di non rivedere la presentazione. */
+  /** Receives `true` if the user asked not to see the introduction again. */
   onStart: (hideNextTime: boolean) => void;
   onOpenHelp: () => void;
 }
@@ -32,11 +32,11 @@ const POINTS: { title: string; body: string }[] = [
 ];
 
 /**
- * Presentazione mostrata all'avvio.
+ * The introduction shown at startup.
  *
- * La casella "non mostrare più" è l'unico dato che sopravvive alla sessione, e
- * finisce in un file di preferenze dichiarato nella sezione 6 di
- * PRIVACY_AUDIT.md. Nient'altro viene ricordato.
+ * The "do not show again" box is the only piece of data outliving the session,
+ * and it ends up in a preferences file declared in section 6 of
+ * PRIVACY_AUDIT.md. Nothing else is remembered.
  */
 export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
   const [hideNextTime, setHideNextTime] = useState(false);
@@ -46,8 +46,8 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
     startRef.current?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // Chiudere con Esc non salva la scelta: è un'uscita rapida, non una
-      // conferma di ciò che c'è nella casella.
+      // Closing with Esc does not save the choice: it is a quick way out, not a
+      // confirmation of what is in the box.
       if (event.key === "Escape") onStart(false);
     };
     window.addEventListener("keydown", onKeyDown);

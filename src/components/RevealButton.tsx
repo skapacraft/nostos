@@ -7,19 +7,19 @@ import * as api from "../lib/api";
 import { toMessage } from "../lib/api";
 
 interface RevealButtonProps {
-  /** Percorso da rivelare. Deve essere uno prodotto dall'applicazione. */
+  /** Path to reveal. It has to be one produced by the application. */
   path: string;
   onError: (message: string) => void;
   label?: string;
 }
 
 /**
- * Mostra un percorso nel gestore file del sistema.
+ * Reveals a path in the system file manager.
  *
- * Non apre il file e non apre indirizzi: il backend invoca un programma fisso
- * su un percorso che deve già esistere. È l'unica azione dell'app che esce
- * verso il sistema operativo, e resta ben distinta dall'apertura di URL, che
- * qui non esiste.
+ * It does not open the file and does not open addresses: the backend invokes a
+ * fixed program on a path that must already exist. It is the only action of
+ * the app that reaches the operating system, and it stays clearly distinct
+ * from opening URLs, which does not exist here.
  */
 export function RevealButton({
   path,

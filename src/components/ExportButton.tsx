@@ -10,21 +10,21 @@ import type { ExportReport } from "../types";
 
 interface ExportButtonProps {
   label: string;
-  /** Nome proposto nella finestra di salvataggio. */
+  /** Name proposed in the save dialog. */
   defaultName: string;
   extension: string;
   filterName: string;
-  /** Descrizione di cosa contiene il file prodotto. */
+  /** Description of what the produced file holds. */
   hint: string;
   onExport: (destination: string) => Promise<ExportReport>;
   onError: (message: string) => void;
 }
 
 /**
- * Salvataggio di un file esportato.
+ * Saving an exported file.
  *
- * Il percorso arriva sempre dalla finestra di sistema: l'applicazione non
- * sceglie mai da sé dove scrivere, e non ha permessi per farlo.
+ * The path always comes from the system dialog: the application never picks
+ * where to write by itself, and has no permission to do so.
  */
 export function ExportButton({
   label,

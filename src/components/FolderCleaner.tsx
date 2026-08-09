@@ -20,12 +20,12 @@ import { RevealButton } from "./RevealButton";
 interface FolderCleanerProps {
   path: string;
   /**
-   * Vero se la cartella contiene album la cui appartenenza non è stata
-   * ancora salvata. In quel caso deduplicare distruggerebbe l'unica traccia
-   * di quali foto stavano in quale album.
+   * True if the folder holds albums whose membership has not been saved
+   * yet. In that case deduplicating would destroy the only trace of which
+   * photos were in which album.
    */
   albumRisk?: boolean;
-  /** Cartella di lavoro condivisa con gli altri pannelli. */
+  /** Working folder shared with the other panels. */
   destination: string | null;
   onDestination: (path: string) => void;
   onCleaned: () => void;
@@ -47,12 +47,12 @@ const MODE_HINTS: Record<CleanMode, string> = {
 };
 
 /**
- * Pulizia di una cartella dell'export.
+ * Cleanup of an export folder.
  *
- * Non esiste un pulsante che cancelli, ed è una scelta: un export è spesso
- * l'unica copia rimasta di quei dati, e una deduplica sbagliata su una
- * cancellazione non si annulla. Le due modalità operative producono entrambe
- * qualcosa di reversibile.
+ * There is no button that deletes, and that is a choice: an export is often
+ * the only copy left of that data, and a botched deduplication carried out as
+ * a deletion cannot be undone. Both working modes produce something
+ * reversible.
  */
 export function FolderCleaner({
   path,
@@ -132,8 +132,8 @@ export function FolderCleaner({
     };
 
     try {
-      // Il piano viene sempre calcolato e mostrato: anche prima di un'azione
-      // reale l'utente deve poter vedere che cosa sta per succedere.
+      // The plan is always computed and shown: even before a real action the
+      // user has to be able to see what is about to happen.
       setPlan(await api.planDriveClean(path, { ...options, mode: "dryRun" }));
       if (mode !== "dryRun") {
         setReport(await api.cleanDrive(path, options));
@@ -161,7 +161,7 @@ export function FolderCleaner({
   }, [report, onCleaned, onError]);
 
   const needsDestination = mode !== "dryRun" && !destination;
-  // La simulazione resta sempre concessa: non tocca nulla.
+  // The dry run is always allowed: it touches nothing.
   const blockedByAlbums = albumRisk && mode !== "dryRun";
 
   return (

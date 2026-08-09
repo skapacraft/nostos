@@ -1,92 +1,92 @@
-# Audit privacy e sicurezza
+# Privacy and security audit
 
-Questo documento descrive l'architettura offline di Nostos e come
-verificarla da soli. Non chiede di fidarsi: ogni affermazione ha accanto il
-comando che la conferma o la smentisce.
+This document describes the offline architecture of Nostos and how to
+verify it yourself. It does not ask for trust: every claim comes with the
+command that confirms or refutes it.
 
-Ultima verifica: 2026-08-05, su commit iniziale.
+Last verified: 2026-08-05, on the initial commit.
 
-## 1. Il vincolo
+## 1. The constraint
 
-Nostos tratta gli archivi che una persona scarica proprio perché
-vuole riprendersi i propri dati. Se l'applicazione contattasse un server,
-qualunque server, per qualunque motivo, vanificherebbe il gesto. Da qui una
-regola sola, che vince su ogni altra considerazione di comodità:
+Nostos handles the archives a person downloads precisely because they
+want their own data back. If the application contacted a server, any server, for
+any reason, it would defeat the point. Hence a single rule, which overrides
+every consideration of convenience:
 
-> Il processo dell'applicazione non apre connessioni di rete.
+> The application process opens no network connections.
 
-## 2. Come il vincolo è reso esecutivo
+## 2. How the constraint is made executable
 
-Una promessa scritta in un README invecchia al primo `cargo add`. Per questo il
-vincolo è codificato in `src-tauri/deny.toml`, sezione `[bans]`, ed eseguito in
-CI dal job `Vincolo local-first`.
+A promise written in a README ages badly at the first `cargo add`. The
+constraint is therefore encoded in `src-tauri/deny.toml`, section `[bans]`, and
+enforced in CI by the `Vincolo local-first` job.
 
-Sono vietate per nome le crate di rete (`reqwest`, `hyper`, `ureq`, `curl`,
-`axum`, `tungstenite`, `quinn`), gli stack TLS (`rustls`, `native-tls`,
-`openssl`), la telemetria (`sentry`, `opentelemetry`) e i plugin Tauri che
-aprirebbero superfici verso l'esterno (`tauri-plugin-http`,
-`tauri-plugin-updater`, `tauri-plugin-opener`, `tauri-plugin-shell`).
+Network crates are banned by name (`reqwest`, `hyper`, `ureq`, `curl`, `axum`,
+`tungstenite`, `quinn`), along with TLS stacks (`rustls`, `native-tls`,
+`openssl`), telemetry (`sentry`, `opentelemetry`) and the Tauri plugins that
+would open surfaces to the outside (`tauri-plugin-http`, `tauri-plugin-updater`,
+`tauri-plugin-opener`, `tauri-plugin-shell`).
 
-Verifica:
+Verify with:
 
 ```bash
 cargo deny --manifest-path src-tauri/Cargo.toml check
 ```
 
-Il divieto è stato provato al contrario: aggiungendo `reqwest` alle dipendenze,
-`cargo deny check bans` fallisce segnalando tre crate vietate (`reqwest`,
-`hyper`, `hyper-util`). Non è un controllo decorativo.
+The ban has been tested the other way round: adding `reqwest` to the
+dependencies makes `cargo deny check bans` fail, reporting three forbidden
+crates (`reqwest`, `hyper`, `hyper-util`). It is not a decorative check.
 
-Sul lato frontend la CI rifiuta `fetch(`, `XMLHttpRequest`, `WebSocket` ed
-`EventSource` nei sorgenti. La CSP li bloccherebbe comunque a runtime, ma una
-build che fallisce è una diagnosi migliore di un errore in console.
+On the frontend side CI rejects `fetch(`, `XMLHttpRequest`, `WebSocket` and
+`EventSource` in the sources. The CSP would block them at runtime anyway, but a
+failing build is a better diagnosis than a console error.
 
-## 3. Una cosa che sembra una violazione e non lo è
+## 3. Something that looks like a violation and is not
 
-**`reqwest` compare in `src-tauri/Cargo.lock`.** Chi fa un audit veloce lo trova
-con un `grep` e conclude che l'app telefona a casa. Non è così, ed è giusto
-spiegare perché invece di lasciare il dubbio.
+**`reqwest` appears in `src-tauri/Cargo.lock`.** Anyone doing a quick audit will
+find it with a `grep` and conclude the app phones home. It does not, and it is
+right to explain why rather than leave the doubt standing.
 
-`tauri` dichiara `reqwest` come dipendenza **opzionale**, attivata solo dalle
-feature `native-tls` e `rustls-tls`, che questo progetto non abilita. Il
-lockfile registra l'intero universo delle dipendenze risolvibili, comprese
-quelle mai compilate.
+`tauri` declares `reqwest` as an **optional** dependency, activated only by the
+`native-tls` and `rustls-tls` features, which this project does not enable. The
+lockfile records the entire universe of resolvable dependencies, including the
+ones that are never compiled.
 
-Le tre verifiche indipendenti:
+Three independent checks:
 
 ```bash
-# 1. Non è nel grafo delle dipendenze attive: stampa "nothing to print".
+# 1. Not in the active dependency graph: prints "nothing to print".
 cargo tree --manifest-path src-tauri/Cargo.toml --edges normal -i reqwest
 
-# 2. cargo-deny valuta le feature realmente attive, e infatti passa.
+# 2. cargo-deny evaluates the features actually enabled, and passes.
 cargo deny --manifest-path src-tauri/Cargo.toml check bans
 
-# 3. Il binario distribuito non importa un solo simbolo di rete.
+# 3. The shipped binary imports not one networking symbol.
 BIN="src-tauri/target/release/bundle/macos/Nostos.app/Contents/MacOS/nostos"
-for s in _socket _connect _getaddrinfo _bind _listen; do nm -u "$BIN" | grep -c "^$s\$"; done  # tutti 0
+for s in _socket _connect _getaddrinfo _bind _listen; do nm -u "$BIN" | grep -c "^$s\$"; done  # all 0
 ```
 
-Il terzo è il più difficile da aggirare, e vale sul **bundle di release**, non
-solo sulla build di sviluppo: il binario non importa nemmeno `socket`,
-`connect` o `getaddrinfo` dalla libreria di sistema.
+The third is the hardest to fake, and it holds for the **release bundle**, not
+just the development build: the binary does not even import `socket`, `connect`
+or `getaddrinfo` from the system library.
 
-Verificato anche a runtime, con l'applicazione avviata dal bundle e senza alcun
-server di sviluppo attivo:
+Verified at runtime as well, with the application launched from the bundle and
+no development server running:
 
 ```bash
-lsof -a -p "$(pgrep -f 'Nostos.app/Contents/MacOS')" -i -P -n   # nessuna riga
+lsof -a -p "$(pgrep -f 'Nostos.app/Contents/MacOS')" -i -P -n   # no rows
 ```
 
-Attenzione al filtro: `lsof -p PID -i` combina le due condizioni in OR e
-finirebbe per elencare i socket di tutti i demoni di sistema. Serve `-a`.
+Mind the filter: `lsof -p PID -i` combines the two conditions with OR and would
+end up listing the sockets of every system daemon. The `-a` is required.
 
-## 3-bis. Un'altra stringa che sembra una violazione
+## 3b. Another string that looks like a violation
 
-Nel binario di release compare `ws://localhost:1420`, cioè l'indirizzo dell'hot
-reload di Vite. Anche questa è inerte.
+The release binary contains `ws://localhost:1420`, the address of Vite's hot
+reload. This one is inert too.
 
-Tauri incorpora l'intera configurazione nel binario, `devCsp` compresa, ma la
-sceglie così (`tauri/src/manager/mod.rs`):
+Tauri embeds the entire configuration in the binary, `devCsp` included, but it
+chooses between them like this (`tauri/src/manager/mod.rs`):
 
 ```rust
 fn csp(&self) -> Option<Csp> {
@@ -95,164 +95,163 @@ fn csp(&self) -> Option<Csp> {
 }
 ```
 
-E `is_dev` è una **costante di compilazione**, non un controllo a runtime:
+And `is_dev` is a **compile-time constant**, not a runtime check:
 
 ```rust
 pub const fn is_dev() -> bool { !cfg!(feature = "custom-protocol") }
 ```
 
-`tauri build` attiva `custom-protocol`, quindi nel pacchetto distribuito il
-ramo della `devCsp` è codice morto eliminato dal compilatore. Non è una
-questione di configurazione che qualcuno possa cambiare all'avvio.
+`tauri build` enables `custom-protocol`, so in the distributed package the
+`devCsp` branch is dead code eliminated by the compiler. This is not a
+configuration matter that someone could flip at startup.
 
-La prova pratica: il bundle avviato senza server di sviluppo funziona, cioè sta
-servendo gli asset incorporati e non `http://localhost:1420`.
+The practical proof: the bundle launched with no development server works, which
+means it is serving the embedded assets and not `http://localhost:1420`.
 
-## 4. Perimetro onesto: il webview
+## 4. An honest perimeter: the webview
 
-Una dichiarazione di questo tipo sarebbe disonesta se si fermasse al codice
-Rust. L'applicazione incorpora il webview di sistema (WKWebView su macOS,
-WebKit2GTK su Linux, WebView2 su Windows), che è un componente del sistema
-operativo e, in astratto, sa parlare in rete.
+A declaration like this one would be dishonest if it stopped at the Rust code.
+The application embeds the system webview (WKWebView on macOS, WebKit2GTK on
+Linux, WebView2 on Windows), which is an operating system component and, in the
+abstract, knows how to speak over the network.
 
-A contenerlo c'è la Content Security Policy dichiarata in
-`src-tauri/tauri.conf.json`, che in produzione vale:
+What contains it is the Content Security Policy declared in
+`src-tauri/tauri.conf.json`, which in production reads:
 
 ```
 default-src 'self'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost;
 object-src 'none'; frame-src 'none'; form-action 'none'
 ```
 
-`connect-src` ammette solo il canale IPC locale verso il backend Rust. Non
-esistono origini remote consentite, `form-action` è vietata e non c'è alcun
-frame. Il contenuto caricato è esclusivamente quello impacchettato nel bundle:
-nessun CDN, nessun font remoto, nessuna immagine esterna.
+`connect-src` admits only the local IPC channel towards the Rust backend. There
+are no permitted remote origins, `form-action` is forbidden and there is no
+frame. The content loaded is exclusively what is packaged in the bundle: no CDN,
+no remote fonts, no external images.
 
-In sviluppo vale una `devCsp` separata che riapre soltanto
-`ws://localhost:1420` per l'hot reload di Vite. Non è la policy che finisce nel
-binario distribuito.
+In development a separate `devCsp` applies, reopening only
+`ws://localhost:1420` for Vite's hot reload. That is not the policy that ends up
+in the distributed binary.
 
-## 5. Superficie concessa al frontend
+## 5. The surface granted to the frontend
 
-Il codice React non ha accesso diretto al filesystem. La capability della
-finestra, in `src-tauri/capabilities/default.json`, concede tre sole voci:
+The React code has no direct filesystem access. The window capability, in
+`src-tauri/capabilities/default.json`, grants three entries and no more:
 
-| Permesso | Perché |
+| Permission | Why |
 | --- | --- |
-| `core:default` | eventi, finestra, drag & drop, menu |
-| `dialog:allow-open` | selettore file e cartelle |
-| `dialog:allow-save` | selettore di salvataggio per gli export |
+| `core:default` | events, window, drag and drop, menu |
+| `dialog:allow-open` | file and folder picker |
+| `dialog:allow-save` | save picker for exports |
 
-Ogni lettura e ogni scrittura passano da un comando Rust esplicito e nominato.
-Non esiste un permesso che consenta al frontend di leggere un percorso
-arbitrario, aprire un URL o eseguire un processo a sua scelta.
+Every read and every write goes through an explicit, named Rust command. There
+is no permission that would let the frontend read an arbitrary path, open a URL
+or run a process of its choosing.
 
-## 6. Dati scritti su disco
+## 6. Data written to disk
 
-| Cosa | Dove | Quando |
+| What | Where | When |
 | --- | --- | --- |
-| Risultati delle analisi | memoria del processo | fino alla chiusura |
-| File estratti da un archivio | cartella scelta dall'utente | solo su azione esplicita |
-| Date di modifica dei media | file originali | solo su azione esplicita |
-| File spostati in quarantena | cartella scelta dall'utente | solo su azione esplicita |
-| Registro della quarantena | dentro la quarantena stessa | insieme allo spostamento |
-| `preferences.json` | cartella di configurazione di sistema | solo se spunti "non mostrare più" |
+| Analysis results | process memory | until it closes |
+| Files extracted from an archive | folder chosen by the user | only on an explicit action |
+| Media modification dates | the original files | only on an explicit action |
+| Files moved to quarantine | folder chosen by the user | only on an explicit action |
+| The quarantine ledger | inside the quarantine itself | together with the move |
+| `preferences.json` | system configuration folder | only if you tick "do not show again" |
 
-### L'unico file che l'app scrive per sé
+### The only file the app writes for itself
 
-`preferences.json`, nella cartella di configurazione del sistema, contiene un
-solo campo booleano:
+`preferences.json`, in the system configuration folder, holds a single boolean
+field:
 
 ```json
 { "hideWelcome": true }
 ```
 
-Serve a ricordare che hai spuntato "non mostrare più" nella presentazione
-iniziale. Viene creato **solo** se spunti quella casella: se non la tocchi, il
-file non esiste.
+It exists to remember that you ticked "do not show again" in the first-run
+introduction. It is created **only** if you tick that box: leave it alone and
+the file never exists.
 
-Non contiene percorsi, non contiene cronologie, non contiene identificativi. La
-struttura in `app_state.rs` ha un campo solo, e ogni campo aggiunto in futuro va
-dichiarato qui: è il motivo per cui il commento sopra quella struct lo dice
-esplicitamente.
+It contains no paths, no history, no identifiers. The struct in `app_state.rs`
+has exactly one field, and any field added in future has to be declared here:
+that is why the comment above that struct says so explicitly.
 
-Non vengono scritti cache, log su disco, cronologie dei percorsi aperti né
-identificativi di installazione.
+No caches, no on-disk logs, no history of opened paths and no installation
+identifiers are written.
 
-La diagnostica di sviluppo va su stderr ed è racchiusa in
-`#[cfg(debug_assertions)]`: nel binario distribuito quelle righe non esistono.
-Non è un logger su file, di proposito.
+Development diagnostics go to stderr and are wrapped in
+`#[cfg(debug_assertions)]`: in the distributed binary those lines do not exist.
+It is deliberately not a file logger.
 
-Il registro della quarantena viene scritto dentro la cartella che l'utente ha
-appena scelto, insieme ai file spostati. Contiene i loro percorsi originali, e
-senza di esso l'operazione non sarebbe annullabile.
+The quarantine ledger is written inside the folder the user has just chosen,
+alongside the files that were moved. It holds their original paths, and without
+it the operation would not be reversible.
 
-## 7. Altri assenti
+## 7. Other absences
 
-- **Nessun updater automatico.** `createUpdaterArtifacts` è disattivato e il
-  plugin non è installato. Gli aggiornamenti si scaricano a mano dalle release.
-- **Nessun crash reporter.** Un panic resta sulla macchina.
-- **Nessun link cliccabile verso l'esterno.** Gli URL trovati nei segnaposto di
-  Google Drive sono mostrati come testo. Aprirli significherebbe una
-  connessione verso Google, ed è una decisione che spetta all'utente, fuori da
-  questa applicazione.
+- **No auto-updater.** `createUpdaterArtifacts` is disabled and the plugin is
+  not installed. Updates are downloaded by hand from the releases.
+- **No crash reporter.** A panic stays on the machine.
+- **No clickable links to the outside.** URLs found in Google Drive
+  placeholders are shown as text. Opening them would mean a connection to
+  Google, and that is a decision for the user to make outside this application.
 
-## 7-bis. L'unica azione verso il sistema operativo
+## 7b. The only action towards the operating system
 
-Il pulsante "Mostra nel Finder" invoca un programma esterno: `open -R` su macOS,
-`explorer /select,` su Windows, `xdg-open` sulla cartella su Linux.
+The "Show in Finder" button invokes an external program: `open -R` on macOS,
+`explorer /select,` on Windows, `xdg-open` on the folder on Linux.
 
-È l'unico punto in cui l'applicazione esce verso il sistema, e i vincoli sono
-stretti apposta:
+It is the single point where the application reaches out to the system, and the
+constraints are deliberately tight:
 
-- il programma invocato è **fisso nel codice**, non è una stringa che qualcuno
-  possa influenzare;
-- l'unico argomento è un percorso che deve **già esistere** e che viene
-  canonicalizzato prima dell'uso;
-- non passa da una shell, quindi non esiste iniezione di comandi;
-- su Linux si apre la **cartella** e non il file, perché `xdg-open` su un file
-  lo aprirebbe con l'applicazione predefinita, che è un'altra cosa dal mostrarlo.
+- the program invoked is **fixed in the code**, not a string anyone could
+  influence;
+- the only argument is a path that must **already exist** and that is
+  canonicalised before use;
+- it does not go through a shell, so there is no command injection;
+- on Linux it opens the **folder** and not the file, because `xdg-open` on a
+  file would open it with the default application, which is a different thing
+  from revealing it.
 
-`tauri-plugin-opener` e `tauri-plugin-shell` restano vietati in `deny.toml`: il
-primo sa aprire anche URL nel browser, il secondo eseguire comandi arbitrari.
-Rivelare una cartella nel gestore file è un'azione locale e non comporta alcuna
-connessione, quindi non intacca la promessa del punto 1.
+`tauri-plugin-opener` and `tauri-plugin-shell` remain banned in `deny.toml`: the
+first can also open URLs in the browser, the second can run arbitrary commands.
+Revealing a folder in the file manager is a local action and involves no
+connection, so it does not dent the promise in section 1.
 
-## 8. Avvisi noti e accettati
+## 8. Known and accepted advisories
 
-`cargo deny check advisories` tratta le vulnerabilità come errore bloccante,
-mentre gli avvisi di tipo *unmaintained* valgono solo per le dipendenze dirette
+`cargo deny check advisories` treats vulnerabilities as blocking errors, while
+*unmaintained* advisories apply to direct dependencies only
 (`unmaintained = "workspace"`).
 
-La ragione: quindici avvisi *unmaintained* arrivano dalle binding GTK3, che
-Tauri usa obbligatoriamente su Linux, e da crate interne di `tauri-utils`. Non
-descrivono falle sfruttabili e non esiste un aggiornamento sicuro. Elencarli a
-mano produrrebbe una lista da rinnovare a ogni release di Tauri, e una lista che
-si aggiorna per abitudine prima o poi copre anche l'avviso che conta.
+The reason: fifteen *unmaintained* advisories come from the GTK3 bindings, which
+Tauri requires on Linux, and from crates internal to `tauri-utils`. They
+describe no exploitable flaw and there is no safe upgrade. Listing them by hand
+would produce a list to renew at every Tauri release, and a list that gets
+updated out of habit will sooner or later cover the advisory that matters.
 
-### Due vulnerabilità con eccezione motivata
+### Two vulnerabilities with a documented exception
 
-`quick-xml` 0.37.5, tirato dentro da `little_exif` (la libreria che scrive i tag
-EXIF), ha due denial of service noti: RUSTSEC-2026-0194 (tempo quadratico su
-attributi duplicati) e RUSTSEC-2026-0195 (allocazione illimitata di
-dichiarazioni di namespace). Non esiste una 0.37.x corretta e `little_exif` non
-espone una feature per disattivare l'XMP.
+`quick-xml` 0.37.5, pulled in by `little_exif` (the library that writes the EXIF
+tags), has two known denial of service issues: RUSTSEC-2026-0194 (quadratic time
+on duplicate attributes) and RUSTSEC-2026-0195 (unbounded allocation of
+namespace declarations). There is no fixed 0.37.x and `little_exif` exposes no
+feature to disable XMP.
 
-Sono elencate in `ignore` per una ragione verificata, non per comodità: dentro
-`little_exif` quel parser XML è usato solo da `xmp.rs`, che è raggiungibile solo
-dal percorso di scrittura PNG. Questo progetto esclude PNG da
-`EXIF_WRITABLE_EXTENSIONS`, quindi il codice vulnerabile non viene mai eseguito.
+They are listed under `ignore` for a verified reason, not for convenience:
+inside `little_exif` that XML parser is used only by `xmp.rs`, which is
+reachable only from the PNG writing path. This project excludes PNG from
+`EXIF_WRITABLE_EXTENSIONS`, so the vulnerable code is never executed.
 
-L'esclusione non è lasciata alla memoria di chi scriverà il prossimo commit: il
-test `png_resta_fuori_dalla_scrittura_exif` fallisce se qualcuno aggiunge PNG
-all'elenco, e il suo messaggio rimanda a questa eccezione.
+The exclusion is not left to the memory of whoever writes the next commit: the
+test `png_stays_out_of_exif_writing` fails if anyone adds PNG to the
+list, and its message points back to this exception.
 
-L'eccezione va rimossa quando `little_exif` passerà a `quick-xml` 0.41.
+The exception should be removed once `little_exif` moves to `quick-xml` 0.41.
 
-A parte queste due, nessuna vulnerabilità nota è presente al momento della
-verifica.
+Apart from these two, no known vulnerability was present at the time of
+verification.
 
-## 9. Rifare l'audit
+## 9. Redoing the audit
 
 ```bash
 cargo deny --manifest-path src-tauri/Cargo.toml check
@@ -261,4 +260,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 npm audit --audit-level=high
 ```
 
-Se una di queste fallisce, la promessa di questo documento non vale più.
+If any of these fails, the promise made by this document no longer holds.
