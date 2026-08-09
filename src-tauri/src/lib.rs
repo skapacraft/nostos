@@ -1324,7 +1324,7 @@ mod tests {
         assert!(esito.is_err(), "va rifiutato prima di scrivere");
         let messaggio = esito.unwrap_err().to_string();
         assert!(
-            messaggio.contains("spazio insufficiente"),
+            messaggio.contains("not enough space"),
             "il messaggio deve dire cosa manca: {messaggio}"
         );
 

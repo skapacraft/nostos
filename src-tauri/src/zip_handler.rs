@@ -1,12 +1,12 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Ispezione ed estrazione degli archivi `takeout-*.zip`.
+//! Inspection and extraction of `takeout-*.zip` archives.
 //!
-//! Google consegna il Takeout come serie di ZIP numerati. Qui l'archivio viene
-//! letto in streaming: nessuna copia temporanea, nessuna estrazione implicita.
-//! L'estrazione avviene solo su richiesta esplicita e verso una destinazione
-//! scelta dall'utente.
+//! Google delivers a Takeout as a series of numbered ZIPs. Here the archive is
+//! read as a stream: no temporary copy, no implicit extraction. Extraction
+//! happens only on an explicit request and into a destination chosen by the
+//! user.
 
 use std::fs::{self, File};
 use std::io;
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::{Result, TakeoutError};
 
-/// Voce di un archivio, senza il contenuto.
+/// One entry of an archive, without its content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveEntry {
@@ -26,7 +26,7 @@ pub struct ArchiveEntry {
     pub compressed_size: u64,
 }
 
-/// Riepilogo dell'ispezione di un archivio.
+/// Summary of an archive inspection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveSummary {
@@ -35,41 +35,41 @@ pub struct ArchiveSummary {
     pub file_count: usize,
     pub uncompressed_bytes: u64,
     pub compressed_bytes: u64,
-    /// Cartelle di primo livello (tipicamente `Takeout/`).
+    /// Top-level folders, typically just `Takeout/`.
     pub top_level: Vec<String>,
-    /// Voci rifiutate perché con percorso non sicuro.
+    /// Entries rejected because their path was unsafe.
     pub rejected: Vec<String>,
 }
 
-/// Esito di un'estrazione.
+/// Outcome of an extraction.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractReport {
     pub destination: PathBuf,
-    /// Archivi effettivamente elaborati, in ordine di numerazione.
+    /// Archives actually processed, in numbering order.
     pub archives: Vec<PathBuf>,
     pub files_written: usize,
     pub dirs_created: usize,
     pub bytes_written: u64,
-    /// Voci scartate perché con percorso non sicuro.
+    /// Entries discarded because their path was unsafe.
     pub skipped: Vec<String>,
-    /// Percorsi presenti in più di un archivio della serie.
+    /// Paths present in more than one archive of the series.
     pub collisions: Vec<String>,
 }
 
-/// Serie di archivi che compongono un unico Takeout.
+/// The series of archives making up a single Takeout.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveSeries {
-    /// Prefisso comune, senza il numero progressivo.
+    /// Common prefix, without the sequence number.
     pub prefix: String,
     pub archives: Vec<PathBuf>,
-    /// Numeri mancanti nella sequenza, se ce ne sono.
+    /// Numbers missing from the sequence, if any.
     pub missing: Vec<u32>,
     pub total_compressed_bytes: u64,
 }
 
-/// Riconosce un archivio Takeout dal nome del file.
+/// Recognises a Takeout archive from its filename.
 pub fn is_takeout_archive(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
@@ -78,13 +78,13 @@ pub fn is_takeout_archive(path: &Path) -> bool {
     lower.ends_with(".zip") && (lower.starts_with("takeout") || lower.contains("takeout"))
 }
 
-/// Apre l'archivio in sola lettura.
+/// Opens the archive read-only.
 fn open_archive(path: &Path) -> Result<zip::ZipArchive<File>> {
     let file = File::open(path).map_err(|e| TakeoutError::io(path, e))?;
     zip::ZipArchive::new(file).map_err(|e| TakeoutError::Archive(format!("{path:?}: {e}")))
 }
 
-/// Elenca il contenuto senza estrarre nulla.
+/// Lists the contents without extracting anything.
 pub fn inspect(path: &Path) -> Result<ArchiveSummary> {
     let mut archive = open_archive(path)?;
 
@@ -127,7 +127,7 @@ pub fn inspect(path: &Path) -> Result<ArchiveSummary> {
     Ok(summary)
 }
 
-/// Restituisce le prime `limit` voci, utile per l'anteprima nella UI.
+/// Returns the first `limit` entries, for the preview in the UI.
 pub fn list_entries(path: &Path, limit: usize) -> Result<Vec<ArchiveEntry>> {
     let mut archive = open_archive(path)?;
     let mut entries = Vec::new();
@@ -147,11 +147,11 @@ pub fn list_entries(path: &Path, limit: usize) -> Result<Vec<ArchiveEntry>> {
     Ok(entries)
 }
 
-/// Scompone il nome di un archivio in prefisso di serie e numero progressivo.
+/// Splits an archive name into series prefix and sequence number.
 ///
-/// Google numera gli export come `takeout-20260805T090000Z-001.zip`. Ogni
-/// archivio è autonomo e contiene una fetta dell'albero: non è un archivio
-/// spezzato in più volumi, quindi ognuno si apre e si legge da solo.
+/// Google numbers exports as `takeout-20260805T090000Z-001.zip`. Each archive
+/// is self-contained and holds a slice of the tree: this is not one archive
+/// split into volumes, so each opens and reads on its own.
 fn series_key(path: &Path) -> Option<(String, u32)> {
     let stem = path.file_stem()?.to_str()?;
     let dash = stem.rfind('-')?;
@@ -168,10 +168,10 @@ fn series_key(path: &Path) -> Option<(String, u32)> {
     Some((prefix.to_string(), digits.parse().ok()?))
 }
 
-/// Individua tutti gli archivi della stessa serie a partire da uno qualsiasi.
+/// Finds every archive of the same series starting from any one of them.
 ///
-/// Se il nome non segue lo schema numerato, la serie contiene solo il file
-/// indicato: un Takeout piccolo sta in un archivio solo.
+/// If the name does not follow the numbered scheme, the series contains only
+/// the file given: a small Takeout fits in a single archive.
 pub fn discover_series(path: &Path) -> Result<ArchiveSeries> {
     crate::app_state::require_existing(path)?;
 
@@ -219,8 +219,8 @@ pub fn discover_series(path: &Path) -> Result<ArchiveSeries> {
 
     found.sort_by_key(|(number, _)| *number);
 
-    // Un numero mancante di solito significa un download interrotto: va detto
-    // prima di estrarre, non dopo aver scoperto che mancano metà delle foto.
+    // A missing number usually means an interrupted download. Say so before
+    // extracting, not after discovering half the photos are gone.
     let mut missing = Vec::new();
     if let (Some((first, _)), Some((last, _))) = (found.first(), found.last()) {
         let present: std::collections::HashSet<u32> = found.iter().map(|(n, _)| *n).collect();
@@ -239,11 +239,11 @@ pub fn discover_series(path: &Path) -> Result<ArchiveSeries> {
     })
 }
 
-/// Estrae un singolo archivio in `destination`.
+/// Extracts a single archive into `destination`.
 ///
-/// Ogni percorso viene normalizzato e verificato: le voci assolute, con `..` o
-/// con prefissi di volume vengono scartate invece di essere scritte fuori dalla
-/// destinazione (zip-slip, CVE-2018-1000544 e simili).
+/// Every path is normalised and checked: absolute entries, entries with `..`
+/// and entries with a volume prefix are discarded rather than written outside
+/// the destination (zip-slip, CVE-2018-1000544 and friends).
 pub fn extract(path: &Path, destination: &Path) -> Result<ExtractReport> {
     extract_series(
         std::slice::from_ref(&path.to_path_buf()),
@@ -252,12 +252,12 @@ pub fn extract(path: &Path, destination: &Path) -> Result<ExtractReport> {
     )
 }
 
-/// Estrae un'intera serie di archivi in un unico albero di destinazione.
+/// Extracts an entire series of archives into one destination tree.
 ///
-/// Gli archivi vengono uniti: le cartelle si sovrappongono senza conflitto,
-/// mentre un file già scritto da un archivio precedente non viene sovrascritto
-/// ma registrato come collisione. In un Takeout integro le collisioni sono
-/// zero, quindi trovarne una segnala un problema nel download.
+/// The archives are merged: folders overlap without conflict, while a file
+/// already written by an earlier archive is not overwritten but recorded as a
+/// collision. In an intact Takeout collisions are zero, so finding one
+/// signals a problem with the download.
 pub fn extract_series(
     archives: &[PathBuf],
     destination: &Path,
@@ -270,7 +270,7 @@ pub fn extract_series(
         .canonicalize()
         .map_err(|e| TakeoutError::io(destination, e))?;
 
-    // Conteggio preliminare, per dare alla barra di avanzamento un totale vero.
+    // Preliminary count, so the progress bar has a real total.
     let mut total_entries = 0usize;
     for archive_path in archives {
         total_entries += open_archive(archive_path)?.len();
@@ -303,8 +303,8 @@ pub fn extract_series(
             };
 
             let target = dest_root.join(&relative);
-            // Seconda barriera: anche dopo la normalizzazione il target deve
-            // restare sotto la radice di destinazione.
+            // Second barrier: even after normalisation the target must stay
+            // under the destination root.
             if !target.starts_with(&dest_root) {
                 return Err(TakeoutError::UnsafeEntry(raw_name));
             }
@@ -325,7 +325,7 @@ pub fn extract_series(
             }
 
             let mut out = File::create(&target).map_err(|e| TakeoutError::io(&target, e))?;
-            // `io::copy` lavora a blocchi: un file da 4 GB non entra in memoria.
+            // `io::copy` works in blocks: a 4 GB file never enters memory.
             let written =
                 io::copy(&mut entry, &mut out).map_err(|e| TakeoutError::io(&target, e))?;
 
@@ -354,15 +354,15 @@ pub fn extract_series(
     Ok(report)
 }
 
-/// Normalizza il nome di una voce ZIP in un percorso relativo sicuro.
+/// Normalises a ZIP entry name into a safe relative path.
 ///
-/// Restituisce `None` se la voce tenta di uscire dalla destinazione.
+/// Returns `None` if the entry tries to escape the destination.
 fn safe_relative_path(name: &str) -> Option<PathBuf> {
     if name.is_empty() || name.contains('\0') {
         return None;
     }
-    // Gli ZIP usano `/` come separatore anche quando prodotti su Windows, ma
-    // alcuni tool scrivono `\`: normalizziamo prima di analizzare.
+    // ZIPs use `/` as separator even when produced on Windows, but some tools
+    // write `\`: normalise before parsing.
     let normalized = name.replace('\\', "/");
     if normalized.starts_with('/') {
         return None;
@@ -429,12 +429,12 @@ mod tests {
             series_key(Path::new("/t/takeout-20260805T090000Z-012.zip")),
             Some(("takeout-20260805T090000Z".to_string(), 12))
         );
-        // Senza numero progressivo non c'è serie: è un archivio unico.
+        // No sequence number means no series: this is a standalone archive.
         assert_eq!(series_key(Path::new("/t/Takeout.zip")), None);
         assert_eq!(series_key(Path::new("/t/takeout-finale.zip")), None);
     }
 
-    /// Crea un archivio con le voci indicate, per i test di estrazione.
+    /// Builds an archive with the given entries, for the extraction tests.
     fn build_archive(path: &Path, entries: &[(&str, &str)]) {
         let file = File::create(path).expect("creazione archivio");
         let mut writer = zip::ZipWriter::new(file);
@@ -458,8 +458,8 @@ mod tests {
         let temp = crate::app_state::testing::TempDir::new("serie");
         let dir = temp.path();
 
-        // Google spezza l'export in archivi autonomi: la cartella `Takeout/` e
-        // le sottocartelle di sezione ricompaiono in ognuno.
+        // Google splits the export into self-contained archives: the `Takeout/`
+        // folder and the section subfolders reappear in every one of them.
         build_archive(
             &dir.join("takeout-20260805T090000Z-001.zip"),
             &[
@@ -477,7 +477,7 @@ mod tests {
                 ("Takeout/Drive/relazione.docx", "terzo"),
             ],
         );
-        // Un archivio di un altro export non deve entrare nella serie.
+        // An archive from a different export must not join the series.
         build_archive(
             &dir.join("takeout-20250101T000000Z-001.zip"),
             &[("x.txt", "estraneo")],
@@ -553,7 +553,7 @@ mod tests {
 
         assert_eq!(report.files_written, 1);
         assert_eq!(report.collisions.len(), 1);
-        // Il primo vince: il secondo non deve poter riscrivere il contenuto.
+        // First one wins: the second must not be able to rewrite the content.
         assert_eq!(
             std::fs::read_to_string(dest.join("Takeout/doppio.txt")).unwrap(),
             "originale"

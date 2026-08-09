@@ -1,11 +1,11 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Lettura dell'export Contatti di Google (vCard 3.0).
+//! Reading the Google Contacts export (vCard 3.0).
 //!
-//! Il file `.vcf` esportato è un flusso di schede concatenate. Il parser
-//! implementa le tre regole che rompono le implementazioni ingenue: il line
-//! folding, i prefissi di gruppo (`item1.EMAIL`) e l'escaping dei separatori.
+//! The exported `.vcf` file is a stream of concatenated cards. The parser
+//! implements the three rules that break naive implementations: line folding,
+//! group prefixes (`item1.EMAIL`) and separator escaping.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 
 use crate::app_state::{ExportReport, Notice, Result, TakeoutError};
 
-/// Un contatto normalizzato.
+/// A normalised contact.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Contact {
@@ -31,8 +31,8 @@ pub struct Contact {
 }
 
 impl Contact {
-    /// Chiave di deduplica: prima email normalizzata, altrimenti primo telefono
-    /// in forma canonica, altrimenti il nome visualizzato.
+    /// Deduplication key: first normalised email, otherwise first phone number in
+    /// canonical form, otherwise the display name.
     fn dedup_key(&self) -> Option<String> {
         if let Some(email) = self.emails.first() {
             return Some(format!("email:{}", email.to_ascii_lowercase()));
@@ -54,7 +54,7 @@ impl Contact {
     }
 }
 
-/// Esito della lettura di uno o più file vCard.
+/// Outcome of reading one or more vCard files.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContactsReport {
@@ -66,17 +66,17 @@ pub struct ContactsReport {
     pub with_phone: usize,
     pub without_contact_info: usize,
     pub warnings: Vec<Notice>,
-    /// Campione dei primi contatti, per l'anteprima nella UI.
+    /// Sample of the first contacts, for the preview in the UI.
     pub sample: Vec<Contact>,
 }
 
-/// Riduce un numero di telefono a sole cifre, tenendo il prefisso
-/// internazionale, per poter confrontare `+39 320 123` e `0039320123`.
+/// Reduces a phone number to digits only, keeping the international prefix, so
+/// that `+39 320 123` and `0039320123` can be compared.
 fn normalize_phone(raw: &str) -> String {
     let digits: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
     let digits = digits.strip_prefix("00").unwrap_or(&digits);
-    // Confrontiamo solo le ultime cifre significative: i prefissi nazionali
-    // sono scritti in modo incoerente negli export.
+    // We compare only the last significant digits: country prefixes are written
+    // inconsistently across exports.
     if digits.len() > 9 {
         digits[digits.len() - 9..].to_string()
     } else {
@@ -84,12 +84,12 @@ fn normalize_phone(raw: &str) -> String {
     }
 }
 
-/// Ricompone le righe spezzate: una riga che inizia con spazio o tabulazione è
-/// la continuazione della precedente.
+/// Rejoins folded lines: a line starting with a space or a tab is the
+/// continuation of the previous one.
 ///
-/// vCard (RFC 6350) e iCalendar (RFC 5545) condividono lo stesso formato di
-/// content line, quindi anche [`calendar`](crate::calendar) usa queste
-/// funzioni invece di riscriverle.
+/// vCard (RFC 6350) and iCalendar (RFC 5545) share the same content line
+/// format, so [`calendar`](crate::calendar) uses these functions too rather
+/// than rewriting them.
 pub(crate) fn unfold(content: &str) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
 
@@ -107,7 +107,7 @@ pub(crate) fn unfold(content: &str) -> Vec<String> {
     lines
 }
 
-/// Ripristina i caratteri protetti dall'escaping (comune a vCard e iCalendar).
+/// Restores characters protected by escaping (shared by vCard and iCalendar).
 pub(crate) fn unescape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut chars = value.chars();
@@ -127,10 +127,10 @@ pub(crate) fn unescape(value: &str) -> String {
     out
 }
 
-/// Divide una proprietà in nome, parametri e valore.
+/// Splits a property into name, parameters and value.
 ///
-/// Il primo `:` separa intestazione e valore, ma può comparire dentro i
-/// parametri quotati, quindi il taglio ignora le porzioni tra virgolette.
+/// The first `:` separates header from value, but it can also appear inside
+/// quoted parameters, so the split ignores the quoted portions.
 pub(crate) fn split_property(line: &str) -> Option<(String, Vec<String>, String)> {
     let mut in_quotes = false;
     let mut colon = None;
@@ -152,7 +152,7 @@ pub(crate) fn split_property(line: &str) -> Option<(String, Vec<String>, String)
 
     let mut parts = head.split(';');
     let raw_name = parts.next()?;
-    // Rimuove l'eventuale prefisso di gruppo: `item1.EMAIL` diventa `EMAIL`.
+    // Strips the group prefix if present: `item1.EMAIL` becomes `EMAIL`.
     let name = raw_name
         .rsplit('.')
         .next()
@@ -163,7 +163,7 @@ pub(crate) fn split_property(line: &str) -> Option<(String, Vec<String>, String)
     Some((name, params, value))
 }
 
-/// Interpreta il contenuto di un file vCard.
+/// Parses the contents of a vCard file.
 pub fn parse_vcard(content: &str) -> Vec<Contact> {
     let mut contacts = Vec::new();
     let mut current: Option<Contact> = None;
@@ -194,8 +194,8 @@ pub fn parse_vcard(content: &str) -> Vec<Contact> {
             continue;
         };
 
-        // Il quoted-printable appartiene a vCard 2.1: non lo decodifichiamo,
-        // ma non deve nemmeno inquinare i dati con byte grezzi.
+        // Quoted-printable belongs to vCard 2.1: we do not decode it, but it must
+        // not pollute the data with raw bytes either.
         if params.iter().any(|p| p.contains("QUOTED-PRINTABLE")) {
             continue;
         }
@@ -209,7 +209,7 @@ pub fn parse_vcard(content: &str) -> Vec<Contact> {
         match name.as_str() {
             "FN" => contact.display_name = Some(value),
             "N" => {
-                // Formato: cognome;nome;secondi nomi;prefissi;suffissi
+                // Format: surname;given name;middle names;prefixes;suffixes
                 let mut fields = value.split(';');
                 contact.family_name = fields
                     .next()
@@ -250,20 +250,20 @@ pub fn parse_vcard(content: &str) -> Vec<Contact> {
     contacts
 }
 
-/// Legge un singolo file `.vcf`.
+/// Reads a single `.vcf` file.
 pub fn parse_file(path: &Path) -> Result<Vec<Contact>> {
     let content = std::fs::read_to_string(path).map_err(|e| TakeoutError::io(path, e))?;
     Ok(parse_vcard(&content))
 }
 
-/// Cerca ricorsivamente i file `.vcf` sotto `root` e li aggrega in un report.
+/// Searches recursively for `.vcf` files under `root` and aggregates a report.
 pub fn scan_directory(root: &Path, sample_size: usize) -> Result<ContactsReport> {
     let (mut report, unique) = collect_contacts(root)?;
     report.sample = unique.into_iter().take(sample_size).collect();
     Ok(report)
 }
 
-/// Legge tutti i vCard sotto `root`, restituendo report e contatti deduplicati.
+/// Reads every vCard under `root`, returning a report and deduplicated contacts.
 fn collect_contacts(root: &Path) -> Result<(ContactsReport, Vec<Contact>)> {
     crate::app_state::require_existing(root)?;
 
@@ -271,7 +271,7 @@ fn collect_contacts(root: &Path) -> Result<(ContactsReport, Vec<Contact>)> {
     let mut seen: HashMap<String, usize> = HashMap::new();
     let mut unique_contacts: Vec<Contact> = Vec::new();
 
-    // Un percorso può puntare direttamente al file invece che alla cartella.
+    // A path may point straight at the file rather than at the folder.
     let files: Vec<PathBuf> = if root.is_file() {
         vec![root.to_path_buf()]
     } else {
@@ -331,12 +331,12 @@ fn collect_contacts(root: &Path) -> Result<(ContactsReport, Vec<Contact>)> {
     Ok((report, unique_contacts))
 }
 
-/// Scrive un vCard 3.0 pulito con i contatti deduplicati.
+/// Writes a clean vCard 3.0 with the deduplicated contacts.
 ///
-/// La versione resta la 3.0, la stessa che Google esporta. Convertire a 4.0
-/// significherebbe rimappare parametri e date parziali con il rischio di
-/// perdere informazioni, mentre Proton, Tuta e Nextcloud importano la 3.0
-/// senza obiezioni: il valore di questo passaggio sta nella deduplica, non nel
+/// The version stays 3.0, the one Google exports. Converting to 4.0 would mean
+/// remapping parameters and partial dates at the risk of losing information,
+/// while Proton, Tuta and Nextcloud import 3.0 without complaint: the value of
+/// this step is in the deduplication, not in the version number.
 /// numero di versione.
 pub fn export_vcf(root: &Path, destination: &Path) -> Result<ExportReport> {
     let (_, contacts) = collect_contacts(root)?;
@@ -359,8 +359,8 @@ pub fn export_vcf(root: &Path, destination: &Path) -> Result<ExportReport> {
             out.push_str(&format!("FN:{}\r\n", escape_value(&display)));
         }
 
-        // `N` è obbligatorio in vCard 3.0: alcuni importatori rifiutano la
-        // scheda se manca, anche quando `FN` è presente.
+        // `N` is mandatory in vCard 3.0: some importers reject the card when it is
+        // missing, even with `FN` present.
         out.push_str(&format!(
             "N:{};{};;;\r\n",
             escape_value(contact.family_name.as_deref().unwrap_or_default()),
@@ -401,7 +401,7 @@ pub fn export_vcf(root: &Path, destination: &Path) -> Result<ExportReport> {
     })
 }
 
-/// Protegge i separatori in un valore vCard.
+/// Protects the separators inside a vCard value.
 fn escape_value(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -410,7 +410,7 @@ fn escape_value(value: &str) -> String {
         .replace(',', "\\,")
 }
 
-/// Fonde un duplicato nel contatto già registrato, senza perdere recapiti.
+/// Merges a duplicate into the contact already recorded, keeping every detail.
 fn merge_into(target: &mut Contact, other: Contact) {
     if target.display_name.is_none() {
         target.display_name = other.display_name;
