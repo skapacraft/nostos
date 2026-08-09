@@ -324,6 +324,11 @@ Nothing is fetched at runtime. Translations are bundled, because reaching out
 to a translation service would contradict the one promise this application
 makes.
 
+## Reporting a security problem
+
+Not in a public issue: use the **Security** tab, then **Report a vulnerability**.
+What counts as one here, and what does not, is in [SECURITY.md](SECURITY.md).
+
 ## Acknowledgements
 
 The list of suffixes Google appends to edited photos comes from
