@@ -343,7 +343,7 @@ pub(crate) mod testing {
 
     /// Binary variant, for the real image fixtures.
     pub(crate) fn write_bytes(path: &Path, content: &[u8]) {
-        std::fs::create_dir_all(path.parent().expect("percorso con genitore"))
+        std::fs::create_dir_all(path.parent().expect("path with a parent"))
             .expect("creazione cartelle");
         std::fs::write(path, content).expect("scrittura file");
     }
@@ -684,6 +684,6 @@ mod tests {
         assert!(matches!(state.summary(), Err(TakeoutError::NoSource)));
         state
             .clear()
-            .expect("clear su stato vuoto non deve fallire");
+            .expect("clearing an empty state must not fail");
     }
 }

@@ -62,7 +62,7 @@ First complete version of the application.
   Writing the UTC instant as-is would have shifted every photo by the zone
   offset.
 - Output layout of your choosing: original structure, by year, by year and
-  month, or a single folder. Files without a date end up in `senza-data/`
+  month, or a single folder. Files without a date end up in `no-date/`
   rather than being filed under an invented month.
 - Three modes: dry run, repaired copy in a separate tree (the default), and
   rewriting the originals, which requires an explicit confirmation.

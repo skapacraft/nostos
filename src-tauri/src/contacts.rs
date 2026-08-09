@@ -454,7 +454,7 @@ mod tests {
     fn ricompone_le_righe_spezzate() {
         let folded = "BEGIN:VCARD\r\nNOTE:prima parte\r\n  e seconda parte\r\nEND:VCARD\r\n";
         let contacts = parse_vcard(folded);
-        assert_eq!(contacts.len(), 0, "una scheda con solo NOTE resta vuota");
+        assert_eq!(contacts.len(), 0, "a card holding only NOTE stays empty");
 
         let lines = unfold(folded);
         assert!(lines

@@ -140,7 +140,7 @@ src/
   universal time, and writing a UTC instant into it would shift every photo.
   The repaired copy can keep the original structure or be reorganised by year,
   by year and month, or into a single folder; files without a date end up in
-  `senza-data/` rather than being filed under an invented month. It recognises
+  `no-date/` rather than being filed under an invented month. It recognises
   edited versions (`-edited`, `-modificato`, `-modifié`, `-編集済み` and others)
   and does not treat them as duplicates. Three modes: dry run, repaired copy in
   a separate tree (the default), and rewriting the originals, which requires an

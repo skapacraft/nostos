@@ -8,7 +8,7 @@ interface StatProps {
   tone?: "neutral" | "warning";
 }
 
-/** Riquadro numerico usato in tutti i report. */
+/** Numeric tile used across every report. */
 export function Stat({ label, value, hint, tone = "neutral" }: StatProps) {
   const valueTone =
     tone === "warning"

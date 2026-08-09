@@ -379,7 +379,7 @@ mod tests {
         let (events, dropped) = parse_ics(SAMPLE);
 
         assert_eq!(events.len(), 2);
-        assert_eq!(dropped, 1, "la proprietà X-GOOGLE- va scartata");
+        assert_eq!(dropped, 1, "the X-GOOGLE- property has to be dropped");
 
         assert_eq!(events[0].uid.as_deref(), Some("evento-1@google.com"));
         assert_eq!(events[0].summary.as_deref(), Some("Riunione"));
@@ -398,11 +398,8 @@ mod tests {
     #[test]
     fn riconosce_ricorrenze_e_giornate_intere() {
         let (events, _) = parse_ics(SAMPLE);
-        assert!(events[1].is_recurring, "RRULE indica una ricorrenza");
-        assert!(
-            events[1].is_all_day,
-            "VALUE=DATE indica una giornata intera"
-        );
+        assert!(events[1].is_recurring, "RRULE marks a recurrence");
+        assert!(events[1].is_all_day, "VALUE=DATE marks an all-day event");
     }
 
     #[test]
@@ -433,11 +430,11 @@ mod tests {
         assert!(content.ends_with("END:VCALENDAR\r\n"));
         assert!(
             !content.contains("X-GOOGLE-"),
-            "le proprietà proprietarie non devono sopravvivere"
+            "the proprietary properties must not survive"
         );
         assert!(
             !content.contains("Promemoria allarme"),
-            "i VALARM non vengono riportati"
+            "VALARMs are not carried over"
         );
         // The time zone in the parameters must be preserved.
         assert!(content.contains("DTSTART;VALUE=DATE:20200315"));
@@ -453,11 +450,11 @@ mod tests {
         let lunga = format!("DESCRIPTION:{}", "à".repeat(100));
         let folded = fold_line(&lunga);
 
-        assert!(folded.contains("\r\n "), "la riga va ripiegata");
+        assert!(folded.contains("\r\n "), "the line has to be folded");
         for segment in folded.split("\r\n") {
             assert!(
                 segment.len() <= FOLD_WIDTH + 1,
-                "segmento troppo lungo: {} ottetti",
+                "segment too long: {} octets",
                 segment.len()
             );
         }

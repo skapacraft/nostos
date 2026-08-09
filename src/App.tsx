@@ -27,7 +27,7 @@ import type {
   SourceSummary,
 } from "./types";
 
-/** Risultato dell'analisi della sezione selezionata. */
+/** Result of analysing the selected section. */
 type Analysis =
   | { kind: "photos"; path: string; label: string; data: PhotoScanReport }
   | { kind: "contacts"; path: string; label: string; data: ContactsReport }
@@ -40,13 +40,13 @@ export default function App() {
   const [privacy, setPrivacy] = useState<PrivacyReport | null>(null);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [showHelp, setShowHelp] = useState(false);
-  // Il benvenuto compare una volta per sessione: ricordare la scelta
-  // richiederebbe un file di preferenze, che questa app non scrive.
-  // `null` finché non sappiamo cosa ha scelto l'utente: mostrare il modale e
-  // poi farlo sparire sarebbe peggio che aspettare qualche millisecondo.
+  // The welcome screen shows once per session: remembering the choice
+  // would need a preferences file, which this app does not write.
+  // `null` until we know what the user chose: showing the modal and then
+  // making it disappear would be worse than waiting a few milliseconds.
   const [showWelcome, setShowWelcome] = useState<boolean | null>(null);
-  // Cartella di lavoro condivisa da riparazione e pulizia. Vive qui e non nei
-  // pannelli, così non va scelta due volte per la stessa operazione.
+  // Working folder shared by repair and cleanup. It lives here and not in the
+  // panels, so it does not have to be chosen twice for the same operation.
   const [workingFolder, setWorkingFolder] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,13 +69,13 @@ export default function App() {
   const dismissWelcome = useCallback((hideNextTime: boolean) => {
     setShowWelcome(false);
     if (hideNextTime) {
-      // Un salvataggio fallito non deve bloccare l'avvio: al massimo la
-      // presentazione ricompare la volta successiva.
+      // A failed save must not block startup: at worst the introduction
+      // reappears next time.
       api.writePreferences({ hideWelcome: true }).catch(() => undefined);
     }
   }, []);
 
-  // La voce di menu "Guida" arriva come evento dal backend.
+  // The "Guide" menu item arrives as an event from the backend.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
@@ -175,7 +175,7 @@ export default function App() {
     }
   }, []);
 
-  /// Dopo una scrittura reale il report precedente non è più attuale.
+  /// After a real write the previous report is no longer current.
   const handleRepaired = useCallback(async () => {
     if (analysis?.kind !== "photos") return;
     try {
@@ -188,7 +188,7 @@ export default function App() {
     }
   }, [analysis]);
 
-  /// Dopo una pulizia l'analisi precedente non è più attuale.
+  /// After a cleanup the previous analysis is no longer current.
   const handleCleaned = useCallback(async () => {
     if (analysis?.kind !== "drive") return;
     try {

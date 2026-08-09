@@ -543,10 +543,10 @@ mod tests {
         }
 
         let index = build_index(&root, 100).expect("indice");
-        assert_eq!(index.year_folders.len(), 2, "in dubbio restano annate");
+        assert_eq!(index.year_folders.len(), 2, "when in doubt they stay years");
         assert!(
             index.warnings.contains(&Notice::AmbiguousYearFolders),
-            "l'ambiguità va detta, non nascosta: {:?}",
+            "the ambiguity has to be stated, not hidden: {:?}",
             index.warnings
         );
     }
@@ -579,10 +579,7 @@ mod tests {
     #[test]
     fn riconosce_i_suffissi_accentati_anche_in_forma_nfd() {
         let nfd: String = "IMG_1-modifie\u{0301}.jpg".to_string();
-        assert_ne!(
-            nfd, "IMG_1-modifié.jpg",
-            "le due forme differiscono in byte"
-        );
+        assert_ne!(nfd, "IMG_1-modifié.jpg", "the two forms differ in bytes");
         assert_eq!(
             strip_edited_suffix(&nfd).map(|(base, _)| base),
             Some("IMG_1.jpg".to_string())

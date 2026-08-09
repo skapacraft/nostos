@@ -1,37 +1,37 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Genera una serie multi-archivio che imita un export di Google Foto.
+"""Generates a multi-archive series imitating a Google Photos export.
 
-Serve a dare materiale al test `estrazione_di_una_serie_reale`, che estrae una
-serie presa dal disco invece di costruirsela da sé. Il senso è proprio questo:
-un test che genera i propri dati verifica anche le proprie assunzioni, e se
-un'assunzione è sbagliata il test resta verde lo stesso.
+It provides material for the `estrazione_di_una_serie_reale` test, which
+extracts a series taken from disk instead of building one for itself. That is
+precisely the point: a test that generates its own data also validates its own
+assumptions, and if an assumption is wrong the test stays green anyway.
 
-Va detto con chiarezza: **questo non è un Takeout prodotto da Google.**
-Riproduce la struttura, la nomenclatura degli archivi, la divisione a fette e
-le stranezze note dell'export, ma non può garantire di riprodurre ogni scelta
-del suo scrittore zip. Per quelle serve un export vero, chiesto a Google con la
-dimensione massima per archivio impostata bassa così che lo divida davvero.
+Let it be said plainly: **this is not a Takeout produced by Google.** It
+reproduces the structure, the archive naming, the splitting into slices and the
+known quirks of the export, but it cannot guarantee reproducing every choice of
+Google's own zip writer. For those you need a real export, requested from
+Google with the maximum archive size set low so that it actually splits it.
 
-Stranezze riprodotte:
+Quirks reproduced:
 
-- ogni archivio ripete la radice `Takeout/` e le cartelle di sezione;
-- le foto di una stessa annata sono sparse su più archivi;
-- i nomi dei sidecar sono accorciati a 46 caratteri, `.json` compreso, e quando
-  il taglio ne fa collidere due arriva un contatore;
-- un media su diciannove non ha sidecar;
-- gli album sono cartelle che contengono una copia identica della foto, che è
-  il modo in cui Google esporta l'appartenenza a un album;
-- esistono coppie originale/modificato.
+- every archive repeats the `Takeout/` root and the section folders;
+- the photos of a single year are spread across several archives;
+- sidecar names are shortened to 46 characters, `.json` included, and when the
+  cut makes two of them collide a counter appears;
+- one media file in nineteen has no sidecar;
+- albums are folders holding an identical copy of the photo, which is how
+  Google exports album membership;
+- original/edited pairs exist.
 
-Uso:
+Usage:
 
     tools/genera_serie_takeout.py ~/Downloads/prova-multiarchivio
 
-La dimensione si regola con le variabili d'ambiente `OTH_GB` (totale, 15 per
-impostazione predefinita) e `OTH_GB_ARCHIVIO` (per singolo archivio, 1,9 come
-l'opzione "2 GB" di Google). Servono altrettanti gigabyte liberi per estrarre.
+The size is controlled by the environment variables `OTH_GB` (total, 15 by
+default) and `OTH_GB_ARCHIVIO` (per archive, 1.9 like Google's "2 GB" option).
+Extracting needs as many gigabytes free again.
 """
 
 import datetime
@@ -67,17 +67,17 @@ LUOGHI = [
 with open(FIXTURE, "rb") as sorgente:
     TESTA = sorgente.read()
 
-# Un solo serbatoio di byte casuali, riusato a fette: generare quindici
-# gigabyte di casualità vera costerebbe più della scrittura stessa.
+# A single reservoir of random bytes, reused in slices: generating fifteen
+# gigabytes of true randomness would cost more than the writing itself.
 POOL = os.urandom(16 * 1024 * 1024)
 
 
 def corpo(indice, dimensione):
-    """Byte del file: intestazione JPEG reale più riempimento distinto.
+    """File bytes: a real JPEG header plus distinct padding.
 
-    Il marcatore serve a rendere ogni file diverso da tutti gli altri anche a
-    parità di dimensione. Senza, la deduplica per contenuto li unirebbe in un
-    gruppo solo e la misura non direbbe nulla sul caso reale.
+    The marker makes every file different from all the others even at equal
+    size. Without it, deduplication by content would merge them into a single
+    group and the measurement would say nothing about the real case.
     """
     marcatore = f"OTH-{indice:07d}-".encode() * 4
     resto = dimensione - len(TESTA) - len(marcatore)
@@ -95,12 +95,12 @@ def corpo(indice, dimensione):
 
 
 def dimensione_per(indice):
-    """Distribuzione realistica: la maggior parte fra 2,5 e 7 megabyte."""
+    """Realistic distribution: most of them between 2.5 and 7 megabytes."""
     return int(2.5 * 1024 * 1024 + ((indice * 104729) % 4608) * 1024)
 
 
 def sidecar(nome, quando, lat, lon):
-    """Il JSON affiancato, nello schema che Google scrive oggi."""
+    """The sidecar JSON, in the schema Google writes today."""
     leggibile = datetime.datetime.fromtimestamp(
         quando, datetime.timezone.utc
     ).strftime("%d %b %Y, %H:%M:%S UTC")
@@ -126,7 +126,7 @@ def sidecar(nome, quando, lat, lon):
 
 
 def nome_sidecar(nome_media):
-    """Accorcia il nome fino a MAX_NOME_SIDECAR caratteri, `.json` compreso."""
+    """Shortens the name to MAX_NOME_SIDECAR characters, `.json` included."""
     completo = f"{nome_media}.supplemental-metadata.json"
     if len(completo) <= MAX_NOME_SIDECAR:
         return completo
@@ -134,7 +134,7 @@ def nome_sidecar(nome_media):
 
 
 def costruisci_piano():
-    """Elenca i media da scrivere, prima di toccare il disco."""
+    """Lists the media to write, before touching the disk."""
     piano, totale, indice = [], 0, 0
     while totale < BERSAGLIO:
         anno = ANNI[indice % len(ANNI)]
@@ -151,16 +151,16 @@ def costruisci_piano():
         dimensione = dimensione_per(indice)
 
         if indice % 37 == 5:
-            # Nome Pixel, con i millisecondi in coda.
+            # Pixel name, with the milliseconds at the end.
             nome = f"PXL_{anno}{mese:02d}{giorno:02d}_{ora:02d}{minuto:02d}00{indice % 1000:03d}.jpg"
         elif indice % 23 == 3:
-            # Nome lungo, che costringe Google ad accorciare il sidecar.
+            # Long name, forcing Google to shorten the sidecar.
             nome = f"Foto scattata durante la gita del {giorno:02d}-{mese:02d}-{anno}.jpg"
         else:
             nome = f"IMG_{indice:05d}.JPG"
 
         cartella = f"Takeout/Google Foto/Foto da {anno}"
-        # Un media su diciannove arriva senza sidecar, come capita davvero.
+        # One media file in nineteen arrives without a sidecar, as really happens.
         dati = None if indice % 19 == 11 else sidecar(nome, quando, lat, lon)
         piano.append((f"{cartella}/{nome}", indice, dimensione, dati))
         totale += dimensione
@@ -178,7 +178,7 @@ def costruisci_piano():
             )
             totale += dimensione
 
-        # Copia identica in un album: è così che Google esporta l'appartenenza.
+        # An identical copy in an album: that is how Google exports membership.
         if indice % 8 == 0:
             album = ALBUM[(indice // 8) % len(ALBUM)]
             piano.append(
@@ -196,7 +196,7 @@ def costruisci_piano():
 
 
 def altre_sezioni():
-    """Contatti e calendario, con i duplicati che la deduplica deve trovare."""
+    """Contacts and calendar, with the duplicates deduplication has to find."""
     schede = []
     for i in range(400):
         schede.append(
@@ -205,7 +205,7 @@ def altre_sezioni():
             f"TEL:+39 320 {1_000_000 + i}\r\nEND:VCARD\r\n"
         )
         if i % 5 == 0:
-            # Stessa email con altre maiuscole: va riconosciuta come duplicato.
+            # Same email in different case: it has to be recognised as a duplicate.
             schede.append(
                 f"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Contatto {i}\r\n"
                 f"EMAIL:CONTATTO{i}@EXAMPLE.COM\r\nEND:VCARD\r\n"
@@ -223,7 +223,7 @@ def altre_sezioni():
         )
         eventi.append(evento)
         if i % 7 == 0:
-            eventi.append(evento)  # stesso UID due volte
+            eventi.append(evento)  # same UID twice
     eventi.append("END:VCALENDAR\r\n")
 
     return [
@@ -237,7 +237,7 @@ def altre_sezioni():
 
 
 class Serie:
-    """Scrive gli archivi uno dopo l'altro, chiudendoli alla dimensione voluta."""
+    """Writes the archives one after another, closing them at the wanted size."""
 
     def __init__(self, destinazione):
         self.destinazione = destinazione
@@ -254,9 +254,9 @@ class Serie:
         self.numero += 1
         nome = f"takeout-20260806T120000Z-{self.numero:03d}.zip"
         percorso = os.path.join(self.destinazione, nome)
-        # Le foto non si comprimono: Google le mette nello zip così come sono,
-        # e i JSON invece li comprime. Riprodurre entrambi i casi tiene in
-        # esercizio tutti e due i percorsi di lettura.
+        # Photos do not compress: Google puts them in the zip as they are, and
+        # compresses the JSONs instead. Reproducing both cases keeps both
+        # reading paths exercised.
         self.zf = zipfile.ZipFile(percorso, "w", zipfile.ZIP_STORED, allowZip64=True)
         self.cartelle = set()
         self.voci = 0
@@ -304,9 +304,9 @@ class Serie:
         cartella = os.path.dirname(percorso)
         base = nome_sidecar(os.path.basename(percorso))
         candidato = f"{cartella}/{base}"
-        # L'accorciamento può far collidere due sidecar: Google in quel caso
-        # aggiunge un contatore, e scrivere due volte lo stesso nome nello zip
-        # lascerebbe invece una voce irraggiungibile.
+        # Shortening can make two sidecars collide: Google adds a counter in
+        # that case, whereas writing the same name twice into the zip would
+        # leave an unreachable entry.
         contatore = 1
         while candidato in self.nomi:
             radice, _ = os.path.splitext(base)

@@ -488,20 +488,20 @@ mod tests {
         assert_eq!(
             series.archives.len(),
             2,
-            "solo gli archivi dello stesso export"
+            "only the archives of the same export"
         );
         assert!(series.missing.is_empty());
         assert!(series.archives[0].ends_with("takeout-20260805T090000Z-001.zip"));
 
         let dest = dir.join("estratto");
         let report = extract_series(&series.archives, &dest, &crate::app_state::no_progress)
-            .expect("estrazione della serie");
+            .expect("series extraction");
 
         assert_eq!(report.files_written, 3);
         assert!(report.skipped.is_empty());
         assert!(
             report.collisions.is_empty(),
-            "le cartelle ripetute non sono collisioni"
+            "repeated folders are not collisions"
         );
 
         assert_eq!(
@@ -529,7 +529,7 @@ mod tests {
 
         let series = discover_series(&dir.join("takeout-20260805T090000Z-001.zip")).expect("serie");
         assert_eq!(series.archives.len(), 2);
-        assert_eq!(series.missing, vec![2], "il download è incompleto");
+        assert_eq!(series.missing, vec![2], "the download is incomplete");
     }
 
     #[test]

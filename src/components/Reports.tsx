@@ -41,11 +41,11 @@ function Card({ children }: { children: ReactNode }) {
   );
 }
 
-// --- Foto ----------------------------------------------------------------
+// --- Photos --------------------------------------------------------------
 
 interface PhotoReportProps {
   report: PhotoScanReport;
-  /** Cartella analizzata, su cui agisce la riparazione. */
+  /** The analysed folder, the one the repair acts on. */
   path: string;
   workingFolder: string | null;
   onWorkingFolder: (path: string) => void;
@@ -158,7 +158,7 @@ export function PhotoReportView({
   );
 }
 
-// --- Contatti ------------------------------------------------------------
+// --- Contacts ------------------------------------------------------------
 
 interface ContactsReportProps {
   report: ContactsReport;
@@ -356,7 +356,7 @@ export function DriveReportView({
   );
 }
 
-// --- Calendario ----------------------------------------------------------
+// --- Calendar ------------------------------------------------------------
 
 interface CalendarReportProps {
   report: CalendarReport;
@@ -364,7 +364,7 @@ interface CalendarReportProps {
   onError: (message: string) => void;
 }
 
-/** Rende leggibile una data iCalendar grezza (`20200101T120000Z`). */
+/** Renders a raw iCalendar date readable (`20200101T120000Z`). */
 function formatIcsDate(raw: string | null): string {
   if (!raw || raw.length < 8) return "data non disponibile";
   const day = `${raw.slice(6, 8)}/${raw.slice(4, 6)}/${raw.slice(0, 4)}`;
