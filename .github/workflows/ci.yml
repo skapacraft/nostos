@@ -154,7 +154,7 @@ jobs:
       - name: Build the application
         run: npm run tauri build -- --no-bundle
 
-      - name: Start it and check the window appears
+      - name: Start it and check the page renders
         env:
           # WebKitGTK falls over on headless runners without these: it tries to
           # use GPU compositing and a dmabuf renderer that Xvfb does not provide.
@@ -178,6 +178,20 @@ jobs:
               exit 1
             fi
 
+            # The window is not evidence that anything loaded: Tauri opens it
+            # before the webview does a thing. WebKitGTK runs the page in a
+            # separate WebKitWebProcess, which exists only once there is
+            # content to draw, so that is what gets checked.
+            for _ in $(seq 30); do
+              pgrep -f WebKitWebProcess >/dev/null && break
+              sleep 2
+            done
+            if ! pgrep -f WebKitWebProcess >/dev/null; then
+              echo "::error::WebKitGTK never started a web process: the page did not load"
+              kill $APP 2>/dev/null || true
+              exit 1
+            fi
+
             # A window that appears and then dies is not a working application.
             sleep 10
             if ! kill -0 $APP 2>/dev/null; then
@@ -188,7 +202,7 @@ jobs:
             import -window root smoke-linux.png || true
             kill $APP 2>/dev/null || true
           '
-          echo "The window opened and the application stayed alive."
+          echo "The page rendered and the application stayed alive."
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -221,7 +235,12 @@ jobs:
 
       # The Windows runners have a real desktop session and WebView2 is
       # preinstalled, so the application can actually open a window here.
-      - name: Start it and check the window appears
+      #
+      # The window title is not evidence that anything loaded: Tauri sets it
+      # from the configuration before the webview does a thing. What proves the
+      # page rendered is that WebView2 spawned a renderer child process, which
+      # it only does once there is content to draw.
+      - name: Start it and check the page renders
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -230,8 +249,6 @@ jobs:
 
           $app = Start-Process -FilePath $bin -PassThru
 
-          # The window title arrives after the webview has loaded, so we wait
-          # for it rather than for the process, which exists immediately.
           $deadline = (Get-Date).AddSeconds(60)
           $title = ""
           while ((Get-Date) -lt $deadline) {
@@ -246,20 +263,53 @@ jobs:
           }
           Write-Host "Window title: $title"
 
+          # WebView2 runs the page in its own child processes. A renderer
+          # appearing means the embedded assets were served and parsed; without
+          # one, the window would be an empty frame.
+          $deadline = (Get-Date).AddSeconds(60)
+          $renderer = $null
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 2
+            $renderer = Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" |
+              Where-Object { $_.CommandLine -like "*--type=renderer*" }
+            if ($renderer) { break }
+          }
+          if (-not $renderer) {
+            Stop-Process -Id $app.Id -Force
+            throw "WebView2 never started a renderer: the page did not load"
+          }
+          Write-Host "WebView2 renderer processes: $(@($renderer).Count)"
+
           # A window that appears and then dies is not a working application.
           Start-Sleep -Seconds 10
           $app.Refresh()
           if ($app.HasExited) { throw "the application exited ten seconds after opening its window" }
 
-          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-          $area = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $shot = New-Object System.Drawing.Bitmap $area.Width, $area.Height
-          $g = [System.Drawing.Graphics]::FromImage($shot)
-          $g.CopyFromScreen($area.Location, [System.Drawing.Point]::Empty, $area.Size)
-          $shot.Save("smoke-windows.png")
+          # PrintWindow with PW_RENDERFULLCONTENT (2) is the documented way to
+          # capture a window drawn through DirectComposition. Plain BitBlt, and
+          # therefore CopyFromScreen, returns a blank rectangle for WebView2.
+          Add-Type -AssemblyName System.Drawing
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class Shot {
+            [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
+            [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+            public struct RECT { public int L, T, R, B; }
+          }
+"@
+          $h = $app.MainWindowHandle
+          $r = New-Object Shot+RECT
+          [void][Shot]::GetWindowRect($h, [ref]$r)
+          $bmp = New-Object System.Drawing.Bitmap (($r.R - $r.L), ($r.B - $r.T))
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $dc = $g.GetHdc()
+          [void][Shot]::PrintWindow($h, $dc, 2)
+          $g.ReleaseHdc($dc)
+          $bmp.Save("smoke-windows.png")
 
           Stop-Process -Id $app.Id -Force
-          Write-Host "The window opened and the application stayed alive."
+          Write-Host "The page rendered and the application stayed alive."
 
       - uses: actions/upload-artifact@v4
         if: always()
