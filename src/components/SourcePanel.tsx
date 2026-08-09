@@ -56,21 +56,21 @@ export function SourcePanel({
           disabled={busy}
           className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          Chiudi
+          Close
         </button>
       </header>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat
-          label="Tipo"
-          value={isArchive ? "Archivio .zip" : "Cartella"}
-          hint={isArchive ? "non estratto" : undefined}
+          label="Type"
+          value={isArchive ? ".zip archive" : "Folder"}
+          hint={isArchive ? "not extracted" : undefined}
         />
-        <Stat label="File" value={formatCount(summary.fileCount)} />
+        <Stat label="Files" value={formatCount(summary.fileCount)} />
         <Stat
-          label="Dimensione"
+          label="Size"
           value={formatBytes(summary.totalBytes)}
-          hint={isArchive ? "decompressa" : undefined}
+          hint={isArchive ? "uncompressed" : undefined}
         />
       </div>
 
@@ -78,12 +78,12 @@ export function SourcePanel({
 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Sezioni trovate
+          Sections found
         </h3>
 
         {summary.sections.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Nessuna sezione riconosciuta in questa sorgente.
+            No section recognised in this source.
           </p>
         ) : (
           <ul className="divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
@@ -102,7 +102,7 @@ export function SourcePanel({
                     </p>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       {section.fileCount > 0
-                        ? `${formatCount(section.fileCount)} file, ${formatBytes(section.totalBytes)}`
+                        ? `${formatCount(section.fileCount)} files, ${formatBytes(section.totalBytes)}`
                         : SECTION_LABELS[section.section]}
                     </p>
                   </div>
@@ -119,11 +119,11 @@ export function SourcePanel({
                           : "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white",
                       ].join(" ")}
                     >
-                      {isActive ? "Aggiorna" : "Analizza"}
+                      {isActive ? "Refresh" : "Examine"}
                     </button>
                   ) : (
                     <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">
-                      {isArchive ? "estrai prima" : "analizzatore non disponibile"}
+                      {isArchive ? "extract first" : "no analyser available"}
                     </span>
                   )}
                 </li>

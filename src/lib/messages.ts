@@ -27,73 +27,76 @@ import type {
 
 /** Readable name of an export section. */
 export const SECTION_LABELS: Record<TakeoutSection, string> = {
-  googlePhotos: "Google Foto",
-  contacts: "Contatti",
+  googlePhotos: "Google Photos",
+  contacts: "Contacts",
   drive: "Drive",
   mail: "Mail",
-  calendar: "Calendario",
+  calendar: "Calendar",
   youTube: "YouTube",
-  other: "Altro",
+  other: "Other",
 };
 
 /** Readable name of a file category. */
 export const CATEGORY_LABELS: Record<FileCategory, string> = {
-  document: "Documenti",
-  spreadsheet: "Fogli di calcolo",
-  presentation: "Presentazioni",
+  document: "Documents",
+  spreadsheet: "Spreadsheets",
+  presentation: "Presentations",
   pdf: "PDF",
-  image: "Immagini",
+  image: "Images",
   video: "Video",
   audio: "Audio",
-  archive: "Archivi",
-  code: "Codice",
-  placeholder: "Segnaposto senza contenuto",
-  other: "Altro",
+  archive: "Archives",
+  code: "Code",
+  placeholder: "Placeholders with no content",
+  other: "Other",
 };
 
 /** Why a sidecar stayed where it was instead of being set aside. */
 export const SIDECAR_KEPT_LABELS: Record<SidecarKept, string> = {
   noExifContainer:
-    "il formato non ha un blocco EXIF dove scrivere (PNG, GIF, video)",
-  unreadableExif: "il file non ha un blocco EXIF leggibile",
-  missingDate: "la data di scatto non risulta scritta nel file",
-  missingGeo: "le coordinate non risultano scritte nel file",
-  missingDescription: "la descrizione non risulta scritta nel file",
-  missingPeople: "i volti riconosciuti non risultano scritti nel file",
-  missingFavorite: "il contrassegno di preferito non risulta scritto nel file",
-  viewCountHasNoTag: "il conteggio delle visualizzazioni non ha un tag dove stare",
-  photoUrlHasNoTag: "l'indirizzo su Google Foto non ha un tag dove stare",
+    "the format has no EXIF block to write into (PNG, GIF, video)",
+  unreadableExif: "the file has no readable EXIF block",
+  missingDate: "the capture date does not appear to be written into the file",
+  missingGeo: "the coordinates do not appear to be written into the file",
+  missingDescription:
+    "the description does not appear to be written into the file",
+  missingPeople:
+    "the recognised faces do not appear to be written into the file",
+  missingFavorite:
+    "the favourite mark does not appear to be written into the file",
+  viewCountHasNoTag: "the view count has no tag to live in",
+  photoUrlHasNoTag: "the Google Photos address has no tag to live in",
 };
 
 /** The privacy guarantees, as the guide shows them. */
 export const PRIVACY_NOTES: Record<PrivacyNote, string> = {
-  noHttpCrates: "Nessuna crate HTTP nel grafo delle dipendenze.",
-  restrictiveCsp: "CSP restrittiva: connect-src limitato al canale IPC locale.",
-  noUpdaterNoOpener:
-    "Nessun updater e nessun plugin di apertura URL registrato.",
+  noHttpCrates: "No HTTP crate anywhere in the dependency graph.",
+  restrictiveCsp:
+    "Restrictive CSP: connect-src is limited to the local IPC channel.",
+  noUpdaterNoOpener: "No updater and no URL opening plugin is registered.",
   dataStaysLocal:
-    "I dati restano nei percorsi scelti dall'utente e in memoria.",
+    "Your data stays in the folders you choose, and in memory.",
 };
 
 /** Text of a non-blocking notice. */
 export function noticeText(notice: Notice): string {
   switch (notice.code) {
     case "noSectionsFound":
-      return "Nessuna sezione Takeout riconosciuta: verifica di aver selezionato la cartella che contiene Google Foto, Drive o Contatti.";
+      return "No Takeout section recognised: check that you picked the folder containing Google Photos, Drive or Contacts.";
     case "archiveNotExtracted":
-      return "Archivio non estratto: estrailo per analizzare foto, contatti e Drive.";
+      return "The archive has not been extracted: extract it to examine photos, contacts and Drive.";
     case "unsafeArchiveEntries":
-      return `${formatCount(notice.count)} voci dell'archivio hanno percorsi non sicuri e verranno ignorate in estrazione.`;
+      return `${formatCount(notice.count)} entries in the archive have unsafe paths and will be skipped during extraction.`;
     case "placeholdersWithoutContent":
-      return `${formatCount(notice.count)} file sono segnaposto Google senza contenuto: l'export non include i dati, solo un riferimento online.`;
+      return `${formatCount(notice.count)} files are Google placeholders with no content: the export carries a reference to something online, not the data itself.`;
     case "photosOnlyInAlbums":
-      return `${formatCount(notice.count)} foto compaiono solo dentro un album e in nessuna cartella per anno: rimuoverle dagli album le farebbe sparire del tutto.`;
+      return `${formatCount(notice.count)} photos appear only inside an album and in no year folder: removing them from the albums would make them disappear entirely.`;
     case "photosSharedWithAlbums":
-      return `${formatCount(notice.count)} foto sono duplicate tra cartelle per anno e album. Esporta il manifest prima di deduplicare, altrimenti l'appartenenza agli album va persa.`;
+      return `${formatCount(notice.count)} photos are duplicated between year folders and albums. Save the manifest before deduplicating, or album membership is lost.`;
     case "ambiguousYearFolders":
-      return "Più cartelle finiscono con un anno senza condividere un prefisso: non è possibile dire quali siano annate e quali album con l'anno nel nome. Sono state trattate tutte come annate, quindi il manifest potrebbe non registrare l'appartenenza a un album.";
+      return "Several folders end with a year without sharing a prefix, so there is no telling which are years and which are albums with a year in the name. All of them were treated as years, which means the manifest may not record an album membership.";
     case "readFailed":
-      return `Non è stato possibile leggere ${notice.path}.`;
+      return `Could not read ${notice.path}.`;
   }
 }
 
@@ -111,31 +114,31 @@ export function noticeDetail(notice: Notice): string | null {
 export function errorText(payload: ErrorPayload): string {
   switch (payload.code) {
     case "io":
-      return `Errore di lettura o scrittura su ${payload.path}.`;
+      return `Could not read or write ${payload.path}.`;
     case "archive":
-      return "L'archivio non è valido o è danneggiato.";
+      return "The archive is not valid, or it is damaged.";
     case "unsafeEntry":
-      return `L'archivio contiene una voce che tenta di scrivere fuori dalla destinazione: ${payload.entry}.`;
+      return `The archive contains an entry that tries to write outside the destination: ${payload.entry}.`;
     case "metadata":
-      return "I metadati non sono interpretabili.";
+      return "The metadata cannot be interpreted.";
     case "notFound":
-      return `Percorso non trovato: ${payload.path}.`;
+      return `Path not found: ${payload.path}.`;
     case "noSource":
-      return "Nessuna sorgente Takeout caricata.";
+      return "No Takeout source is loaded.";
     case "notEnoughSpace":
-      return `Spazio insufficiente sulla destinazione: servono ${formatBytes(payload.needed)} e ne restano ${formatBytes(payload.available)}.`;
+      return `Not enough room on the destination: ${formatBytes(payload.needed)} is needed and ${formatBytes(payload.available)} is left.`;
     case "task":
-      return "L'elaborazione in background si è interrotta.";
+      return "The background work stopped.";
     case "poisoned":
-      return "Stato interno non consistente: riavvia l'applicazione.";
+      return "Internal state is inconsistent: restart the application.";
     case "destinationInsideSource":
-      return "La destinazione non può stare dentro la cartella di origine.";
+      return "The destination cannot sit inside the source folder.";
     case "destinationRequired":
-      return "Questa modalità richiede di scegliere una destinazione.";
+      return "This mode needs a destination to be chosen.";
     case "unrecognisedSource":
-      return `${payload.path} non è una cartella Takeout né un archivio takeout-*.zip.`;
+      return `${payload.path} is neither a Takeout folder nor a takeout-*.zip archive.`;
     case "configDirUnavailable":
-      return "La cartella di configurazione del sistema non è raggiungibile.";
+      return "The system configuration folder cannot be reached.";
   }
 }
 

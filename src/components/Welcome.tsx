@@ -14,20 +14,20 @@ interface WelcomeProps {
 
 const POINTS: { title: string; body: string }[] = [
   {
-    title: "Rimette in ordine i tuoi export",
-    body: "Ripristina le date delle foto, unisce gli archivi spezzati, deduplica contatti e calendari e trova i file ripetuti.",
+    title: "Puts your export back in order",
+    body: "Restores the dates of your photos, merges split archives, deduplicates contacts and calendars, and finds the repeated files.",
   },
   {
-    title: "Non manda niente da nessuna parte",
-    body: "L'applicazione non apre connessioni di rete. Non è una promessa: è un controllo che fa fallire la compilazione se qualcuno prova a introdurne una.",
+    title: "Sends nothing anywhere",
+    body: "The application opens no network connections. That is not a promise: it is a check that fails the build if anyone tries to add one.",
   },
   {
-    title: "Non cancella niente",
-    body: "Le modifiche predefinite scrivono copie altrove e lasciano intatti gli originali. Le operazioni che spostano file sono annullabili.",
+    title: "Deletes nothing",
+    body: "The default changes write copies elsewhere and leave your originals untouched. Anything that moves files can be undone.",
   },
   {
-    title: "Controlla lo spazio prima di partire",
-    body: "Una libreria da centinaia di gigabyte non ci sta due volte sullo stesso disco. L'app se ne accorge prima di cominciare e propone come procedere lo stesso.",
+    title: "Checks the room before starting",
+    body: "A library of several hundred gigabytes does not fit twice on the same disk. The application works this out before starting, and offers a way to proceed anyway.",
   },
 ];
 
@@ -85,10 +85,10 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
               id="welcome-title"
               className="text-lg font-semibold text-zinc-900 dark:text-zinc-100"
             >
-              Benvenuto in Nostos
+              Welcome to Nostos
             </h2>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              I tuoi dati Google, elaborati sul tuo computer.
+              Your Google data, processed on your own computer.
             </p>
           </div>
         </div>
@@ -113,10 +113,10 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
         </ul>
 
         <p className="mt-5 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-300">
-          Per iniziare, trascina nella finestra la cartella{" "}
-          <span className="font-mono">Takeout</span> o uno degli archivi{" "}
-          <span className="font-mono">takeout-...zip</span> che hai scaricato da
-          Google.
+          To begin, drag the <span className="font-mono">Takeout</span> folder
+          into this window, or one of the{" "}
+          <span className="font-mono">takeout-....zip</span> archives you
+          downloaded from Google.
         </p>
 
         <label className="mt-5 flex cursor-pointer items-center gap-2.5 text-sm text-zinc-600 dark:text-zinc-300">
@@ -125,7 +125,7 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
             checked={hideNextTime}
             onChange={(event) => setHideNextTime(event.target.checked)}
           />
-          <span>Non mostrare più questa presentazione</span>
+          <span>Do not show this introduction again</span>
         </label>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -134,7 +134,7 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
             onClick={onOpenHelp}
             className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
-            Apri la guida
+            Open the guide
           </button>
           <button
             ref={startRef}
@@ -142,13 +142,13 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
             onClick={() => onStart(hideNextTime)}
             className="rounded-lg bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
           >
-            Inizia
+            Start
           </button>
         </div>
 
         {info ? (
           <p className="mt-4 text-center text-xs text-zinc-400 dark:text-zinc-500">
-            Versione {info.version} · {info.license} · {info.author}
+            Version {info.version} · {info.license} · {info.author}
           </p>
         ) : null}
       </div>

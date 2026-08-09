@@ -63,7 +63,7 @@ export function ProgressBar({ progress, label }: ProgressBarProps) {
 
       {progress && progress.errors > 0 ? (
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          {formatCount(progress.errors)} file con problemi
+          {formatCount(progress.errors)} files with problems
         </p>
       ) : null}
     </div>

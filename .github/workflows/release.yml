@@ -6,11 +6,9 @@ name: Release
 # .msi nor .dmg. Every system has to be built on its own runner, which is why
 # this file exists instead of a local script.
 #
-# macOS is deliberately absent. Without an Apple Developer ID certificate the
-# bundle is unsigned, and Gatekeeper refuses to open it: publishing a package
-# that a user cannot run is worse than publishing nothing, because they blame
-# the application rather than the missing signature. It comes back when the
-# certificate does.
+# The matrix ships Windows and Linux. macOS is added once its notarisation
+# path is set up: a bundle that the system refuses to open is worse than no
+# bundle, because the user blames the application.
 on:
   push:
     tags: ["v*"]
@@ -29,6 +27,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # One runner at a time, and not for want of machines. Each job asks the
+      # action to put its bundles on the draft release for this tag, and a
+      # draft is not uniquely identified by its tag: two jobs starting together
+      # both fail to find one and both create one, leaving two drafts with the
+      # same tag holding half the files each. Run in sequence and the second
+      # job finds what the first made.
+      max-parallel: 1
       matrix:
         include:
           # The oldest Linux runner available: the runner's glibc and webkit2gtk
@@ -108,13 +113,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$stage\Assets" | Out-Null
 
           Copy-Item "src-tauri\target\release\nostos.exe" "$stage\"
-          foreach ($logo in "Square150x150Logo","Square44x44Logo","Square71x71Logo","Square310x310Logo","StoreLogo") {
+          # The wide tile is not square, so the icon generator does not produce
+          # one: it is drawn separately from wide-tile.svg and committed beside
+          # the rest. Substituting the 310x310 square here, as this step used
+          # to, hands Windows an image of the wrong shape to stretch across the
+          # tile.
+          foreach ($logo in "Square150x150Logo","Square44x44Logo","Square71x71Logo","Square310x310Logo","Wide310x150Logo","StoreLogo") {
             Copy-Item "src-tauri\icons\$logo.png" "$stage\Assets\"
           }
-          # The manifest asks for a wide tile, which the icon generator does not
-          # produce: the 310x310 square stands in rather than leaving a
-          # reference to a file that is not there.
-          Copy-Item "src-tauri\icons\Square310x310Logo.png" "$stage\Assets\Wide310x150Logo.png"
 
           # The Store reserves the fourth version field for itself, so it stays 0.
           $version = "${{ github.ref_name }}".TrimStart("v") + ".0"

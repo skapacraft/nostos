@@ -33,17 +33,17 @@ interface FolderCleanerProps {
 }
 
 const MODE_LABELS: Record<CleanMode, string> = {
-  dryRun: "Solo analisi",
-  copyToOutput: "Albero pulito altrove",
-  quarantine: "Sposta in quarantena",
+  dryRun: "Analyse only",
+  copyToOutput: "Clean tree elsewhere",
+  quarantine: "Move to quarantine",
 };
 
 const MODE_HINTS: Record<CleanMode, string> = {
-  dryRun: "Calcola che cosa cambierebbe. Non scrive nulla.",
+  dryRun: "Works out what would change. Writes nothing.",
   copyToOutput:
-    "Ricostruisce l'albero altrove tenendo un solo esemplare per contenuto. L'originale resta com'è.",
+    "Rebuilds the tree elsewhere, keeping one file per distinct content. The original is left as it is.",
   quarantine:
-    "Sposta le copie in eccesso e la spazzatura in una cartella a parte, con un registro che permette di rimettere tutto a posto.",
+    "Moves the surplus copies and the junk into a separate folder, with a ledger that puts everything back.",
 };
 
 /**
@@ -102,8 +102,8 @@ export function FolderCleaner({
         multiple: false,
         title:
           mode === "quarantine"
-            ? "Dove mettere la quarantena"
-            : "Dove creare l'albero pulito",
+            ? "Where to put the quarantine"
+            : "Where to build the clean tree",
       });
       if (typeof selected === "string") onDestination(selected);
     } catch (error) {
@@ -113,7 +113,7 @@ export function FolderCleaner({
 
   const run = useCallback(async () => {
     if (mode !== "dryRun" && !destination) {
-      onError("Scegli prima la cartella di destinazione.");
+      onError("Choose the destination folder first.");
       return;
     }
 
@@ -168,17 +168,16 @@ export function FolderCleaner({
     <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <div>
         <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          Pulizia
+          Cleanup
         </h4>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          I duplicati sono confrontati per contenuto, non per nome: due file con
-          lo stesso nome e la stessa dimensione ma contenuto diverso restano
-          entrambi.
+          Duplicates are compared by content and not by name: two files with
+          the same name and the same size but different content both survive.
         </p>
       </div>
 
       <fieldset disabled={running} className="space-y-2">
-        <legend className="sr-only">Modalità di pulizia</legend>
+        <legend className="sr-only">Cleanup mode</legend>
         {(Object.keys(MODE_LABELS) as CleanMode[]).map((value) => (
           <label
             key={value}
@@ -212,7 +211,7 @@ export function FolderCleaner({
             onChange={(e) => setRemoveDuplicates(e.target.checked)}
             disabled={running}
           />
-          <span className="text-zinc-700 dark:text-zinc-300">Duplicati</span>
+          <span className="text-zinc-700 dark:text-zinc-300">Duplicates</span>
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -222,7 +221,7 @@ export function FolderCleaner({
             disabled={running}
           />
           <span className="text-zinc-700 dark:text-zinc-300">
-            File di sistema (.DS_Store, Thumbs.db, __MACOSX)
+            System files (.DS_Store, Thumbs.db, __MACOSX)
           </span>
         </label>
       </div>
@@ -235,23 +234,23 @@ export function FolderCleaner({
             disabled={running}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
-            {destination ? "Cambia cartella" : "Scegli cartella"}
+            {destination ? "Change folder" : "Choose folder"}
           </button>
           <span
             className="selectable min-w-0 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400"
             title={destination ?? undefined}
           >
-            {destination ? shortenPath(destination, 56) : "nessuna cartella scelta"}
+            {destination ? shortenPath(destination, 56) : "no folder chosen"}
           </span>
         </div>
       ) : null}
 
       {blockedByAlbums ? (
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-          Questa cartella contiene album. Salva prima il manifest nel pannello
-          qui sopra: la deduplica rimuove le copie negli album, e con esse
-          l'unica traccia di quali foto vi appartenevano. I file tornano dalla
-          quarantena, quell'informazione no.
+          This folder contains albums. Save the manifest in the panel above
+          first: deduplication removes the copies inside the albums, and with
+          them the only trace of which photos belonged to which. Files come
+          back from quarantine, that information does not.
         </p>
       ) : null}
 
@@ -261,11 +260,11 @@ export function FolderCleaner({
         disabled={running || needsDestination || blockedByAlbums}
         className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
       >
-        {running ? "Elaborazione..." : `Avvia: ${MODE_LABELS[mode]}`}
+        {running ? "Working..." : `Start: ${MODE_LABELS[mode]}`}
       </button>
 
       {running || progress ? (
-        <ProgressBar progress={progress} label="File verificati" />
+        <ProgressBar progress={progress} label="Files checked" />
       ) : null}
 
       {plan ? <PlanSummary plan={plan} /> : null}
@@ -273,9 +272,9 @@ export function FolderCleaner({
       {report ? (
         <div className="space-y-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/30">
           <p className="text-emerald-900 dark:text-emerald-200">
-            Spostati {formatCount(report.duplicatesHandled)} duplicati e{" "}
-            {formatCount(report.junkHandled)} file di sistema.{" "}
-            {formatBytes(report.bytesReclaimed)} liberati.
+            Moved {formatCount(report.duplicatesHandled)} duplicates and{" "}
+            {formatCount(report.junkHandled)} system files.{" "}
+            {formatBytes(report.bytesReclaimed)} freed.
           </p>
           {report.manifest ? (
             <>
@@ -292,21 +291,21 @@ export function FolderCleaner({
                 disabled={running || restore !== null}
                 className="rounded-lg border border-emerald-500 px-3 py-1.5 text-sm font-medium text-emerald-900 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
               >
-                Annulla e rimetti tutto a posto
+                Undo and put everything back
               </button>
             </>
           ) : null}
           {restore ? (
             <p className="text-emerald-900 dark:text-emerald-200">
-              Ripristinati {formatCount(restore.restored)} file.
+              Restored {formatCount(restore.restored)} files.
               {restore.skippedExisting > 0
-                ? ` ${formatCount(restore.skippedExisting)} saltati perché già presenti all'origine.`
+                ? ` ${formatCount(restore.skippedExisting)} skipped because they were already back at the source.`
                 : ""}
             </p>
           ) : null}
           {report.failures.length > 0 ? (
             <p className="text-red-700 dark:text-red-400">
-              {formatCount(report.failures.length)} errori.
+              {formatCount(report.failures.length)} errors.
             </p>
           ) : null}
         </div>
@@ -322,42 +321,42 @@ function PlanSummary({ plan }: { plan: CleanPlan }) {
     <div className="space-y-2 rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-800/50">
       {nothingToDo ? (
         <p className="text-zinc-900 dark:text-zinc-100">
-          Niente da rimuovere: {formatCount(plan.filesScanned)} file, tutti unici
-          e nessuna spazzatura di sistema.
+          Nothing to remove: {formatCount(plan.filesScanned)} files, all
+          distinct, and no system junk.
         </p>
       ) : (
         <p className="text-zinc-900 dark:text-zinc-100">
-          {formatCount(plan.duplicateCopies)} copie in eccesso e{" "}
-          {formatCount(plan.junkFiles)} file di sistema su{" "}
-          {formatCount(plan.filesScanned)} esaminati.{" "}
+          {formatCount(plan.duplicateCopies)} surplus copies and{" "}
+          {formatCount(plan.junkFiles)} system files out of{" "}
+          {formatCount(plan.filesScanned)} examined.{" "}
           <span className="font-medium">
-            {formatBytes(plan.reclaimableBytes)} recuperabili.
+            {formatBytes(plan.reclaimableBytes)} recoverable.
           </span>
         </p>
       )}
 
       {plan.companionFiles > 0 ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          {formatCount(plan.companionFiles)} sidecar JSON seguiranno i media
-          rimossi, per non lasciare file orfani.
+          {formatCount(plan.companionFiles)} JSON sidecars will follow the
+          media they belong to, so no orphans are left behind.
         </p>
       ) : null}
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        Letti {formatBytes(plan.hashedBytes)} per verificare il contenuto: solo i
-        file di pari dimensione vengono confrontati davvero.
+        {formatBytes(plan.hashedBytes)} read to verify the content: only files
+        of equal size are actually compared.
       </p>
 
       {plan.duplicateGroups.length > 0 ? (
         <details className="text-xs">
           <summary className="cursor-pointer text-zinc-600 dark:text-zinc-300">
-            Vedi i {formatCount(plan.duplicateGroups.length)} gruppi di duplicati
+            See the {formatCount(plan.duplicateGroups.length)} duplicate groups
           </summary>
           <ul className="mt-2 max-h-52 space-y-2 overflow-y-auto">
             {plan.duplicateGroups.slice(0, 20).map((group) => (
               <li key={group.hash} className="selectable">
                 <p className="truncate text-zinc-700 dark:text-zinc-300">
-                  conservato: {shortenPath(group.kept, 60)}
+                  kept: {shortenPath(group.kept, 60)}
                 </p>
                 {group.copies.map((copy) => (
                   <p
@@ -368,7 +367,7 @@ function PlanSummary({ plan }: { plan: CleanPlan }) {
                   </p>
                 ))}
                 <p className="text-zinc-400 dark:text-zinc-500">
-                  {formatBytes(group.sizeBytes)} ciascuno
+                  {formatBytes(group.sizeBytes)} each
                 </p>
               </li>
             ))}

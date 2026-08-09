@@ -9,11 +9,10 @@ First published version.
 
 The number is 1.0.0 and not 0.x because this is what gets distributed: on a
 store, a leading zero reads as abandoned rather than as modest. It does what
-the sections below describe, on the three systems CI starts it on.
+the sections below describe, on the systems CI starts it on.
 
-macOS packages are not signed with an Apple Developer ID certificate, so
-Gatekeeper refuses them until that is in place. Windows and Linux are
-unaffected.
+Ships for Windows and Linux, both built and started by CI on every commit.
+macOS: to be confirmed.
 
 ### Added
 

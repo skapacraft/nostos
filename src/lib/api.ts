@@ -222,7 +222,7 @@ export function toMessage(error: unknown): string {
   }
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
-  return "Errore imprevisto durante l'elaborazione.";
+  return "Unexpected error while processing.";
 }
 
 function isErrorPayload(value: unknown): value is ErrorPayload {

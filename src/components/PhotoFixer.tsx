@@ -36,16 +36,16 @@ interface PhotoFixerProps {
 }
 
 const LAYOUT_LABELS: Record<OutputLayout, string> = {
-  preserve: "Come l'originale",
-  byYear: "Una cartella per anno",
-  byYearMonth: "Anno e mese",
-  flat: "Tutto in una cartella",
+  preserve: "Same as the original",
+  byYear: "One folder per year",
+  byYearMonth: "Year and month",
+  flat: "Everything in one folder",
 };
 
 const MODE_LABELS: Record<WriteMode, string> = {
-  dryRun: "Simulazione",
-  copyToOutput: "Copia riparata",
-  inPlace: "Modifica originali",
+  dryRun: "Dry run",
+  copyToOutput: "Repaired copy",
+  inPlace: "Rewrite originals",
 };
 
 /**
@@ -65,7 +65,7 @@ export function PhotoFixer({
 }: PhotoFixerProps) {
   const [mode, setMode] = useState<WriteMode>("copyToOutput");
   const [layout, setLayout] = useState<OutputLayout>("preserve");
-  const [spazio, setSpazio] = useState<SpaceEstimate | null>(null);
+  const [space, setSpace] = useState<SpaceEstimate | null>(null);
   const [confirmedInPlace, setConfirmedInPlace] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [report, setReport] = useState<RepairReport | null>(null);
@@ -103,18 +103,18 @@ export function PhotoFixer({
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Dove salvare le foto riparate",
+        title: "Where to save the repaired photos",
       });
       if (typeof selected === "string") {
         onOutputRoot(selected);
         // The arithmetic is done straight away: on a large library the choice of
         // mode depends on how much room is left, and finding out halfway through
         // would be the worst possible discovery.
-        setSpazio(null);
+        setSpace(null);
         api
           .estimateSpace(path, selected)
-          .then(setSpazio)
-          .catch(() => setSpazio(null));
+          .then(setSpace)
+          .catch(() => setSpace(null));
       }
     } catch (error) {
       onError(toMessage(error));
@@ -122,9 +122,9 @@ export function PhotoFixer({
   }, [path, onOutputRoot, onError]);
 
   const run = useCallback(
-    async (soloQuesta?: string) => {
+    async (onlyThis?: string) => {
       if (mode === "copyToOutput" && !outputRoot) {
-        onError("Scegli prima la cartella di destinazione.");
+        onError("Choose the destination folder first.");
         return;
       }
 
@@ -134,7 +134,7 @@ export function PhotoFixer({
       setProgress(null);
 
       try {
-        const result = await api.repairPhotos(soloQuesta ?? path, {
+        const result = await api.repairPhotos(onlyThis ?? path, {
           mode,
           layout,
           outputRoot: mode === "copyToOutput" ? outputRoot : null,
@@ -156,23 +156,23 @@ export function PhotoFixer({
   const inPlaceBlocked = mode === "inPlace" && !confirmedInPlace;
   const missingOutput = mode === "copyToOutput" && !outputRoot;
   // No point starting an operation the backend would refuse anyway.
-  const noSpace = mode === "copyToOutput" && spazio !== null && !spazio.copyFits;
+  const noSpace = mode === "copyToOutput" && space !== null && !space.copyFits;
 
   return (
     <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <div>
         <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          Ripara data e posizione
+          Repair date and location
         </h4>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           {repairable > 0
-            ? `${formatCount(repairable)} file hanno la data solo nel sidecar JSON. La riparazione la scrive nei tag EXIF del file, senza ricomprimere l'immagine.`
-            : "Scrive nei tag EXIF la data e le coordinate risolte, senza ricomprimere l'immagine."}
+            ? `${formatCount(repairable)} files have their date only in the JSON sidecar. The repair writes it into the EXIF tags of the file, without recompressing the image.`
+            : "Writes the resolved date and coordinates into the EXIF tags, without recompressing the image."}
         </p>
       </div>
 
       <fieldset disabled={running} className="space-y-2">
-        <legend className="sr-only">Modalità di scrittura</legend>
+        <legend className="sr-only">Write mode</legend>
         {(Object.keys(MODE_LABELS) as WriteMode[]).map((value) => (
           <label
             key={value}
@@ -195,10 +195,10 @@ export function PhotoFixer({
               </span>
               <span className="block text-xs text-zinc-500 dark:text-zinc-400">
                 {value === "dryRun"
-                  ? "Conta soltanto quanti file cambierebbero. Non scrive nulla."
+                  ? "Only counts how many files would change. Writes nothing."
                   : value === "copyToOutput"
-                    ? "Scrive le copie riparate altrove. Gli originali restano intatti."
-                    : "Riscrive gli originali. L'operazione non è reversibile."}
+                    ? "Writes repaired copies elsewhere. Your originals stay untouched."
+                    : "Rewrites the originals. This cannot be undone."}
               </span>
             </span>
           </label>
@@ -213,89 +213,87 @@ export function PhotoFixer({
             disabled={running}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
-            {outputRoot ? "Cambia cartella" : "Scegli cartella"}
+            {outputRoot ? "Change folder" : "Choose folder"}
           </button>
           <span
             className="selectable min-w-0 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400"
             title={outputRoot ?? undefined}
           >
-            {outputRoot ? shortenPath(outputRoot, 56) : "nessuna cartella scelta"}
+            {outputRoot ? shortenPath(outputRoot, 56) : "no folder chosen"}
           </span>
         </div>
       ) : null}
 
-      {mode === "copyToOutput" && spazio ? (
+      {mode === "copyToOutput" && space ? (
         <div
           className={[
             "space-y-2 rounded-lg border p-3 text-sm",
-            spazio.copyFits
+            space.copyFits
               ? "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-300"
               : "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200",
           ].join(" ")}
         >
           <p>
-            Libreria {formatBytes(spazio.sourceBytes)}, servono{" "}
-            {formatBytes(spazio.neededForCopy)} per la copia. Sulla destinazione
-            restano {formatBytes(spazio.availableBytes)}.
+            Library {formatBytes(space.sourceBytes)}, the copy needs{" "}
+            {formatBytes(space.neededForCopy)}. The destination has{" "}
+            {formatBytes(space.availableBytes)} left.
           </p>
-          {!spazio.copyFits ? (
+          {!space.copyFits ? (
             <>
               <p className="font-medium">
-                Non ci sta. La copia duplica l'intera libreria, e deduplicare
-                prima recupera in genere una frazione: non basta quando manca
-                l'ordine di grandezza.
+                It does not fit. The copy duplicates the whole library, and
+                deduplicating first usually recovers a fraction: not enough
+                when what is missing is an order of magnitude.
               </p>
               <p>
-                Due vie d'uscita. La prima è{" "}
-                <strong>Modifica originali</strong>: lavora un file per volta e
-                richiede circa {formatBytes(spazio.neededInPlace)} di spazio,
-                qualunque sia la dimensione della libreria. Fai prima una copia
-                di sicurezza.
+                Two ways out. The first is{" "}
+                <strong>Rewrite originals</strong>: it works one file at a time
+                and needs about {formatBytes(space.neededInPlace)}, whatever the
+                size of the library. Make a backup first.
               </p>
-              {spazio.subfolders.some((cartella) => cartella.fits) ? (
+              {space.subfolders.some((folder) => folder.fits) ? (
                 <div className="space-y-1.5">
                   <p>
-                    La seconda è <strong>procedere a tranche</strong>: ripari una
-                    cartella, sposti il risultato altrove, passi alla
-                    successiva. Comincia dalle cartelle per anno, che
-                    contengono quasi tutto; gli album sono in gran parte copie
-                    delle stesse foto.
+                    The second is to <strong>work through it in batches</strong>:
+                    repair one folder, move the result elsewhere, move to the
+                    next. Start with the year folders, which hold nearly
+                    everything; albums are mostly copies of the same photos.
                   </p>
                   <ul className="space-y-1">
-                    {spazio.subfolders.map((cartella) => (
+                    {space.subfolders.map((folder) => (
                       <li
-                        key={cartella.path}
+                        key={folder.path}
                         className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-white/60 px-2 py-1 dark:border-amber-900 dark:bg-zinc-900/40"
                       >
                         <span className="min-w-0">
-                          <span className="truncate">{cartella.name}</span>
+                          <span className="truncate">{folder.name}</span>
                           <span className="ml-2 text-xs opacity-70">
-                            {formatBytes(cartella.bytes)},{" "}
-                            {formatCount(cartella.fileCount)} file
-                            {cartella.isYear ? " · annata" : ""}
-                            {cartella.isAlbum && cartella.uniqueHere === 0
-                              ? " · album, solo copie"
+                            {formatBytes(folder.bytes)},{" "}
+                            {formatCount(folder.fileCount)} files
+                            {folder.isYear ? " · year" : ""}
+                            {folder.isAlbum && folder.uniqueHere === 0
+                              ? " · album, copies only"
                               : ""}
                           </span>
-                          {cartella.isAlbum && cartella.uniqueHere > 0 ? (
+                          {folder.isAlbum && folder.uniqueHere > 0 ? (
                             <span className="block text-xs font-medium">
-                              {formatCount(cartella.uniqueHere)} foto stanno
-                              solo qui: saltando questo album le perderesti.
+                              {formatCount(folder.uniqueHere)} photos exist
+                              only here: skip this album and you lose them.
                             </span>
                           ) : null}
                         </span>
-                        {cartella.fits ? (
+                        {folder.fits ? (
                           <button
                             type="button"
-                            onClick={() => run(cartella.path)}
+                            onClick={() => run(folder.path)}
                             disabled={running}
                             className="shrink-0 rounded border border-amber-500 px-2 py-0.5 text-xs font-medium transition-colors hover:bg-amber-100 disabled:opacity-50 dark:hover:bg-amber-900/40"
                           >
-                            Ripara solo questa
+                            Repair this one only
                           </button>
                         ) : (
                           <span className="shrink-0 text-xs opacity-60">
-                            troppo grande
+                            too large
                           </span>
                         )}
                       </li>
@@ -310,7 +308,7 @@ export function PhotoFixer({
 
       {mode === "copyToOutput" ? (
         <label className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-zinc-700 dark:text-zinc-300">Disposizione:</span>
+          <span className="text-zinc-700 dark:text-zinc-300">Layout:</span>
           <select
             value={layout}
             onChange={(event) =>
@@ -327,7 +325,7 @@ export function PhotoFixer({
           </select>
           {layout !== "preserve" ? (
             <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              I file senza data finiscono in <span className="font-mono">senza-data/</span>.
+              Files with no date go into <span className="font-mono">no-date/</span>.
             </span>
           ) : null}
         </label>
@@ -343,8 +341,8 @@ export function PhotoFixer({
             className="mt-0.5"
           />
           <span>
-            Ho una copia di sicurezza dei miei file e accetto che vengano
-            riscritti.
+            I have a backup of my files and I accept that they will be
+            rewritten.
           </span>
         </label>
       ) : null}
@@ -355,11 +353,11 @@ export function PhotoFixer({
         disabled={running || inPlaceBlocked || missingOutput || noSpace}
         className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
       >
-        {running ? "Elaborazione..." : `Avvia: ${MODE_LABELS[mode]}`}
+        {running ? "Working..." : `Start: ${MODE_LABELS[mode]}`}
       </button>
 
       {running || progress ? (
-        <ProgressBar progress={progress} label="Foto elaborate" />
+        <ProgressBar progress={progress} label="Photos processed" />
       ) : null}
 
       {report ? (
@@ -385,8 +383,8 @@ function RepairSummary({
     <div className="space-y-2 rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-800/50">
       <p className="text-zinc-900 dark:text-zinc-100">
         {isDryRun
-          ? `Simulazione: ${formatCount(report.candidates)} file verrebbero aggiornati.`
-          : `Scritti i tag EXIF di ${formatCount(report.exifWritten)} file su ${formatCount(report.candidates)}.`}
+          ? `Dry run: ${formatCount(report.candidates)} files would be updated.`
+          : `EXIF tags written for ${formatCount(report.exifWritten)} files out of ${formatCount(report.candidates)}.`}
       </p>
 
       {!isDryRun && report.outputRoot ? (
@@ -404,32 +402,32 @@ function RepairSummary({
       <ul className="space-y-0.5 text-xs text-zinc-500 dark:text-zinc-400">
         {report.fileTimesWritten > 0 ? (
           <li>
-            Date di modifica allineate: {formatCount(report.fileTimesWritten)}
+            File dates aligned: {formatCount(report.fileTimesWritten)}
           </li>
         ) : null}
         {report.sidecarsCopied > 0 ? (
           <li>
-            Sidecar JSON conservati accanto alle copie:{" "}
+            JSON sidecars kept beside the copies:{" "}
             {formatCount(report.sidecarsCopied)}
           </li>
         ) : null}
         {report.skippedUnsupported > 0 ? (
           <li>
-            {formatCount(report.skippedUnsupported)} file in un formato in cui
-            non scriviamo l'EXIF: PNG, GIF e i video tengono i metadati altrove.
-            Per questi vale la data del file, e il sidecar JSON viene copiato
-            accanto alla foto perché la data non vada persa.
+            {formatCount(report.skippedUnsupported)} files in a format we do
+            not write EXIF into: PNG, GIF and video keep their metadata
+            elsewhere. For those the file date is used, and the JSON sidecar is
+            copied beside the photo so the date is not lost.
           </li>
         ) : null}
         {report.skippedTooLarge > 0 ? (
-          <li>File troppo grandi: {formatCount(report.skippedTooLarge)}</li>
+          <li>Files too large: {formatCount(report.skippedTooLarge)}</li>
         ) : null}
       </ul>
 
       {report.failures.length > 0 ? (
         <details className="text-xs">
           <summary className="cursor-pointer text-red-700 dark:text-red-400">
-            {formatCount(report.failures.length)} errori
+            {formatCount(report.failures.length)} errors
           </summary>
           <ul className="selectable mt-1 max-h-40 space-y-0.5 overflow-y-auto font-mono text-zinc-500 dark:text-zinc-400">
             {report.failures.slice(0, 50).map((failure) => (
@@ -440,9 +438,9 @@ function RepairSummary({
       ) : null}
 
       {/*
-        Solo dopo una riscrittura degli originali: nella copia riparata il
-        sidecar viene conservato apposta accanto ai formati in cui non
-        scriviamo l'EXIF, quindi lì non è di troppo.
+        Only after the originals have been rewritten: in a repaired copy the
+        sidecar is kept on purpose beside the formats we do not write EXIF
+        into, so there it is not surplus.
       */}
       {report.mode === "inPlace" && report.exifWritten > 0 ? (
         <SidecarSweep path={sourcePath} onError={onError} />

@@ -68,32 +68,32 @@ export function PhotoReportView({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="Media" value={formatCount(report.mediaCount)} />
         <Stat
-          label="Con sidecar"
+          label="With sidecar"
           value={formatCount(report.withSidecar)}
           hint={percent(report.withSidecar, report.mediaCount)}
         />
         <Stat
-          label="Data EXIF"
+          label="EXIF date"
           value={formatCount(report.withExifDate)}
           hint={percent(report.withExifDate, report.mediaCount)}
         />
-        <Stat label="Con GPS" value={formatCount(report.withGeo)} />
+        <Stat label="With GPS" value={formatCount(report.withGeo)} />
         <Stat
-          label="Da riparare"
+          label="To repair"
           value={formatCount(report.needsRepair)}
-          hint="data non nell'EXIF"
+          hint="date not in the EXIF"
           tone={report.needsRepair > 0 ? "warning" : "neutral"}
         />
-        <Stat label="Totale" value={formatBytes(report.totalBytes)} />
+        <Stat label="Total" value={formatBytes(report.totalBytes)} />
       </div>
 
       <AlbumPanel path={path} onError={onError} onRisk={setAlbumRisk} />
 
       {report.dateFromFilename > 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Per {formatCount(report.dateFromFilename)} file la data è stata
-          dedotta dal nome, perché mancavano sia l'EXIF sia il sidecar. È
-          l'orario che l'app fotocamera ha scritto al momento dello scatto.
+          For {formatCount(report.dateFromFilename)} files the date was taken from
+            the name, because both the EXIF and the sidecar were missing. It is
+            the time the camera app wrote when the shot was taken.
         </p>
       ) : null}
 
@@ -119,7 +119,7 @@ export function PhotoReportView({
 
       {report.sample.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>Anteprima</SectionTitle>
+          <SectionTitle>Preview</SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.sample.map((media) => (
@@ -135,7 +135,7 @@ export function PhotoReportView({
                   <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                     {formatDate(media.resolvedTakenAt)}
                     {media.takenAtSource !== "missing"
-                      ? ` (da ${media.takenAtSource === "exif" ? "EXIF" : "sidecar"})`
+                      ? ` (from ${media.takenAtSource === "exif" ? "EXIF" : "sidecar"})`
                       : ""}
                     {media.resolvedGeo
                       ? ` · ${media.resolvedGeo.latitude.toFixed(4)}, ${media.resolvedGeo.longitude.toFixed(4)}`
@@ -150,8 +150,7 @@ export function PhotoReportView({
 
       {report.unreadableCount > 0 ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          {formatCount(report.unreadableCount)} file non leggibili sono stati
-          ignorati.
+          {formatCount(report.unreadableCount)} unreadable files were skipped.
         </p>
       ) : null}
     </div>
@@ -174,31 +173,31 @@ export function ContactsReportView({
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Stat label="Schede lette" value={formatCount(report.total)} />
-        <Stat label="Contatti unici" value={formatCount(report.unique)} />
+        <Stat label="Cards read" value={formatCount(report.total)} />
+        <Stat label="Unique contacts" value={formatCount(report.unique)} />
         <Stat
-          label="Duplicati"
+          label="Duplicates"
           value={formatCount(report.duplicates)}
           tone={report.duplicates > 0 ? "warning" : "neutral"}
         />
-        <Stat label="Con email" value={formatCount(report.withEmail)} />
-        <Stat label="Con telefono" value={formatCount(report.withPhone)} />
+        <Stat label="With email" value={formatCount(report.withEmail)} />
+        <Stat label="With phone" value={formatCount(report.withPhone)} />
       </div>
 
       {report.withoutContactInfo > 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {formatCount(report.withoutContactInfo)} schede non hanno né email né
-          telefono.
+          {formatCount(report.withoutContactInfo)} cards have neither an email nor a
+            phone number.
         </p>
       ) : null}
 
       {report.unique > 0 ? (
         <ExportButton
-          label="Esporta vCard pulito"
+          label="Export a clean vCard"
           defaultName="contacts_cleaned.vcf"
           extension="vcf"
           filterName="vCard"
-          hint={`Scrive ${formatCount(report.unique)} contatti deduplicati in un vCard 3.0 standard, importabile su Proton, Tuta e Nextcloud.`}
+          hint={`Writes ${formatCount(report.unique)} deduplicated contacts into a standard vCard 3.0, ready to import into Proton, Tuta and Nextcloud.`}
           onExport={(destination) => api.exportContacts(path, destination)}
           onError={onError}
         />
@@ -206,12 +205,12 @@ export function ContactsReportView({
 
       {report.sample.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>Anteprima</SectionTitle>
+          <SectionTitle>Preview</SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.sample.map((contact, index) => (
                 <li
-                  key={`${contact.displayName ?? "senza-nome"}-${index}`}
+                  key={`${contact.displayName ?? "no-name"}-${index}`}
                   className="px-4 py-3"
                 >
                   <p className="selectable text-sm font-medium text-zinc-900 dark:text-zinc-100">
@@ -219,12 +218,12 @@ export function ContactsReportView({
                       [contact.givenName, contact.familyName]
                         .filter(Boolean)
                         .join(" ") ??
-                      "Senza nome"}
+                      "No name"}
                   </p>
                   <p className="selectable mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                     {[contact.emails[0], contact.phones[0], contact.organization]
                       .filter(Boolean)
-                      .join(" · ") || "nessun recapito"}
+                      .join(" · ") || "no contact details"}
                   </p>
                 </li>
               ))}
@@ -258,13 +257,13 @@ export function DriveReportView({
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="File" value={formatCount(report.fileCount)} />
-        <Stat label="Cartelle" value={formatCount(report.dirCount)} />
-        <Stat label="Totale" value={formatBytes(report.totalBytes)} />
+        <Stat label="Files" value={formatCount(report.fileCount)} />
+        <Stat label="Folders" value={formatCount(report.dirCount)} />
+        <Stat label="Total" value={formatBytes(report.totalBytes)} />
         <Stat
-          label="Segnaposto"
+          label="Placeholders"
           value={formatCount(report.placeholderCount)}
-          hint="senza contenuto"
+          hint="with no content"
           tone={report.placeholderCount > 0 ? "warning" : "neutral"}
         />
       </div>
@@ -281,7 +280,7 @@ export function DriveReportView({
 
       {report.categories.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>Per categoria</SectionTitle>
+          <SectionTitle>By category</SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.categories.map((category) => (
@@ -293,7 +292,7 @@ export function DriveReportView({
                     {CATEGORY_LABELS[category.category]}
                   </span>
                   <span className="tabular-nums text-zinc-500 dark:text-zinc-400">
-                    {formatCount(category.fileCount)} file ·{" "}
+                    {formatCount(category.fileCount)} files ·{" "}
                     {formatBytes(category.totalBytes)}
                   </span>
                 </li>
@@ -328,7 +327,7 @@ export function DriveReportView({
 
       {report.placeholders.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>Segnaposto senza contenuto</SectionTitle>
+          <SectionTitle>Placeholders with no content</SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.placeholders.slice(0, 10).map((placeholder) => (
@@ -336,15 +335,15 @@ export function DriveReportView({
                   <p className="selectable truncate text-sm text-zinc-900 dark:text-zinc-100">
                     {placeholder.fileName}
                   </p>
-                  {/* L'URL è mostrato come testo e mai reso cliccabile: aprirlo
-                      significherebbe una connessione verso Google. */}
+                  {/* The URL is shown as text and never made clickable: opening it
+                        would mean a connection to Google. */}
                   <p
                     className="selectable truncate font-mono text-xs text-zinc-500 dark:text-zinc-400"
                     title={placeholder.targetUrl ?? undefined}
                   >
                     {placeholder.targetUrl
                       ? shortenPath(placeholder.targetUrl, 72)
-                      : "riferimento non leggibile"}
+                      : "reference not readable"}
                   </p>
                 </li>
               ))}
@@ -366,7 +365,7 @@ interface CalendarReportProps {
 
 /** Renders a raw iCalendar date readable (`20200101T120000Z`). */
 function formatIcsDate(raw: string | null): string {
-  if (!raw || raw.length < 8) return "data non disponibile";
+  if (!raw || raw.length < 8) return "date not available";
   const day = `${raw.slice(6, 8)}/${raw.slice(4, 6)}/${raw.slice(0, 4)}`;
   if (raw.length < 15 || raw[8] !== "T") return day;
   return `${day} ${raw.slice(9, 11)}:${raw.slice(11, 13)}`;
@@ -380,32 +379,32 @@ export function CalendarReportView({
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Stat label="Eventi letti" value={formatCount(report.total)} />
-        <Stat label="Eventi unici" value={formatCount(report.unique)} />
+        <Stat label="Events read" value={formatCount(report.total)} />
+        <Stat label="Unique events" value={formatCount(report.unique)} />
         <Stat
-          label="Duplicati"
+          label="Duplicates"
           value={formatCount(report.duplicates)}
           tone={report.duplicates > 0 ? "warning" : "neutral"}
         />
-        <Stat label="Ricorrenti" value={formatCount(report.recurring)} />
-        <Stat label="Giornata intera" value={formatCount(report.allDay)} />
+        <Stat label="Recurring" value={formatCount(report.recurring)} />
+        <Stat label="All day" value={formatCount(report.allDay)} />
       </div>
 
       {report.droppedProperties > 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {formatCount(report.droppedProperties)} proprietà proprietarie di
-          Google verranno rimosse dall'export: non hanno significato fuori dai
-          suoi servizi.
+          {formatCount(report.droppedProperties)} proprietary Google properties will
+          be removed from the export: they mean nothing outside its own
+          services.
         </p>
       ) : null}
 
       {report.unique > 0 ? (
         <ExportButton
-          label="Esporta calendario pulito"
+          label="Export a clean calendar"
           defaultName="calendar_cleaned.ics"
           extension="ics"
           filterName="iCalendar"
-          hint={`Scrive ${formatCount(report.unique)} eventi deduplicati in un iCalendar 2.0 standard, senza le estensioni proprietarie.`}
+          hint={`Writes ${formatCount(report.unique)} deduplicated events into a standard iCalendar 2.0, without the proprietary extensions.`}
           onExport={(destination) => api.exportCalendar(path, destination)}
           onError={onError}
         />
@@ -413,19 +412,19 @@ export function CalendarReportView({
 
       {report.sample.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>Anteprima</SectionTitle>
+          <SectionTitle>Preview</SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.sample.map((event, index) => (
-                <li key={`${event.uid ?? "senza-uid"}-${index}`} className="px-4 py-3">
+                <li key={`${event.uid ?? "no-uid"}-${index}`} className="px-4 py-3">
                   <p className="selectable truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                    {event.summary ?? "Senza titolo"}
+                    {event.summary ?? "No title"}
                   </p>
                   <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                     {event.isAllDay
                       ? `${formatIcsDate(event.start)} (giornata intera)`
                       : formatIcsDate(event.start)}
-                    {event.isRecurring ? " · ricorrente" : ""}
+                    {event.isRecurring ? " · recurring" : ""}
                     {event.location ? ` · ${event.location}` : ""}
                   </p>
                 </li>

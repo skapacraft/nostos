@@ -78,80 +78,80 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
         // clickable link in the system window on some platforms, and this
         // application does not open addresses.
         comments: Some(format!(
-            "Elabora i tuoi export Google Takeout in locale.\n{}",
+            "Processes your Google Takeout exports locally.\n{}",
             env!("CARGO_PKG_HOMEPAGE")
         )),
         ..Default::default()
     };
 
-    let guida = MenuItem::with_id(
+    let guide = MenuItem::with_id(
         app,
         MENU_HELP_ID,
-        "Guida di Nostos",
+        "Nostos guide",
         true,
         None::<&str>,
     )?;
 
-    let segnala = MenuItem::with_id(
+    let report = MenuItem::with_id(
         app,
         MENU_REPORT_ID,
-        "Segnala un problema...",
+        "Report a problem...",
         true,
         None::<&str>,
     )?;
 
-    let modifica = Submenu::with_items(
+    let edit = Submenu::with_items(
         app,
-        "Modifica",
+        "Edit",
         true,
         &[
-            &PredefinedMenuItem::undo(app, Some("Annulla"))?,
-            &PredefinedMenuItem::redo(app, Some("Ripristina"))?,
+            &PredefinedMenuItem::undo(app, Some("Undo"))?,
+            &PredefinedMenuItem::redo(app, Some("Redo"))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::cut(app, Some("Taglia"))?,
-            &PredefinedMenuItem::copy(app, Some("Copia"))?,
-            &PredefinedMenuItem::paste(app, Some("Incolla"))?,
-            &PredefinedMenuItem::select_all(app, Some("Seleziona tutto"))?,
+            &PredefinedMenuItem::cut(app, Some("Cut"))?,
+            &PredefinedMenuItem::copy(app, Some("Copy"))?,
+            &PredefinedMenuItem::paste(app, Some("Paste"))?,
+            &PredefinedMenuItem::select_all(app, Some("Select All"))?,
         ],
     )?;
 
-    let finestra = Submenu::with_items(
+    let window = Submenu::with_items(
         app,
-        "Finestra",
+        "Window",
         true,
         &[
-            &PredefinedMenuItem::minimize(app, Some("Riduci a icona"))?,
-            &PredefinedMenuItem::fullscreen(app, Some("Schermo intero"))?,
+            &PredefinedMenuItem::minimize(app, Some("Minimise"))?,
+            &PredefinedMenuItem::fullscreen(app, Some("Full Screen"))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, Some("Chiudi finestra"))?,
+            &PredefinedMenuItem::close_window(app, Some("Close Window"))?,
         ],
     )?;
 
-    let aiuto = Submenu::with_items(app, "Aiuto", true, &[&guida, &segnala])?;
+    let help = Submenu::with_items(app, "Help", true, &[&guide, &report])?;
 
     #[cfg(target_os = "macos")]
     {
-        let applicazione = Submenu::with_items(
+        let application = Submenu::with_items(
             app,
             APP_NAME,
             true,
             &[
                 &PredefinedMenuItem::about(
                     app,
-                    Some(&format!("Informazioni su {APP_NAME}")),
+                    Some(&format!("About {APP_NAME}")),
                     Some(about),
                 )?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::services(app, Some("Servizi"))?,
+                &PredefinedMenuItem::services(app, Some("Services"))?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::hide(app, Some(&format!("Nascondi {APP_NAME}")))?,
-                &PredefinedMenuItem::hide_others(app, Some("Nascondi altre"))?,
-                &PredefinedMenuItem::show_all(app, Some("Mostra tutte"))?,
+                &PredefinedMenuItem::hide(app, Some(&format!("Hide {APP_NAME}")))?,
+                &PredefinedMenuItem::hide_others(app, Some("Hide Others"))?,
+                &PredefinedMenuItem::show_all(app, Some("Show All"))?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::quit(app, Some(&format!("Esci da {APP_NAME}")))?,
+                &PredefinedMenuItem::quit(app, Some(&format!("Quit {APP_NAME}")))?,
             ],
         )?;
-        Menu::with_items(app, &[&applicazione, &modifica, &finestra, &aiuto])
+        Menu::with_items(app, &[&application, &edit, &window, &help])
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -165,14 +165,14 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
             &[
                 &PredefinedMenuItem::about(
                     app,
-                    Some(&format!("Informazioni su {APP_NAME}")),
+                    Some(&format!("About {APP_NAME}")),
                     Some(about),
                 )?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::quit(app, Some("Esci"))?,
+                &PredefinedMenuItem::quit(app, Some("Quit"))?,
             ],
         )?;
-        Menu::with_items(app, &[&file, &modifica, &finestra, &aiuto])
+        Menu::with_items(app, &[&file, &edit, &window, &help])
     }
 }
 

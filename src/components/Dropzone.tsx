@@ -70,7 +70,7 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Seleziona la cartella Takeout",
+        title: "Select the Takeout folder",
       });
       if (typeof selected === "string") onSelect(selected);
     } catch (error) {
@@ -82,7 +82,7 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
     try {
       const selected = await open({
         multiple: false,
-        title: "Seleziona un archivio Takeout",
+        title: "Select a Takeout archive",
         filters: [{ name: "Archivio Takeout", extensions: ["zip"] }],
       });
       if (typeof selected === "string") onSelect(selected);
@@ -125,14 +125,14 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
       <div className="space-y-1">
         <p className="text-base font-medium text-zinc-900 dark:text-zinc-100">
           {busy
-            ? "Analisi in corso..."
+            ? "Examining..."
             : hovering
-              ? "Rilascia per analizzare"
-              : "Trascina qui la cartella Takeout o un archivio .zip"}
+              ? "Drop to examine"
+              : "Drag the Takeout folder here, or a .zip archive"}
         </p>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          I file restano sul tuo computer. Nulla viene caricato, copiato o
-          inviato.
+          The files stay on your computer. Nothing is uploaded, copied or
+          sent.
         </p>
       </div>
 
@@ -143,7 +143,7 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
           disabled={busy}
           className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
         >
-          Scegli cartella
+          Choose folder
         </button>
         <button
           type="button"
@@ -151,7 +151,7 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
           disabled={busy}
           className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          Scegli archivio .zip
+          Choose .zip archive
         </button>
       </div>
     </div>

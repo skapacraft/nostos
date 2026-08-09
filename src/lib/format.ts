@@ -1,10 +1,17 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-/** Shared formatting helpers, all in Italian locale and dependency-free. */
+/**
+ * Shared formatting helpers, dependency-free.
+ *
+ * The locale is fixed to the one the interface is written in rather than taken
+ * from the system: an English sentence with an Italian month inside it reads as
+ * a bug, and the machine's regional settings say nothing about which language
+ * this application speaks.
+ */
 
-const NUMBER = new Intl.NumberFormat("it-IT");
-const DATE = new Intl.DateTimeFormat("it-IT", {
+const NUMBER = new Intl.NumberFormat("en-GB");
+const DATE = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium",
   timeStyle: "short",
   timeZone: "UTC",

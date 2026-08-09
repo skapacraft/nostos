@@ -24,7 +24,7 @@ interface RevealButtonProps {
 export function RevealButton({
   path,
   onError,
-  label = "Mostra nel Finder",
+  label = "Show in file manager",
 }: RevealButtonProps) {
   const reveal = useCallback(async () => {
     try {

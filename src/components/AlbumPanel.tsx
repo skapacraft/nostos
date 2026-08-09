@@ -60,7 +60,7 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
   if (loading) {
     return (
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        Lettura della struttura degli album...
+        Reading the album structure...
       </p>
     );
   }
@@ -75,27 +75,27 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
           Album
         </h4>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Google non esporta gli album come informazione a parte: crea una
-          cartella per album e ci mette dentro una seconda copia della foto.
+          Google does not export an album as information in its own right: it
+          makes a folder per album and puts a second copy of the photo inside.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Album" value={formatCount(index.albums.length)} />
         <Stat
-          label="Cartelle per anno"
+          label="Year folders"
           value={formatCount(index.yearFolders.length)}
         />
         <Stat
-          label="Foto in album"
+          label="Photos in albums"
           value={formatCount(index.membershipCount)}
-          hint="duplicate altrove"
+          hint="duplicated elsewhere"
           tone={index.membershipCount > 0 ? "warning" : "neutral"}
         />
         <Stat
-          label="Solo in album"
+          label="Album only"
           value={formatCount(index.albumOnly)}
-          hint="senza copia per anno"
+          hint="no copy in a year folder"
           tone={index.albumOnly > 0 ? "warning" : "neutral"}
         />
       </div>
@@ -104,11 +104,11 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
 
       {index.membershipCount > 0 ? (
         <ExportButton
-          label="Salva il manifest degli album"
+          label="Save the album manifest"
           defaultName="album.json"
           extension="json"
           filterName="JSON"
-          hint={`Registra a quale album appartiene ciascuna delle ${formatCount(index.membershipCount)} foto duplicate. Da fare prima della deduplica: i file si recuperano dalla quarantena, questa informazione no.`}
+          hint={`Records which album each of the ${formatCount(index.membershipCount)} duplicated photos belongs to. Do it before deduplicating: files come back from quarantine, this information does not.`}
           onExport={async (destination) => {
             const report = await api.exportAlbumManifest(path, destination);
             handleExported();
@@ -120,23 +120,23 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
 
       {saved ? (
         <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
-          Appartenenza salvata: ora la deduplica è sicura.
+          Membership saved: deduplication is safe now.
         </p>
       ) : null}
 
       {index.editedCount > 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {formatCount(index.editedCount)} file sono versioni modificate
-          affiancate all'originale (suffisso{" "}
-          <span className="font-mono">{index.editedPairs[0].suffix}</span>). Non
-          sono duplicati: hanno pixel diversi e restano entrambi.
+          {formatCount(index.editedCount)} files are edited versions sitting
+          beside the original (suffix{" "}
+          <span className="font-mono">{index.editedPairs[0].suffix}</span>).
+          They are not duplicates: the pixels differ and both are kept.
         </p>
       ) : null}
 
       {index.albums.length > 0 ? (
         <details className="text-sm">
           <summary className="cursor-pointer text-zinc-600 dark:text-zinc-300">
-            Vedi i {formatCount(index.albums.length)} album
+            See the {formatCount(index.albums.length)} albums
           </summary>
           <ul className="mt-2 max-h-52 space-y-1 overflow-y-auto text-xs">
             {index.albums.slice(0, 100).map((album) => (

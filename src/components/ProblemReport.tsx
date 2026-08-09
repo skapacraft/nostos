@@ -80,8 +80,8 @@ export function ProblemReport({ info, errors, onError }: ProblemReportProps) {
   const saveToFile = async () => {
     try {
       const target = await save({
-        title: "Dove salvare il rapporto",
-        defaultPath: "nostos-segnalazione.md",
+        title: "Where to save the report",
+        defaultPath: "nostos-report.md",
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
       if (typeof target === "string") {
@@ -95,26 +95,26 @@ export function ProblemReport({ info, errors, onError }: ProblemReportProps) {
   return (
     <div className="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
       <p>
-        L'applicazione non invia niente da sola, nemmeno una segnalazione.
-        Prepara il testo, tu lo leggi, e decidi se mandarlo.
+        The application sends nothing on its own, not even a bug report. It
+        prepares the text, you read it, and you decide whether to send it.
       </p>
 
       <label className="block space-y-1">
         <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-          Che cosa stavi facendo, e che cosa ti aspettavi?
+          What were you doing, and what did you expect?
         </span>
         <textarea
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           rows={3}
-          placeholder="Ho trascinato la cartella Takeout e..."
+          placeholder="I dragged the Takeout folder in and..."
           className="w-full rounded-lg border border-zinc-300 bg-white p-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         />
       </label>
 
       <details open>
         <summary className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400">
-          Questo è esattamente ciò che verrebbe mandato
+          This is exactly what would be sent
         </summary>
         <pre className="selectable mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-zinc-100 p-3 font-mono text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
           {report}
@@ -122,10 +122,10 @@ export function ProblemReport({ info, errors, onError }: ProblemReportProps) {
       </details>
 
       <p className="rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-400">
-        I percorsi sono accorciati: la tua cartella personale diventa{" "}
-        <span className="font-mono">~</span>. Restano però i nomi delle cartelle
-        che hai scelto tu, ed è il motivo per cui il testo sta qui sopra invece
-        di partire di nascosto: leggilo, e togli quello che non vuoi mandare.
+        Paths are shortened: your home folder becomes{" "}
+        <span className="font-mono">~</span>. The names of the folders you chose
+        do remain, which is why the text sits above rather than leaving
+        quietly: read it, and take out anything you would rather not send.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -134,26 +134,26 @@ export function ProblemReport({ info, errors, onError }: ProblemReportProps) {
           onClick={sendByEmail}
           className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
         >
-          Apri l'email già compilata
+          Open the email, already filled in
         </button>
         <button
           type="button"
           onClick={saveToFile}
           className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          Salva come file
+          Save as a file
         </button>
       </div>
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        L'indirizzo è{" "}
-        <span className="selectable font-mono">support@skapacraft.com</span>. Se
-        preferisci GitHub, il progetto sta su{" "}
+        The address is{" "}
+        <span className="selectable font-mono">support@skapacraft.com</span>. If
+        you prefer GitHub, the project lives at{" "}
         <span className="selectable font-mono break-all">
           {info?.repository ?? "github.com/skapacraft/nostos"}
         </span>
-        , e per un problema di sicurezza c'è la segnalazione riservata invece di
-        una issue pubblica.
+        , and for a security problem there is private reporting instead of a
+        public issue.
       </p>
     </div>
   );
