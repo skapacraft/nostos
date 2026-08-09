@@ -12,6 +12,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+import { errorDetail, errorText } from "./messages";
 import type {
   AlbumIndex,
   AppInfo,
@@ -24,6 +25,7 @@ import type {
   CleanReport,
   ContactsReport,
   DriveReport,
+  ErrorPayload,
   ExportReport,
   ExtractReport,
   PhotoScanReport,
@@ -175,11 +177,28 @@ export const revealInFileManager = (path: string) =>
   invoke<void>("reveal_in_file_manager", { path });
 
 /**
- * I comandi Tauri rifiutano con una stringa, non con un `Error`: normalizziamo
- * per poter mostrare un messaggio sempre leggibile.
+ * Rende leggibile ciò con cui un comando ha rifiutato.
+ *
+ * Il backend rifiuta con un [`ErrorPayload`], cioè un codice più i dati che
+ * servono a comporre la frase: il testo si decide in `lib/messages.ts`. Restano
+ * gestiti anche i due casi che non passano da lì, cioè un guasto del canale IPC
+ * stesso e qualunque valore inatteso, perché un errore che non si sa dire non
+ * deve diventare una schermata vuota.
  */
 export function toMessage(error: unknown): string {
+  if (isErrorPayload(error)) {
+    const detail = errorDetail(error);
+    return detail ? `${errorText(error)} ${detail}` : errorText(error);
+  }
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
   return "Errore imprevisto durante l'elaborazione.";
+}
+
+function isErrorPayload(value: unknown): value is ErrorPayload {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { code?: unknown }).code === "string"
+  );
 }

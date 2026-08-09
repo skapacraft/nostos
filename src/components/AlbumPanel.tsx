@@ -9,6 +9,7 @@ import { formatCount } from "../lib/format";
 import type { AlbumIndex } from "../types";
 import { ExportButton } from "./ExportButton";
 import { Stat } from "./Stat";
+import { Notices } from "./Notices";
 
 interface AlbumPanelProps {
   path: string;
@@ -99,14 +100,7 @@ export function AlbumPanel({ path, onError, onRisk }: AlbumPanelProps) {
         />
       </div>
 
-      {index.warnings.map((warning) => (
-        <p
-          key={warning}
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-        >
-          {warning}
-        </p>
-      ))}
+      <Notices items={index.warnings} />
 
       {index.membershipCount > 0 ? (
         <ExportButton

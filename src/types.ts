@@ -17,7 +17,54 @@ export interface ExportReport {
   bytes: number;
 }
 
-export type TakeoutSectionId =
+/**
+ * Avviso non bloccante emesso dal backend.
+ *
+ * Arriva come codice più i dati che servono a comporre la frase: il testo si
+ * decide in `lib/messages.ts`, non nel motore.
+ */
+export type Notice =
+  | { code: "noSectionsFound" }
+  | { code: "archiveNotExtracted" }
+  | { code: "ambiguousYearFolders" }
+  | { code: "unsafeArchiveEntries"; count: number }
+  | { code: "placeholdersWithoutContent"; count: number }
+  | { code: "photosOnlyInAlbums"; count: number }
+  | { code: "photosSharedWithAlbums"; count: number }
+  | { code: "readFailed"; path: string; detail: string };
+
+/** Errore che ha interrotto un'operazione, nella stessa forma degli avvisi. */
+export type ErrorPayload =
+  | { code: "io"; path: string; detail: string }
+  | { code: "archive"; detail: string }
+  | { code: "unsafeEntry"; entry: string }
+  | { code: "metadata"; detail: string }
+  | { code: "notFound"; path: string }
+  | { code: "noSource" }
+  | { code: "notEnoughSpace"; needed: number; available: number }
+  | { code: "task"; detail: string }
+  | { code: "poisoned" }
+  | { code: "destinationInsideSource" }
+  | { code: "destinationRequired" };
+
+/** Perché un sidecar è rimasto dov'era. */
+export type SidecarKept =
+  | "noExifContainer"
+  | "unreadableExif"
+  | "missingDate"
+  | "missingGeo"
+  | "missingDescription"
+  | "missingPeople"
+  | "missingFavorite"
+  | "viewCountHasNoTag"
+  | "photoUrlHasNoTag";
+
+export interface KeptReason {
+  reason: SidecarKept;
+  count: number;
+}
+
+export type TakeoutSection =
   | "googlePhotos"
   | "contacts"
   | "drive"
@@ -27,8 +74,9 @@ export type TakeoutSectionId =
   | "other";
 
 export interface SectionSummary {
-  section: TakeoutSectionId;
-  label: string;
+  /** Categoria della sezione: il nome leggibile lo sceglie `SECTION_LABELS`. */
+  section: TakeoutSection;
+  /** Nome della cartella sul disco, che non va tradotto. */
   dirName: string;
   path: string;
   fileCount: number;
@@ -42,7 +90,7 @@ export interface SourceSummary {
   sections: SectionSummary[];
   fileCount: number;
   totalBytes: number;
-  warnings: string[];
+  warnings: Notice[];
 }
 
 /** Fase di un'operazione lunga. */
@@ -114,13 +162,20 @@ export interface AppInfo {
   license: string;
 }
 
+/** Le garanzie dichiarate dal backend, una per punto verificabile. */
+export type PrivacyNote =
+  | "noHttpCrates"
+  | "restrictiveCsp"
+  | "noUpdaterNoOpener"
+  | "dataStaysLocal";
+
 export interface PrivacyReport {
   networkCalls: boolean;
   telemetry: boolean;
   crashReporting: boolean;
   autoUpdater: boolean;
   externalLinks: boolean;
-  notes: string[];
+  notes: PrivacyNote[];
 }
 
 // --- Archivi -------------------------------------------------------------
@@ -281,7 +336,7 @@ export interface ContactsReport {
   withEmail: number;
   withPhone: number;
   withoutContactInfo: number;
-  warnings: string[];
+  warnings: Notice[];
   sample: Contact[];
 }
 
@@ -302,7 +357,6 @@ export type FileCategory =
 
 export interface CategoryStats {
   category: FileCategory;
-  label: string;
   fileCount: number;
   totalBytes: number;
 }
@@ -337,7 +391,7 @@ export interface DriveReport {
   duplicateGroups: DuplicateGroup[];
   duplicateBytes: number;
   largestFiles: LargeFile[];
-  warnings: string[];
+  warnings: Notice[];
 }
 
 // --- Calendario ----------------------------------------------------------
@@ -363,7 +417,7 @@ export interface CalendarReport {
   allDay: number;
   /** Proprietà proprietarie rimosse durante la pulizia. */
   droppedProperties: number;
-  warnings: string[];
+  warnings: Notice[];
   sample: CalendarEvent[];
 }
 
@@ -408,7 +462,7 @@ export interface CleanPlan {
   hashedBytes: number;
   duplicateGroups: ContentDuplicateGroup[];
   junkSample: string[];
-  warnings: string[];
+  warnings: Notice[];
 }
 
 export interface CleanReport {
@@ -437,7 +491,7 @@ export interface SidecarSweepReport {
   /** Sidecar lasciati dov'erano perché ancora unica copia di qualcosa. */
   kept: number;
   /** Motivo per cui sono rimasti, con quante volte ricorre. */
-  keptReasons: Record<string, number>;
+  keptReasons: KeptReason[];
   keptSample: string[];
   /** Registro dello spostamento, l'unico modo per annullarlo. */
   manifest: string | null;
@@ -482,5 +536,5 @@ export interface AlbumIndex {
   editedPairs: EditedPair[];
   /** Foto presenti solo in un album: rimuoverle le farebbe sparire. */
   albumOnly: number;
-  warnings: string[];
+  warnings: Notice[];
 }

@@ -50,6 +50,12 @@ pub enum TakeoutError {
 
     #[error("stato interno corrotto: lock avvelenato")]
     Poisoned,
+
+    #[error("la destinazione non può stare dentro la cartella di origine")]
+    DestinationInsideSource,
+
+    #[error("questa modalità richiede una destinazione")]
+    DestinationRequired,
 }
 
 impl TakeoutError {
@@ -62,8 +68,66 @@ impl TakeoutError {
     }
 }
 
-// I comandi Tauri richiedono un errore serializzabile: lo appiattiamo a stringa
-// leggibile, senza esporre stack o dettagli interni al frontend.
+/// Forma con cui un errore attraversa il canale IPC.
+///
+/// Un errore che arriva all'interfaccia come frase già scritta è una frase che
+/// nessuna traduzione può più raggiungere. Viaggia quindi come codice più i
+/// dati che servono a comporre il messaggio dall'altra parte.
+///
+/// `detail` porta il messaggio di chi ha rilevato il guasto, sistema operativo
+/// o libreria: non è nostro e non è tradotto, quindi va mostrato come dettaglio
+/// tecnico accanto alla frase, non al posto suo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "code", rename_all = "camelCase")]
+pub enum ErrorPayload {
+    Io { path: String, detail: String },
+    Archive { detail: String },
+    UnsafeEntry { entry: String },
+    Metadata { detail: String },
+    NotFound { path: String },
+    NoSource,
+    NotEnoughSpace { needed: u64, available: u64 },
+    Task { detail: String },
+    Poisoned,
+    DestinationInsideSource,
+    DestinationRequired,
+}
+
+impl TakeoutError {
+    /// Traduce l'errore nella forma che attraversa il canale IPC.
+    pub fn payload(&self) -> ErrorPayload {
+        match self {
+            Self::Io { path, source } => ErrorPayload::Io {
+                path: path.display().to_string(),
+                detail: source.to_string(),
+            },
+            Self::Archive(detail) => ErrorPayload::Archive {
+                detail: detail.clone(),
+            },
+            Self::UnsafeEntry(entry) => ErrorPayload::UnsafeEntry {
+                entry: entry.clone(),
+            },
+            Self::Metadata(detail) => ErrorPayload::Metadata {
+                detail: detail.clone(),
+            },
+            Self::NotFound(path) => ErrorPayload::NotFound {
+                path: path.display().to_string(),
+            },
+            Self::NoSource => ErrorPayload::NoSource,
+            Self::NotEnoughSpace { needed, available } => ErrorPayload::NotEnoughSpace {
+                needed: *needed,
+                available: *available,
+            },
+            Self::Task(detail) => ErrorPayload::Task {
+                detail: detail.clone(),
+            },
+            Self::Poisoned => ErrorPayload::Poisoned,
+            Self::DestinationInsideSource => ErrorPayload::DestinationInsideSource,
+            Self::DestinationRequired => ErrorPayload::DestinationRequired,
+        }
+    }
+}
+
 impl Serialize for TakeoutError {
     // `Result` in questo modulo è l'alias di crate, quindi qui serve la forma
     // completa di quello standard.
@@ -71,11 +135,53 @@ impl Serialize for TakeoutError {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        self.payload().serialize(serializer)
     }
 }
 
 pub type Result<T> = std::result::Result<T, TakeoutError>;
+
+/// Avviso non bloccante destinato all'utente.
+///
+/// Il backend non compone la frase: dichiara che cosa è successo e con quali
+/// numeri, e chi mostra decide come dirlo. Senza questa separazione
+/// un'interfaccia tradotta resterebbe punteggiata di frasi scritte qui, e ogni
+/// lingua nuova costringerebbe a rimettere le mani nel motore.
+///
+/// La sola eccezione è [`Notice::ReadFailed`]: il dettaglio arriva dal sistema
+/// operativo o da una libreria, nella lingua che hanno scelto loro. Tradurlo
+/// non è in nostro potere, quindi viaggia com'è e va mostrato come dettaglio
+/// tecnico, non come frase rivolta all'utente.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "code", rename_all = "camelCase")]
+pub enum Notice {
+    /// La cartella scelta non contiene sezioni Takeout riconoscibili.
+    NoSectionsFound,
+    /// Voci con percorso non sicuro, che l'estrazione ignorerà.
+    UnsafeArchiveEntries { count: usize },
+    /// Segnaposto Google: l'export ne porta il riferimento, non il contenuto.
+    PlaceholdersWithoutContent { count: usize },
+    /// Foto presenti solo dentro un album e in nessuna cartella per anno.
+    PhotosOnlyInAlbums { count: usize },
+    /// Foto che compaiono sia in una cartella per anno sia in un album.
+    PhotosSharedWithAlbums { count: usize },
+    /// Non si riesce a distinguere le annate dagli album con l'anno nel nome.
+    AmbiguousYearFolders,
+    /// La sorgente è un archivio: va estratto prima di analizzarne le sezioni.
+    ArchiveNotExtracted,
+    /// Lettura fallita, con il messaggio originale di chi l'ha rilevata.
+    ReadFailed { path: String, detail: String },
+}
+
+impl Notice {
+    /// Avviso di lettura fallita a partire da un errore qualsiasi.
+    pub fn read_failed(path: impl std::fmt::Display, detail: impl std::fmt::Display) -> Self {
+        Self::ReadFailed {
+            path: path.to_string(),
+            detail: detail.to_string(),
+        }
+    }
+}
 
 /// Diagnostica di sviluppo, stampata sul terminale di `tauri dev`.
 ///
@@ -290,26 +396,16 @@ impl TakeoutSection {
             _ => Self::Other,
         }
     }
-
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::GooglePhotos => "Google Foto",
-            Self::Contacts => "Contatti",
-            Self::Drive => "Drive",
-            Self::Mail => "Mail",
-            Self::Calendar => "Calendario",
-            Self::YouTube => "YouTube",
-            Self::Other => "Altro",
-        }
-    }
 }
 
 /// Riepilogo di una singola sezione trovata nella sorgente.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SectionSummary {
+    /// La sezione come categoria, non come etichetta: il nome leggibile lo
+    /// sceglie chi mostra, nella lingua che sta usando.
     pub section: TakeoutSection,
-    pub label: String,
+    /// Nome della cartella così com'è sul disco, che non va tradotto.
     pub dir_name: String,
     pub path: PathBuf,
     pub file_count: usize,
@@ -327,7 +423,21 @@ pub struct SourceSummary {
     pub file_count: usize,
     pub total_bytes: u64,
     /// Avvisi non bloccanti emersi durante la scansione.
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Notice>,
+}
+
+/// Le garanzie che l'applicazione dichiara, una per punto verificabile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PrivacyNote {
+    /// Nel grafo delle dipendenze non esiste una crate HTTP.
+    NoHttpCrates,
+    /// La CSP limita `connect-src` al solo canale IPC locale.
+    RestrictiveCsp,
+    /// Nessun updater automatico e nessun plugin per aprire URL.
+    NoUpdaterNoOpener,
+    /// I dati restano nei percorsi scelti dall'utente e in memoria.
+    DataStaysLocal,
 }
 
 /// Sorgente attualmente caricata in sessione.
@@ -396,6 +506,10 @@ impl AppState {
 /// I valori sono costanti compilate: se un giorno qualcuno introducesse una
 /// dipendenza di rete, questo blocco andrebbe aggiornato a mano e la modifica
 /// resterebbe visibile in diff.
+///
+/// Le note sono codici e non frasi, come tutto il resto di ciò che finisce a
+/// schermo: una garanzia scritta in una lingua sola sarebbe leggibile in una
+/// lingua sola.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrivacyReport {
@@ -404,7 +518,7 @@ pub struct PrivacyReport {
     pub crash_reporting: bool,
     pub auto_updater: bool,
     pub external_links: bool,
-    pub notes: Vec<String>,
+    pub notes: Vec<PrivacyNote>,
 }
 
 impl Default for PrivacyReport {
@@ -416,10 +530,10 @@ impl Default for PrivacyReport {
             auto_updater: false,
             external_links: false,
             notes: vec![
-                "Nessuna crate HTTP nel grafo delle dipendenze.".to_string(),
-                "CSP restrittiva: connect-src limitato al canale IPC locale.".to_string(),
-                "Nessun updater e nessun plugin di apertura URL registrato.".to_string(),
-                "I dati restano nei percorsi scelti dall'utente e in memoria.".to_string(),
+                PrivacyNote::NoHttpCrates,
+                PrivacyNote::RestrictiveCsp,
+                PrivacyNote::NoUpdaterNoOpener,
+                PrivacyNote::DataStaysLocal,
             ],
         }
     }
