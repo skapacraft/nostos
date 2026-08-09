@@ -43,7 +43,7 @@ jobs:
             echo "::error::Found a networking primitive in the frontend."
             exit 1
           fi
-          echo "Nessuna primitiva di rete nel frontend."
+          echo "No networking primitive in the frontend."
 
   rust:
     name: Rust
@@ -106,6 +106,167 @@ jobs:
       - name: Tests
         working-directory: src-tauri
         run: cargo test --all-targets
+
+  # Compiling and passing the tests says the logic works. It says nothing about
+  # whether the window opens: the webview is a different component on every
+  # platform, and the parts these jobs exercise (drag and drop registration,
+  # the menu, the embedded assets) have no unit test and never will.
+  #
+  # These two are smoke tests, and it is worth being precise about what they
+  # prove: the application starts, shows a window with the expected title, and
+  # is still alive some seconds later. They do not click anything.
+  smoke-linux:
+    name: Starts on Linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Ubuntu 22.04 to match the release runner: the point is to start what
+      # users are given, not something built against newer libraries.
+      - name: Tauri system dependencies and a virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libgtk-3-dev \
+            patchelf \
+            xvfb \
+            xdotool \
+            imagemagick
+
+      - run: npm ci
+
+      # `--no-bundle` stops before producing the .deb and .AppImage: the binary
+      # is enough to start, and packaging would add minutes for nothing.
+      - name: Build the application
+        run: npm run tauri build -- --no-bundle
+
+      - name: Start it and check the window appears
+        env:
+          # WebKitGTK falls over on headless runners without these: it tries to
+          # use GPU compositing and a dmabuf renderer that Xvfb does not provide.
+          WEBKIT_DISABLE_COMPOSITING_MODE: 1
+          WEBKIT_DISABLE_DMABUF_RENDERER: 1
+        run: |
+          set -euo pipefail
+          BIN=src-tauri/target/release/open-takeout-hub
+          test -x "$BIN" || { echo "::error::binary not found at $BIN"; exit 1; }
+
+          xvfb-run -a --server-args="-screen 0 1280x800x24" bash -eo pipefail -c '
+            "'"$BIN"'" &
+            APP=$!
+
+            # `--sync` waits for the window instead of polling: if it never
+            # appears, the timeout is what fails, not a guess about how long
+            # starting takes.
+            if ! timeout 60 xdotool search --sync --name "Open Takeout Hub" >/dev/null; then
+              echo "::error::no window named \"Open Takeout Hub\" appeared within 60 s"
+              kill $APP 2>/dev/null || true
+              exit 1
+            fi
+
+            # A window that appears and then dies is not a working application.
+            sleep 10
+            if ! kill -0 $APP 2>/dev/null; then
+              echo "::error::the application exited within ten seconds of opening its window"
+              exit 1
+            fi
+
+            import -window root smoke-linux.png || true
+            kill $APP 2>/dev/null || true
+          '
+          echo "The window opened and the application stayed alive."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-linux
+          path: smoke-linux.png
+          if-no-files-found: warn
+
+  smoke-windows:
+    name: Starts on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Build the application
+        run: npm run tauri build -- --no-bundle
+
+      # The Windows runners have a real desktop session and WebView2 is
+      # preinstalled, so the application can actually open a window here.
+      - name: Start it and check the window appears
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $bin = "src-tauri\target\release\open-takeout-hub.exe"
+          if (-not (Test-Path $bin)) { throw "binary not found at $bin" }
+
+          $app = Start-Process -FilePath $bin -PassThru
+
+          # The window title arrives after the webview has loaded, so we wait
+          # for it rather than for the process, which exists immediately.
+          $deadline = (Get-Date).AddSeconds(60)
+          $title = ""
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 2
+            $app.Refresh()
+            if ($app.HasExited) { throw "the application exited during startup" }
+            if ($app.MainWindowTitle) { $title = $app.MainWindowTitle; break }
+          }
+          if (-not $title) {
+            Stop-Process -Id $app.Id -Force
+            throw "no window title appeared within 60 s"
+          }
+          Write-Host "Window title: $title"
+
+          # A window that appears and then dies is not a working application.
+          Start-Sleep -Seconds 10
+          $app.Refresh()
+          if ($app.HasExited) { throw "the application exited ten seconds after opening its window" }
+
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $area = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $shot = New-Object System.Drawing.Bitmap $area.Width, $area.Height
+          $g = [System.Drawing.Graphics]::FromImage($shot)
+          $g.CopyFromScreen($area.Location, [System.Drawing.Point]::Empty, $area.Size)
+          $shot.Save("smoke-windows.png")
+
+          Stop-Process -Id $app.Id -Force
+          Write-Host "The window opened and the application stayed alive."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-windows
+          path: smoke-windows.png
+          if-no-files-found: warn
 
   frontend:
     name: Frontend
