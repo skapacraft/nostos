@@ -32,8 +32,13 @@ Prima versione completa dell'applicazione.
   media.
 - Deduzione della data dal nome generato dalla fotocamera quando EXIF e sidecar
   mancano entrambi (`IMG_20200101_120000`, `PXL_...`, screenshot, Signal).
-- Riscrittura di data e coordinate nei tag EXIF di JPEG, HEIC, TIFF e WebP senza
-  ricomprimere l'immagine.
+- Riscrittura nei tag EXIF di JPEG, HEIC, TIFF e WebP, senza ricomprimere
+  l'immagine, di **tutto ciò che il sidecar contiene e che ha una sede nei
+  metadati**: data di scatto con il fuso, coordinate, descrizione
+  (`ImageDescription` e `XPComment`), volti riconosciuti (`XPKeywords`) e la
+  stella dei preferiti (`Rating` e `RatingPercent`). Restano fuori solo il
+  conteggio delle visualizzazioni e l'indirizzo su Google Foto, che nei metadati
+  non hanno dove stare: l'app li elenca invece di lasciarli scoprire.
 - **Ora locale del luogo invece dell'istante universale.** Quando la foto ha le
   coordinate, il fuso viene ricavato in locale e scritto insieme al suo scarto,
   tenendo conto dell'ora legale in vigore quel giorno. Scrivere l'istante UTC
@@ -61,6 +66,20 @@ Prima versione completa dell'applicazione.
 - Riconoscimento delle versioni modificate (`-edited`, `-modificato`,
   `-modifié`, `-編集済み` e altre dodici lingue), che non vengono trattate come
   duplicati.
+
+### Sidecar messi da parte
+
+- Dopo una riscrittura degli originali i file `.json` restano nella cartella, e
+  l'app propone di spostarli altrove. Sposta solo quelli che non sono più
+  l'unica copia di qualcosa, e non si fida di quanto ha riferito la riparazione:
+  rilegge ogni file per accertarsi che data, coordinate, descrizione, volti e
+  preferito ci siano davvero.
+- Restano dove sono i sidecar di PNG, GIF e video, formati in cui non scriviamo
+  EXIF e per i quali il JSON è quindi l'unica sede dei metadati; quelli delle
+  foto non ancora riparate; e quelli che portano dati senza corrispondente nei
+  tag. Il motivo di ogni permanenza viene contato e mostrato.
+- Non è una cancellazione: scrive lo stesso registro della quarantena, quindi il
+  ripristino rimette ogni JSON dov'era.
 
 ### Contatti e calendario
 
@@ -117,14 +136,15 @@ Prima versione completa dell'applicazione.
 
 ### Verifiche
 
-- 69 test, compresi end-to-end su Takeout sintetici. La riparazione EXIF viene
+- 71 test, compresi end-to-end su Takeout sintetici. La riparazione EXIF viene
   verificata rileggendo i tag da un JPEG reale e confrontando le coordinate dopo
   il round trip attraverso gradi, primi e secondi. La quarantena viene verificata
   prendendo un'istantanea di percorsi e contenuti prima dell'operazione e
   pretendendo che il ripristino la riproduca identica.
-- Quattro misure escluse dalla CI, da lanciare a mano: libreria da centomila
+- Cinque misure escluse dalla CI, da lanciare a mano: libreria da centomila
   foto, percorso dei byte veri, rubrica e calendario di grandi dimensioni,
-  estrazione di una serie multi-archivio presa dal disco.
+  estrazione di una serie multi-archivio presa dal disco, e riparazione con
+  successivo spostamento dei sidecar su una cartella vera.
 - `tools/genera_serie_takeout.py` costruisce il materiale per quest'ultima:
   quindici gigabyte divisi in otto archivi, con le stranezze note dell'export.
   Serve perché un test che genera i propri dati verifica anche le proprie

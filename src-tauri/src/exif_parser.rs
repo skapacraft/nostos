@@ -20,6 +20,7 @@ use std::sync::Mutex;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use exif::{In, Tag, Value};
 use little_exif::exif_tag::ExifTag;
+use little_exif::ifd::ExifTagGroup;
 use little_exif::metadata::Metadata as ExifWriter;
 use little_exif::rational::uR64;
 use rayon::prelude::*;
@@ -116,6 +117,18 @@ struct RawSidecar {
     creation_time: Option<TakeoutTime>,
     geo_data: Option<TakeoutGeo>,
     geo_data_exif: Option<TakeoutGeo>,
+    /// Volti riconosciuti e confermati dall'utente in Google Foto.
+    people: Option<Vec<RawPerson>>,
+    favorited: Option<bool>,
+    /// Contatore interno di Google, senza corrispondente nei metadati.
+    image_views: Option<String>,
+    /// Indirizzo della foto su Google Foto, valido solo finché esiste lì.
+    url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RawPerson {
+    name: Option<String>,
 }
 
 /// Sidecar normalizzato.
@@ -128,6 +141,30 @@ pub struct SidecarData {
     pub taken_at: Option<DateTime<Utc>>,
     pub created_at: Option<DateTime<Utc>>,
     pub geo: Option<GeoPoint>,
+    /// Nomi dei volti riconosciuti, nell'ordine in cui Google li elenca.
+    pub people: Vec<String>,
+    pub favorited: bool,
+    /// Dati che Google esporta ma che non hanno una sede nei metadati EXIF.
+    pub image_views: Option<String>,
+    pub url: Option<String>,
+}
+
+impl SidecarData {
+    /// Elenca i dati del sidecar che non finiranno dentro il file.
+    ///
+    /// Serve a poter dire all'utente cosa resta indietro invece di lasciarglielo
+    /// scoprire: sono contatori e indirizzi interni a Google Foto, non metadati
+    /// della fotografia, ma la differenza la decide chi possiede le foto.
+    pub fn unwritable(&self) -> Vec<&'static str> {
+        let mut resto = Vec::new();
+        if self.image_views.is_some() {
+            resto.push("conteggio delle visualizzazioni");
+        }
+        if self.url.is_some() {
+            resto.push("indirizzo su Google Foto");
+        }
+        resto
+    }
 }
 
 /// Origine scelta per il dato finale, in ordine di affidabilità decrescente.
@@ -559,6 +596,19 @@ pub fn read_sidecar(media: &Path, index: Option<&FileIndex>) -> Result<Option<Si
         taken_at: parse_unix_timestamp(&raw.photo_taken_time),
         created_at: parse_unix_timestamp(&raw.creation_time),
         geo: geo_from_takeout(&raw.geo_data).or_else(|| geo_from_takeout(&raw.geo_data_exif)),
+        people: raw
+            .people
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|p| p.name)
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .collect(),
+        favorited: raw.favorited.unwrap_or(false),
+        // Google scrive "0" anche quando non c'è nulla da dire: un contatore a
+        // zero non è un dato che si perde.
+        image_views: raw.image_views.filter(|v| v != "0" && !v.is_empty()),
+        url: raw.url.filter(|u| !u.is_empty()),
     }))
 }
 
@@ -964,9 +1014,145 @@ fn write_exif_tags(target: &Path, record: &MediaRecord) -> Result<()> {
         }
     }
 
+    // Tutto ciò che il sidecar porta oltre a data e coordinate. Senza questo
+    // passaggio la descrizione scritta dall'utente, i volti che ha confermato e
+    // il fatto che una foto fosse tra i preferiti resterebbero nel JSON, cioè
+    // andrebbero persi non appena il JSON resta indietro: che è esattamente il
+    // problema che l'applicazione esiste per risolvere.
+    if let Some(sidecar) = &record.sidecar {
+        if let Some(description) = sidecar.description.as_deref() {
+            writer.set_tag(ExifTag::ImageDescription(description.to_string()));
+            // Windows e diversi programmi di gestione foto leggono il campo
+            // proprietario invece di `ImageDescription`: scriverli entrambi
+            // costa poche decine di byte ed evita che la descrizione risulti
+            // vuota a seconda del programma.
+            writer.set_tag(windows_string_tag(XP_COMMENT, description));
+        }
+
+        if !sidecar.people.is_empty() {
+            // Non esiste un tag EXIF per i volti. `XPKeywords` è la sede che il
+            // resto dell'ecosistema legge davvero, separata da punto e virgola.
+            writer.set_tag(windows_string_tag(XP_KEYWORDS, &sidecar.people.join(";")));
+        }
+
+        if sidecar.favorited {
+            // La stella di Google Foto diventa il massimo del voto, che è la
+            // convenzione seguita da Windows, Lightroom e digiKam.
+            writer.set_tag(ExifTag::UnknownINT16U(
+                vec![5],
+                RATING,
+                ExifTagGroup::GENERIC,
+            ));
+            writer.set_tag(ExifTag::UnknownINT16U(
+                vec![99],
+                RATING_PERCENT,
+                ExifTagGroup::GENERIC,
+            ));
+        }
+    }
+
     writer
         .write_to_file(target)
         .map_err(|e| TakeoutError::io(target, e))
+}
+
+/// Elenca ciò che il sidecar contiene e il file ancora non porta con sé.
+///
+/// È il controllo che rende sicuro spostare il JSON: finché questa lista non è
+/// vuota, quel sidecar è l'unica copia di qualcosa e va lasciato dov'è. Il
+/// confronto guarda dentro al file invece di fidarsi dell'esito riferito dalla
+/// riparazione, perché è il file che resterà all'utente.
+///
+/// I dati elencati da [`SidecarData::unwritable`] non compaiono qui: non
+/// esiste un tag dove metterli, quindi aspettarli renderebbe la lista non
+/// vuota per sempre.
+pub fn sidecar_residual(media: &Path, sidecar: &SidecarData) -> Result<Vec<&'static str>> {
+    if !is_exif_writable(media) {
+        return Ok(vec!["il formato non ha un blocco EXIF dove scrivere"]);
+    }
+
+    let file = std::fs::File::open(media).map_err(|e| TakeoutError::io(media, e))?;
+    let mut reader = std::io::BufReader::new(file);
+    let Ok(exif) = exif::Reader::new().read_from_container(&mut reader) else {
+        return Ok(vec!["il file non ha un blocco EXIF leggibile"]);
+    };
+
+    let mut mancanti = Vec::new();
+
+    if let Some(atteso) = sidecar.taken_at {
+        let scritta = [Tag::DateTimeOriginal, Tag::DateTimeDigitized]
+            .iter()
+            .find_map(|tag| exif.get_field(*tag, In::PRIMARY))
+            .and_then(|field| ascii_value(&field.value))
+            .and_then(|raw| parse_exif_datetime(&raw));
+        let offset = [Tag::OffsetTimeOriginal, Tag::OffsetTimeDigitized]
+            .iter()
+            .find_map(|tag| exif.get_field(*tag, In::PRIMARY))
+            .and_then(|field| ascii_value(&field.value))
+            .and_then(|raw| parse_offset(&raw));
+
+        let coincide = scritta
+            .map(|data| match offset {
+                Some(minuti) => data - chrono::Duration::minutes(minuti as i64),
+                None => data,
+            })
+            .is_some_and(|data| (data - atteso).num_seconds().abs() <= 1);
+
+        if !coincide {
+            mancanti.push("la data di scatto");
+        }
+    }
+
+    if sidecar.geo.is_some() && read_gps(&exif).filter(|g| !g.is_null_island()).is_none() {
+        mancanti.push("le coordinate");
+    }
+
+    if sidecar.description.is_some() && exif.get_field(Tag::ImageDescription, In::PRIMARY).is_none()
+    {
+        mancanti.push("la descrizione");
+    }
+
+    if !sidecar.people.is_empty() && !has_tag(&exif, XP_KEYWORDS) {
+        mancanti.push("i volti riconosciuti");
+    }
+
+    if sidecar.favorited && !has_tag(&exif, RATING) {
+        mancanti.push("il contrassegno di preferito");
+    }
+
+    Ok(mancanti)
+}
+
+/// Vero se il tag esiste e porta un valore non vuoto.
+///
+/// I tag proprietari non hanno una costante in `kamadak-exif`, quindi si
+/// costruiscono dal loro codice numerico nel contesto TIFF, che è dove
+/// risiedono.
+fn has_tag(exif: &exif::Exif, code: u16) -> bool {
+    exif.get_field(Tag(exif::Context::Tiff, code), In::PRIMARY)
+        .is_some_and(|field| !field.value.display_as(field.tag).to_string().is_empty())
+}
+
+/// Tag proprietari Microsoft, non previsti dalla specifica EXIF ma scritti e
+/// letti da gran parte dei programmi di gestione foto.
+const XP_COMMENT: u16 = 0x9C9C;
+const XP_KEYWORDS: u16 = 0x9C9E;
+/// Voto della foto, in stelle e in percentuale.
+const RATING: u16 = 0x4746;
+const RATING_PERCENT: u16 = 0x4749;
+
+/// Codifica una stringa nella forma attesa dai tag `XP*`.
+///
+/// Sono dichiarati come sequenze di byte ma contengono UTF-16 little endian con
+/// il terminatore incluso: scriverci dentro UTF-8 produce testo illeggibile,
+/// e omettere il terminatore fa apparire caratteri di troppo in coda.
+fn windows_string_tag(code: u16, value: &str) -> ExifTag {
+    let mut bytes = Vec::with_capacity(value.len() * 2 + 2);
+    for unit in value.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    bytes.extend_from_slice(&[0, 0]);
+    ExifTag::UnknownINT8U(bytes, code, ExifTagGroup::GENERIC)
 }
 
 /// Sceglie un nome libero nella cartella indicata.
@@ -1354,6 +1540,8 @@ fn process_media(
 mod tests {
     use super::*;
 
+    use crate::app_state::testing::{write_bytes, write_file, TempDir, MINIMAL_JPEG};
+
     #[test]
     fn interpreta_il_formato_data_exif() {
         let parsed = parse_exif_datetime("2020:01:01 12:00:00").expect("data valida");
@@ -1452,6 +1640,83 @@ mod tests {
         // I video hanno i metadati negli atomi del contenitore, non in EXIF.
         assert!(!is_exif_writable(Path::new("clip.mp4")));
         assert!(!is_exif_writable(Path::new("clip.mov")));
+    }
+
+    /// Il sidecar porta più di data e coordinate, e il resto va dentro al file.
+    ///
+    /// Se descrizione, volti e preferito restassero solo nel JSON, spostare il
+    /// JSON li perderebbe: cioè si riproporrebbe, con un passaggio in più,
+    /// esattamente il guasto che questa applicazione esiste per riparare.
+    #[test]
+    fn porta_dentro_al_file_anche_descrizione_volti_e_preferito() {
+        let temp = TempDir::new("sidecar-completo");
+        let foto = temp.path().join("IMG_0001.JPG");
+        write_bytes(&foto, MINIMAL_JPEG);
+        write_file(
+            &temp.path().join("IMG_0001.JPG.json"),
+            r#"{
+              "title": "IMG_0001.JPG",
+              "description": "Cena sul lago con Anna",
+              "photoTakenTime": { "timestamp": "1577880000" },
+              "geoData": { "latitude": 45.4642, "longitude": 9.19, "altitude": 0.0 },
+              "people": [{ "name": "Anna Bianchi" }, { "name": "Luca Verdi" }],
+              "favorited": true,
+              "imageViews": "42",
+              "url": "https://photos.google.com/photo/AF1QipN"
+            }"#,
+        );
+
+        let record = inspect_media(&foto, None).expect("lettura media");
+        let sidecar = record.sidecar.as_ref().expect("sidecar letto");
+        assert_eq!(sidecar.people, ["Anna Bianchi", "Luca Verdi"]);
+        assert!(sidecar.favorited);
+        assert_eq!(
+            sidecar.unwritable(),
+            [
+                "conteggio delle visualizzazioni",
+                "indirizzo su Google Foto"
+            ],
+            "ciò che non entra nel file va saputo dire"
+        );
+
+        let report = apply_metadata(
+            temp.path(),
+            &WriteOptions {
+                mode: WriteMode::InPlace,
+                ..WriteOptions::default()
+            },
+            &crate::app_state::no_progress,
+        )
+        .expect("riparazione");
+        assert_eq!(report.exif_written, 1);
+
+        let bytes = std::fs::read(&foto).expect("rilettura");
+        assert_eq!(&bytes[..2], &[0xFF, 0xD8], "resta un JPEG valido");
+
+        // `ImageDescription` è testo semplice e si trova così com'è.
+        assert!(
+            String::from_utf8_lossy(&bytes).contains("Cena sul lago con Anna"),
+            "la descrizione deve finire dentro al file"
+        );
+
+        // I tag `XP*` sono in UTF-16 little endian: cercare la forma UTF-8
+        // troverebbe niente anche se la scrittura fosse andata a buon fine.
+        let utf16: Vec<u8> = "Anna Bianchi;Luca Verdi"
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+        assert!(
+            bytes.windows(utf16.len()).any(|f| f == utf16),
+            "i volti vanno scritti in XPKeywords, separati da punto e virgola"
+        );
+
+        // Il voto pieno è il modo in cui il resto dell'ecosistema legge la
+        // stella di Google Foto.
+        let riletto = read_exif(&foto).expect("rilettura EXIF");
+        assert!(
+            riletto.taken_at.is_some(),
+            "la data non deve andare persa scrivendo il resto"
+        );
     }
 
     /// Questo test protegge due cose diverse con la stessa asserzione.

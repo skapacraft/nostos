@@ -430,6 +430,20 @@ export interface RestoreReport {
   failures: string[];
 }
 
+export interface SidecarSweepReport {
+  destination: string;
+  moved: number;
+  bytesMoved: number;
+  /** Sidecar lasciati dov'erano perché ancora unica copia di qualcosa. */
+  kept: number;
+  /** Motivo per cui sono rimasti, con quante volte ricorre. */
+  keptReasons: Record<string, number>;
+  keptSample: string[];
+  /** Registro dello spostamento, l'unico modo per annullarlo. */
+  manifest: string | null;
+  failures: string[];
+}
+
 // --- Album di Google Foto -------------------------------------------------
 
 export interface Album {

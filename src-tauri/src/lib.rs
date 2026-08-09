@@ -31,7 +31,7 @@ use app_state::{
 };
 use calendar::CalendarReport;
 use contacts::ContactsReport;
-use drive::{CleanOptions, CleanPlan, CleanReport, DriveReport, RestoreReport};
+use drive::{CleanOptions, CleanPlan, CleanReport, DriveReport, RestoreReport, SidecarSweepReport};
 use exif_parser::{PhotoScanReport, RepairReport, WriteOptions};
 use zip_handler::{ArchiveEntry, ArchiveSeries, ArchiveSummary, ExtractReport};
 
@@ -519,6 +519,24 @@ async fn clean_drive(app: AppHandle, path: String, options: CleanOptions) -> Res
     .await
 }
 
+/// Sposta i sidecar il cui contenuto è ormai dentro ai file.
+///
+/// Ultimo passo di una riparazione riuscita, non una pulizia: sposta solo i
+/// JSON che non sono più l'unica copia di qualcosa, e scrive il registro che
+/// permette di annullare.
+#[tauri::command]
+async fn sweep_sidecars(
+    app: AppHandle,
+    path: String,
+    destination: String,
+) -> Result<SidecarSweepReport> {
+    in_background(move || {
+        let sink = progress_emitter(app);
+        drive::sweep_applied_sidecars(Path::new(&path), Path::new(&destination), MAX_ITEMS, &sink)
+    })
+    .await
+}
+
 /// Rimette al loro posto i file spostati in quarantena.
 #[tauri::command]
 async fn restore_quarantine(manifest: String) -> Result<RestoreReport> {
@@ -817,6 +835,7 @@ pub fn run() {
             scan_drive,
             plan_drive_clean,
             clean_drive,
+            sweep_sidecars,
             restore_quarantine,
             scan_calendar,
             scan_albums,
@@ -2069,6 +2088,124 @@ mod tests {
             );
         }
         println!();
+    }
+
+    /// Ripara una cartella vera e poi mette da parte i sidecar applicati.
+    ///
+    /// Lavora su una copia della cartella indicata, così l'originale resta
+    /// intatto e la misura si può ripetere. Serve a vedere all'opera la catena
+    /// intera, riscrittura compresa, su file che non sono stati costruiti dal
+    /// test stesso:
+    ///
+    /// ```bash
+    /// CARTELLA="~/Downloads/prova-estratta/Takeout/Google Foto/Foto da 2019" \
+    ///   cargo test --release ripara_e_mette_da_parte_i_sidecar -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "richiede una cartella sul disco: si lancia a mano con CARTELLA=..."]
+    fn ripara_e_mette_da_parte_i_sidecar() {
+        use std::time::Instant;
+
+        let Ok(sorgente) = std::env::var("CARTELLA") else {
+            println!("CARTELLA non impostata: niente da riparare.");
+            return;
+        };
+        let sorgente = PathBuf::from(sorgente);
+
+        let temp = TempDir::new("ripara-e-sposta");
+        let lavoro = temp.path().join("foto");
+        let inizio = Instant::now();
+        let copiati = copia_ricorsiva(&sorgente, &lavoro);
+        println!(
+            "\ncopia di lavoro: {copiati} file in {:?}",
+            inizio.elapsed()
+        );
+
+        let inizio = Instant::now();
+        let riparazione = exif_parser::apply_metadata(
+            &lavoro,
+            &exif_parser::WriteOptions {
+                mode: exif_parser::WriteMode::InPlace,
+                ..Default::default()
+            },
+            &crate::app_state::no_progress,
+        )
+        .expect("riparazione");
+        println!("riparazione in {:?}", inizio.elapsed());
+        println!(
+            "  {} candidati, {} EXIF scritti, {} date allineate, {} errori",
+            riparazione.candidates,
+            riparazione.exif_written,
+            riparazione.file_times_written,
+            riparazione.failures.len()
+        );
+
+        let messi_da_parte = temp.path().join("sidecar");
+        let inizio = Instant::now();
+        let spostamento = drive::sweep_applied_sidecars(
+            &lavoro,
+            &messi_da_parte,
+            20,
+            &crate::app_state::no_progress,
+        )
+        .expect("spostamento dei sidecar");
+        println!("spostamento in {:?}", inizio.elapsed());
+        println!(
+            "  {} spostati ({:.1} kB), {} lasciati",
+            spostamento.moved,
+            spostamento.bytes_moved as f64 / 1024.0,
+            spostamento.kept
+        );
+        for (motivo, quanti) in &spostamento.kept_reasons {
+            println!("    {quanti:>5} per {motivo}");
+        }
+        assert!(
+            spostamento.failures.is_empty(),
+            "{:?}",
+            spostamento.failures
+        );
+
+        // Ciò che è stato riparato non deve restare indietro, e ciò che non è
+        // stato riparato non deve essere toccato.
+        assert!(
+            spostamento.moved > 0,
+            "una riparazione riuscita deve liberare qualche sidecar"
+        );
+
+        let inizio = Instant::now();
+        let ripristino =
+            drive::restore_quarantine(&spostamento.manifest.clone().expect("registro scritto"))
+                .expect("ripristino");
+        println!("ripristino in {:?}", inizio.elapsed());
+        assert_eq!(
+            ripristino.restored, spostamento.moved,
+            "il ripristino deve rimettere tutto ciò che era stato spostato"
+        );
+        assert!(ripristino.failures.is_empty(), "{:?}", ripristino.failures);
+        println!();
+    }
+
+    /// Copia una cartella con tutto ciò che contiene, restituendo i file scritti.
+    fn copia_ricorsiva(sorgente: &Path, destinazione: &Path) -> usize {
+        let mut scritti = 0;
+        for entry in walkdir::WalkDir::new(sorgente)
+            .follow_links(false)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.file_type().is_file())
+        {
+            let relativo = entry
+                .path()
+                .strip_prefix(sorgente)
+                .expect("percorso relativo");
+            let target = destinazione.join(relativo);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).expect("cartella di destinazione");
+            }
+            std::fs::copy(entry.path(), &target).expect("copia del file");
+            scritti += 1;
+        }
+        scritti
     }
 
     #[test]

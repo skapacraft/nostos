@@ -15,7 +15,7 @@
 //! Il secondo punto è la fonte più comune di "backup" incompleti, quindi il
 //! modulo lo rileva e lo riporta esplicitamente.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -363,6 +363,8 @@ pub enum QuarantineReason {
     Duplicate,
     /// File affiancato che segue il media rimosso.
     Companion,
+    /// Sidecar il cui contenuto è ormai dentro al media, che resta al suo posto.
+    AppliedSidecar,
 }
 
 /// Parametri della pulizia.
@@ -942,6 +944,10 @@ pub fn clean(
                             QuarantineReason::Duplicate => report.duplicates_handled += 1,
                             QuarantineReason::Junk => report.junk_handled += 1,
                             QuarantineReason::Companion => report.companions_handled += 1,
+                            // La pulizia non produce mai questo motivo: nasce
+                            // solo da `sweep_applied_sidecars`, che scrive il
+                            // proprio registro.
+                            QuarantineReason::AppliedSidecar => {}
                         }
                         manifest.entries.push(QuarantineEntry {
                             original: path.clone(),
@@ -972,6 +978,164 @@ pub fn clean(
         report.duplicates_handled,
         report.junk_handled,
         report.bytes_reclaimed,
+        report.failures.len()
+    );
+
+    Ok(report)
+}
+
+/// Esito dello spostamento dei sidecar il cui contenuto è ormai nei file.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarSweepReport {
+    pub destination: PathBuf,
+    pub moved: usize,
+    pub bytes_moved: u64,
+    /// Sidecar lasciati dov'erano perché ancora unica copia di qualcosa.
+    pub kept: usize,
+    /// Motivi per cui sono stati lasciati, con quante volte ricorrono.
+    pub kept_reasons: BTreeMap<String, usize>,
+    /// Campione dei file rimasti, per poterli guardare.
+    pub kept_sample: Vec<PathBuf>,
+    pub manifest: Option<PathBuf>,
+    pub failures: Vec<String>,
+}
+
+/// Sposta i sidecar il cui contenuto è ormai dentro al media a cui appartengono.
+///
+/// Non è una pulizia: è l'ultimo passo di una riparazione riuscita. Un JSON
+/// accanto a una foto che ormai porta gli stessi dati non aggiunge nulla, ma
+/// finché non si è verificato che quei dati ci siano davvero il JSON è l'unica
+/// copia di qualcosa, e va lasciato stare.
+///
+/// Per questo la decisione non si basa su quanto ha riferito la riparazione ma
+/// su cosa c'è scritto nel file adesso, letto uno per uno. Restano indietro:
+///
+/// - i sidecar di PNG, GIF e video, formati in cui non scriviamo EXIF e per i
+///   quali il JSON è quindi l'unica sede di data e coordinate;
+/// - quelli il cui media non risulta ancora riparato;
+/// - quelli che portano dati senza una sede nei metadati, come il conteggio
+///   delle visualizzazioni di Google Foto.
+///
+/// Lo spostamento è reversibile: scrive lo stesso registro della quarantena, e
+/// [`restore_quarantine`] rimette ogni file al suo posto.
+pub fn sweep_applied_sidecars(
+    root: &Path,
+    destination: &Path,
+    max_items: usize,
+    progress: crate::app_state::ProgressSink<'_>,
+) -> Result<SidecarSweepReport> {
+    use crate::app_state::{Phase, Progress};
+    use crate::exif_parser;
+
+    crate::app_state::require_existing(root)?;
+    let root = root
+        .canonicalize()
+        .map_err(|e| crate::app_state::TakeoutError::io(root, e))?;
+
+    // Indice dei percorsi esistenti: senza, ogni candidato sidecar costerebbe
+    // un accesso al filesystem dentro cartelle da decine di migliaia di voci.
+    let mut index = exif_parser::FileIndex::new();
+    let mut media: Vec<PathBuf> = Vec::new();
+    for entry in WalkDir::new(&root)
+        .follow_links(false)
+        .into_iter()
+        .flatten()
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.into_path();
+        if exif_parser::is_media_file(&path) {
+            media.push(path.clone());
+        }
+        index.insert(path);
+    }
+
+    let totale = media.len();
+    progress(Progress::new(Phase::Scanning, 0, totale, 0));
+
+    let mut report = SidecarSweepReport {
+        destination: destination.to_path_buf(),
+        ..Default::default()
+    };
+    let mut manifest = QuarantineManifest {
+        created_at: Utc::now(),
+        source_root: root.clone(),
+        entries: Vec::new(),
+    };
+
+    for (fatti, file) in media.iter().enumerate() {
+        progress(Progress::new(Phase::Writing, fatti, totale, 0));
+
+        let Ok(Some(sidecar)) = exif_parser::read_sidecar(file, Some(&index)) else {
+            continue;
+        };
+
+        let mut motivi = exif_parser::sidecar_residual(file, &sidecar)?;
+        // Ciò che non ha una sede nei metadati resta un motivo valido per non
+        // toccare il JSON, anche se nessuna riparazione potrà mai risolverlo.
+        motivi.extend(sidecar.unwritable());
+
+        if !motivi.is_empty() {
+            report.kept += 1;
+            for motivo in motivi {
+                *report.kept_reasons.entry(motivo.to_string()).or_default() += 1;
+            }
+            if report.kept_sample.len() < max_items {
+                report.kept_sample.push(sidecar.path.clone());
+            }
+            continue;
+        }
+
+        let relative = sidecar.path.strip_prefix(&root).unwrap_or(&sidecar.path);
+        let target = destination.join(relative);
+        if let Some(parent) = target.parent() {
+            if let Err(err) = std::fs::create_dir_all(parent) {
+                report.failures.push(format!("{}: {err}", parent.display()));
+                continue;
+            }
+        }
+
+        let size = std::fs::metadata(&sidecar.path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        // `rename` fallisce tra volumi diversi: allora si copia e si rimuove.
+        let moved = std::fs::rename(&sidecar.path, &target).or_else(|_| {
+            std::fs::copy(&sidecar.path, &target).and_then(|_| std::fs::remove_file(&sidecar.path))
+        });
+
+        match moved {
+            Ok(_) => {
+                report.moved += 1;
+                report.bytes_moved += size;
+                manifest.entries.push(QuarantineEntry {
+                    original: sidecar.path.clone(),
+                    quarantined: target,
+                    reason: QuarantineReason::AppliedSidecar,
+                    size_bytes: size,
+                });
+            }
+            Err(err) => report
+                .failures
+                .push(format!("{}: {err}", sidecar.path.display())),
+        }
+    }
+
+    // Il registro va scritto anche se qualche spostamento è fallito: senza,
+    // ciò che è stato spostato non si recupera più.
+    if !manifest.entries.is_empty() {
+        let manifest_path = destination.join(MANIFEST_NAME);
+        let json = serde_json::to_string_pretty(&manifest)
+            .map_err(|e| crate::app_state::TakeoutError::Metadata(e.to_string()))?;
+        std::fs::write(&manifest_path, json)
+            .map_err(|e| crate::app_state::TakeoutError::io(&manifest_path, e))?;
+        report.manifest = Some(manifest_path);
+    }
+
+    progress(Progress::new(Phase::Done, totale, totale, 0));
+    trace_dev!(
+        "sidecar: {} spostati, {} lasciati, {} errori",
+        report.moved,
+        report.kept,
         report.failures.len()
     );
 
@@ -1030,6 +1194,112 @@ pub fn restore_quarantine(manifest_path: &Path) -> Result<RestoreReport> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Lo spostamento dei sidecar deve essere selettivo e annullabile.
+    ///
+    /// Selettivo perché un JSON accanto a un file che non porta ancora quei
+    /// dati è l'unica copia di qualcosa: spostarlo sarebbe una perdita
+    /// mascherata da pulizia. Annullabile perché "non cancella niente" vale
+    /// poco se poi il file non si può rimettere dov'era.
+    #[test]
+    fn sposta_solo_i_sidecar_il_cui_contenuto_e_gia_nel_file() {
+        use crate::app_state::testing::{write_bytes, write_file, TempDir, MINIMAL_JPEG};
+        use crate::exif_parser::{apply_metadata, WriteMode, WriteOptions};
+
+        let temp = TempDir::new("sidecar-spostati");
+        let foto = temp.path().join("Google Foto");
+
+        let sidecar = |nome: &str| {
+            format!(
+                r#"{{"title": "{nome}",
+                     "photoTakenTime": {{ "timestamp": "1577880000" }},
+                     "geoData": {{ "latitude": 45.4642, "longitude": 9.19, "altitude": 0.0 }} }}"#
+            )
+        };
+
+        // Riparabile: dopo la riscrittura il JSON non serve più.
+        write_bytes(&foto.join("IMG_0001.JPG"), MINIMAL_JPEG);
+        write_file(&foto.join("IMG_0001.JPG.json"), &sidecar("IMG_0001.JPG"));
+
+        // Video: non scriviamo EXIF, quindi il JSON resta l'unica sede.
+        write_file(&foto.join("VID_0002.mp4"), "non un video vero");
+        write_file(&foto.join("VID_0002.mp4.json"), &sidecar("VID_0002.mp4"));
+
+        // Mai riparato: la data sta solo nel JSON.
+        write_bytes(&foto.join("IMG_0003.JPG"), MINIMAL_JPEG);
+        write_file(&foto.join("IMG_0003.JPG.json"), &sidecar("IMG_0003.JPG"));
+
+        // Con un contatore di Google, che non ha una sede nei metadati.
+        write_bytes(&foto.join("IMG_0004.JPG"), MINIMAL_JPEG);
+        write_file(
+            &foto.join("IMG_0004.JPG.json"),
+            r#"{"title": "IMG_0004.JPG",
+                "photoTakenTime": { "timestamp": "1577880000" },
+                "imageViews": "128"}"#,
+        );
+
+        // Ripara solo le prime due foto, lasciando indietro IMG_0003.
+        let da_riparare = temp.path().join("solo-alcune");
+        for nome in ["IMG_0001.JPG", "IMG_0004.JPG"] {
+            write_bytes(&da_riparare.join(nome), MINIMAL_JPEG);
+            std::fs::copy(
+                foto.join(format!("{nome}.json")),
+                da_riparare.join(format!("{nome}.json")),
+            )
+            .expect("copia sidecar");
+        }
+        apply_metadata(
+            &foto,
+            &WriteOptions {
+                mode: WriteMode::InPlace,
+                ..WriteOptions::default()
+            },
+            &crate::app_state::no_progress,
+        )
+        .expect("riparazione");
+        // Rimette IMG_0003 allo stato di partenza: riparato non lo vogliamo.
+        write_bytes(&foto.join("IMG_0003.JPG"), MINIMAL_JPEG);
+
+        let quarantena = temp.path().join("sidecar-applicati");
+        let report = sweep_applied_sidecars(&foto, &quarantena, 10, &crate::app_state::no_progress)
+            .expect("spostamento");
+
+        assert_eq!(report.moved, 1, "solo IMG_0001 è pienamente riparata");
+        assert_eq!(report.kept, 3, "gli altri tre restano: {report:?}");
+        assert!(
+            !foto.join("IMG_0001.JPG.json").exists(),
+            "il sidecar applicato va spostato"
+        );
+        assert!(
+            foto.join("VID_0002.mp4.json").exists(),
+            "senza EXIF il JSON è l'unica sede: non si tocca"
+        );
+        assert!(
+            foto.join("IMG_0003.JPG.json").exists(),
+            "un file non riparato non perde il suo sidecar"
+        );
+        assert!(
+            foto.join("IMG_0004.JPG.json").exists(),
+            "un dato senza sede nei metadati tiene fermo il sidecar"
+        );
+        assert!(
+            report
+                .kept_reasons
+                .keys()
+                .any(|m| m.contains("visualizzazioni")),
+            "il motivo va detto: {:?}",
+            report.kept_reasons
+        );
+
+        // E si deve poter tornare indietro.
+        let manifest = report.manifest.expect("registro scritto");
+        let ripristino = restore_quarantine(&manifest).expect("ripristino");
+        assert_eq!(ripristino.restored, 1);
+        assert!(
+            foto.join("IMG_0001.JPG.json").exists(),
+            "il ripristino rimette il sidecar dov'era"
+        );
+    }
 
     #[test]
     fn classifica_per_estensione() {

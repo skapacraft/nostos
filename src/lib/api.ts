@@ -32,6 +32,7 @@ import type {
   Progress,
   RepairReport,
   RestoreReport,
+  SidecarSweepReport,
   SourceSummary,
   SpaceEstimate,
   WriteOptions,
@@ -133,6 +134,15 @@ export const planDriveClean = (path: string, options: CleanOptions) =>
 /** Esegue la pulizia: albero pulito altrove, oppure quarantena reversibile. */
 export const cleanDrive = (path: string, options: CleanOptions) =>
   invoke<CleanReport>("clean_drive", { path, options });
+
+/**
+ * Sposta i sidecar il cui contenuto è ormai dentro ai file.
+ *
+ * Non cancella: scrive lo stesso registro della quarantena, quindi
+ * `restoreQuarantine` rimette ogni JSON dov'era.
+ */
+export const sweepSidecars = (path: string, destination: string) =>
+  invoke<SidecarSweepReport>("sweep_sidecars", { path, destination });
 
 /** Rimette al loro posto i file spostati in quarantena. */
 export const restoreQuarantine = (manifest: string) =>

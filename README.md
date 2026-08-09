@@ -58,7 +58,10 @@ Non sono buone intenzioni: sono vincoli verificabili nel codice.
    rimasto, con un pulsante per ripararne una per volta.
 9. **Nessuna cancellazione.** Nessuna funzione dell'applicazione elimina file.
    La pulizia di Drive costruisce un albero alternativo oppure sposta in
-   quarantena scrivendo un registro che consente di annullare tutto.
+   quarantena scrivendo un registro che consente di annullare tutto. Vale anche
+   per i sidecar rimasti indietro dopo una riparazione: vengono spostati, mai
+   rimossi, e solo dopo aver riletto il file per accertarsi che il loro
+   contenuto ci sia davvero.
 
 Il comando `privacy_report` espone questa dichiarazione alla UI, che la mostra
 nel badge "Offline" dell'intestazione.
@@ -98,6 +101,7 @@ src/
     AlbumPanel.tsx     album, manifest dell'appartenenza, versioni modificate
     FolderCleaner.tsx  pulizia di una cartella, con anteprima e annullamento
     Help.tsx           guida in-app e informazioni sulla licenza
+    SidecarSweep.tsx   mette da parte i JSON il cui contenuto è nei file
     Welcome.tsx        presentazione all'avvio, una volta per sessione
     Stat.tsx           riquadro numerico
 ```
@@ -124,9 +128,14 @@ src/
   accorcia a 46 caratteri, dove il suffisso arriva mozzato o sparisce del
   tutto), e quando entrambi mancano deduce la data dal nome generato dalla
   fotocamera
-  (`IMG_20200101_120000`, `PXL_...`, screenshot, Signal). Riconcilia data e
-  coordinate e **le riscrive nei tag EXIF** di JPEG, HEIC, TIFF e WebP senza
-  ricomprimere l'immagine. Quando la foto ha le coordinate, ricava il fuso del
+  (`IMG_20200101_120000`, `PXL_...`, screenshot, Signal). **Riscrive nei tag EXIF** di
+  JPEG, HEIC, TIFF e WebP, senza ricomprimere l'immagine, tutto ciò che il
+  sidecar contiene e che ha una sede nei metadati: data, coordinate,
+  descrizione (`ImageDescription`), volti riconosciuti (`XPKeywords`) e la
+  stella dei preferiti (`Rating`). Restano fuori solo il conteggio delle
+  visualizzazioni e l'indirizzo su Google Foto, che nei metadati non hanno dove
+  stare: l'app lo dichiara invece di lasciarlo scoprire.
+  Quando la foto ha le coordinate, ricava il fuso del
   luogo e scrive l'ora locale corretta con il suo scarto, tenendo conto
   dell'ora legale: `DateTimeOriginal` è l'ora dell'orologio sul posto, non
   l'ora universale, e scriverci dentro un istante UTC sposterebbe ogni foto.
@@ -150,6 +159,14 @@ src/
   pulito altrove, o si sposta in quarantena con un registro che permette di
   rimettere tutto a posto con un clic. Quando un media viene rimosso il suo
   sidecar JSON lo segue, per non lasciare file orfani.
+- **Sidecar messi da parte a riparazione conclusa**: dopo una riscrittura degli
+  originali i `.json` restano nella cartella, e l'app propone di spostarli.
+  Sposta solo quelli che non sono più l'unica copia di qualcosa, e non si fida
+  di quanto ha riferito la riparazione: rilegge ogni file per verificare che il
+  dato ci sia davvero. Restano dove sono quelli di PNG, GIF e video, quelli
+  delle foto non riparate e quelli che portano dati senza una sede nei tag.
+  Non è una cancellazione: scrive lo stesso registro della quarantena e si
+  annulla con un clic.
 - **La pulizia vale per qualsiasi sezione**, non solo Drive: è disponibile anche
   su Google Foto, dove gli export contengono spesso lo stesso scatto duplicato
   perché presente in più album.
@@ -164,10 +181,10 @@ Ogni modifica passa da quattro controlli, eseguiti in CI:
 | --- | --- |
 | `cargo deny check` | nessuna crate di rete, telemetria o updater |
 | `cargo clippy -- -D warnings` | zero warning |
-| `cargo test` | 69 test, compresi end-to-end su Takeout sintetici |
+| `cargo test` | 71 test, compresi end-to-end su Takeout sintetici |
 | `npm run build` | tipi allineati alle struct serde |
 
-Ci sono inoltre quattro misure escluse dalla CI, da lanciare a mano. La prima
+Ci sono inoltre cinque misure escluse dalla CI, da lanciare a mano. La prima
 lavora su una libreria grande, perché genera decine di migliaia di file:
 
 ```bash
@@ -218,6 +235,15 @@ Su quindici gigabyte divisi in otto archivi, come li produce Google con
 l'opzione "2 GB": serie riconosciuta partendo da un archivio solo in 0,1 ms,
 estrazione dei 6330 file in 40 secondi a 383 MB/s senza collisioni, scansione
 delle 3237 foto in 1,4 secondi, memoria allocata 107 MB.
+
+La quinta ripara una cartella vera e poi mette da parte i sidecar applicati,
+lavorando su una copia così che l'originale resti intatto:
+
+```bash
+CARTELLA="~/Downloads/prova-estratta/Takeout/Google Foto/Foto da 2019" \
+  cargo test --release --manifest-path src-tauri/Cargo.toml \
+  ripara_e_mette_da_parte_i_sidecar -- --ignored --nocapture
+```
 
 Lo script non produce un Takeout di Google: riproduce la struttura, la
 nomenclatura, la divisione a fette e le stranezze note dell'export, ma non le

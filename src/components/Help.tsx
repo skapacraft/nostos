@@ -103,16 +103,34 @@ export function Help({ info, privacy, onClose }: HelpProps) {
           galleria mostra tutte le foto con la data di download.
         </p>
         <p>
-          La riparazione riscrive data e posizione nei tag EXIF, senza
-          ricomprimere l'immagine. Funziona su JPEG, HEIC, TIFF e WebP. Per PNG,
-          GIF e video l'EXIF non è la sede dei metadati: in quei casi viene
-          allineata la data del file e il sidecar JSON viene copiato accanto,
-          così il dato non si perde.
+          La riparazione riscrive nei tag EXIF tutto quello che il file{" "}
+          <span className="font-mono">.json</span> contiene e che ha una sede
+          nei metadati: data di scatto con il fuso, coordinate, descrizione,
+          volti riconosciuti e la stella dei preferiti. L'immagine non viene
+          ricompressa. Funziona su JPEG, HEIC, TIFF e WebP. Per PNG, GIF e video
+          l'EXIF non è la sede dei metadati: in quei casi viene allineata la
+          data del file e il sidecar JSON viene copiato accanto, così il dato
+          non si perde.
+        </p>
+        <p className="text-zinc-500 dark:text-zinc-400">
+          Restano fuori solo i dati che nei metadati non hanno dove stare: il
+          conteggio delle visualizzazioni e l'indirizzo della foto su Google
+          Foto. Non sono informazioni della fotografia, ma finché quel JSON
+          esiste ci sono, e l'app te lo dice invece di lasciartelo scoprire.
         </p>
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
           La modalità predefinita scrive copie riparate in una cartella separata
           e non tocca gli originali. La riscrittura degli originali esiste, ma va
           scelta a mano e confermata.
+        </p>
+        <p>
+          Dopo una riscrittura degli originali i file{" "}
+          <span className="font-mono">.json</span> restano nella cartella, e
+          l'app propone di metterli da parte. Sposta solo quelli che non sono
+          più l'unica copia di qualcosa, controllando dentro a ogni foto che il
+          dato ci sia davvero: restano dove sono quelli di PNG, GIF e video,
+          quelli delle foto non riparate e quelli che contengono dati senza una
+          sede nei tag. Non è una cancellazione, e si annulla con un clic.
         </p>
       </Section>
 
