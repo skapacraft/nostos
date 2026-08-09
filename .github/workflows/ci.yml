@@ -268,6 +268,74 @@ jobs:
           path: smoke-windows.png
           if-no-files-found: warn
 
+  # The unit tests run on synthetic trees built in a temporary folder. This job
+  # instead generates a real multi-archive Takeout and puts it through the whole
+  # chain, on the two systems nobody here can try by hand.
+  #
+  # It exists because the interesting cross-platform bugs live in the
+  # filesystem, not in the logic: Windows is case-insensitive, caps paths at 260
+  # characters unless long paths are enabled, and refuses a handful of reserved
+  # names. This export is full of long names with spaces and accents, nested
+  # several folders deep, which is exactly where those limits bite.
+  files:
+    name: Real files on ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            label: Linux
+          - os: windows-latest
+            label: Windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Windows ships `python`, not `python3`: the action puts both on PATH.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tauri system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev
+
+      # Two hundred megabytes across three archives: enough to exercise the
+      # merge, the album folders and the shortened sidecar names, small enough
+      # not to spend the runner's time writing bytes we already measured on a
+      # real fifteen gigabyte series.
+      - name: Generate a Takeout series
+        shell: bash
+        run: |
+          OTH_GB=0.2 OTH_GB_PER_ARCHIVE=0.08 \
+            python3 tools/generate_takeout_series.py "$RUNNER_TEMP/series"
+          ls -la "$RUNNER_TEMP/series"
+
+      # Debug rather than release: this checks that the files come out right,
+      # not how fast. A release build would cost minutes for no more certainty.
+      - name: Extract the series and analyse it
+        shell: bash
+        working-directory: src-tauri
+        env:
+          SERIES: ${{ runner.temp }}/series
+          OUTPUT: ${{ runner.temp }}/extracted
+        run: cargo test extracts_a_real_series -- --ignored --nocapture
+
+      - name: Repair a folder and set the sidecars aside
+        shell: bash
+        working-directory: src-tauri
+        env:
+          FOLDER: ${{ runner.temp }}/extracted/Takeout/Google Foto/Foto da 2019
+        run: cargo test repairs_then_sets_the_sidecars_aside -- --ignored --nocapture
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
