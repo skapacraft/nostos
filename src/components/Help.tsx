@@ -298,6 +298,12 @@ export function Help({
             altrettanto libera, così nessuno può prendere questo codice,
             aggiungerci tracciamento e distribuirlo come programma chiuso.
           </p>
+          <p className="text-zinc-500 dark:text-zinc-400">
+            Questa applicazione non è affiliata a Google LLC, non è approvata né
+            sponsorizzata da Google. Google, Google Foto, Google Drive e Google
+            Takeout sono marchi di Google LLC, citati qui soltanto per indicare
+            di quale export si sta parlando.
+          </p>
         </Section>
       ) : null}
     </div>

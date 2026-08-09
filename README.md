@@ -349,6 +349,12 @@ The full list, dependencies included, is in
 
 Built by **SkapaCraft** ([skapacraft.com](https://skapacraft.com)).
 
+## Trademarks
+
+Not affiliated with, endorsed by or sponsored by Google LLC. Google, Google
+Photos, Google Drive and Google Takeout are trademarks of Google LLC, named
+here only to identify the export this software reads.
+
 ## Licence
 
 Copyright (C) 2026 SkapaCraft. GPL-3.0-or-later, see [LICENSE](LICENSE).

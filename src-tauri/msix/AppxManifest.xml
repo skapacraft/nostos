@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  Manifest for the MSIX package the Microsoft Store requires. Tauri produces an
+  .msi and an NSIS installer, neither of which the Store accepts as a packaged
+  app, so the payload is repackaged with makeappx from the Windows SDK, which is
+  already installed on the GitHub runners.
+
+  Three values here are placeholders, replaced during the build from repository
+  variables, because they are assigned by Partner Center and belong to the
+  account rather than to the code:
+
+    __IDENTITY_NAME__     Package identity, in the form 12345SkapaCraft.Nostos
+    __PUBLISHER__         Publisher, in the form CN=ABCDEF12-3456-...
+    __PUBLISHER_DISPLAY__ Publisher display name, as reserved
+
+  Find all three in Partner Center under Product identity, once the app name is
+  reserved. They must match exactly or the Store rejects the upload.
+
+  The version is four parts and the last one must stay 0: the Store reserves the
+  revision field for itself.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="__IDENTITY_NAME__"
+    Publisher="__PUBLISHER__"
+    Version="__VERSION__"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Nostos</DisplayName>
+    <PublisherDisplayName>__PUBLISHER_DISPLAY__</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Writes the dates and places of a Google Takeout export back into the photos, merges split archives and deduplicates by content. Opens no network connections.</Description>
+  </Properties>
+
+  <Dependencies>
+    <!-- 10.0.17763.0 is Windows 10 1809, the oldest release WebView2 supports. -->
+    <TargetDeviceFamily
+      Name="Windows.Desktop"
+      MinVersion="10.0.17763.0"
+      MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+    <Resource Language="it-it" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Nostos" Executable="nostos.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Nostos"
+        Description="Repair your Google Takeout export, on your own computer."
+        BackgroundColor="#18181B"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" Square310x310Logo="Assets\Square310x310Logo.png" Square71x71Logo="Assets\Square71x71Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!--
+      The application reads and writes the folders the user picks in a system
+      dialog, which is what broadFileSystemAccess covers. There is no internet
+      capability here, and its absence is not an oversight: this application
+      opens no network connections, and the package should say so.
+    -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

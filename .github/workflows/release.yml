@@ -2,13 +2,26 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Release
 
-# Tauri bundles do not cross-compile between platforms: macOS produces neither
-# .msi nor .deb. Every system has to be built on its own runner, which is why
+# Tauri bundles do not cross-compile between platforms: Linux produces neither
+# .msi nor .dmg. Every system has to be built on its own runner, which is why
 # this file exists instead of a local script.
+#
+# macOS is deliberately absent. Without an Apple Developer ID certificate the
+# bundle is unsigned, and Gatekeeper refuses to open it: publishing a package
+# that a user cannot run is worse than publishing nothing, because they blame
+# the application rather than the missing signature. It comes back when the
+# certificate does.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+
+# The workflow token is read-only by default on this repository, which is the
+# right default: a token that can write is a token that can be abused by
+# anything that ends up running in CI. Publishing a release is the one thing
+# here that genuinely needs to write, so it is granted explicitly.
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -18,10 +31,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            label: macOS (Apple Silicon + Intel)
-            args: --target universal-apple-darwin
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
           # The oldest Linux runner available: the runner's glibc and webkit2gtk
           # set the minimum compatibility of the package produced. Building on a
           # recent distribution yields binaries that will not start on LTS ones.
@@ -80,6 +89,59 @@ jobs:
 
       # Tauri does not produce a portable executable: its Windows bundles are
       # installers. The raw binary already is one, so we publish it separately.
+      # The Store does not accept the .msi or the NSIS installer as a packaged
+      # app, so the payload is repackaged as MSIX with makeappx from the Windows
+      # SDK, which is already on the runner. An MSIX submitted to the Store is
+      # signed by Microsoft, which is why this route avoids buying a code
+      # signing certificate.
+      #
+      # The three identity values are assigned by Partner Center and belong to
+      # the account rather than to the code, so they arrive as repository
+      # variables. Without them the step skips rather than producing a package
+      # the Store would reject.
+      - name: Windows MSIX for the Store
+        if: matrix.os == 'windows-latest' && vars.MSIX_IDENTITY_NAME != ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage = "$env:RUNNER_TEMP\msix"
+          New-Item -ItemType Directory -Force -Path "$stage\Assets" | Out-Null
+
+          Copy-Item "src-tauri\target\release\nostos.exe" "$stage\"
+          foreach ($logo in "Square150x150Logo","Square44x44Logo","Square71x71Logo","Square310x310Logo","StoreLogo") {
+            Copy-Item "src-tauri\icons\$logo.png" "$stage\Assets\"
+          }
+          # The manifest asks for a wide tile, which the icon generator does not
+          # produce: the 310x310 square stands in rather than leaving a
+          # reference to a file that is not there.
+          Copy-Item "src-tauri\icons\Square310x310Logo.png" "$stage\Assets\Wide310x150Logo.png"
+
+          # The Store reserves the fourth version field for itself, so it stays 0.
+          $version = "${{ github.ref_name }}".TrimStart("v") + ".0"
+
+          (Get-Content "src-tauri\msix\AppxManifest.xml" -Raw) `
+            -replace "__IDENTITY_NAME__", "${{ vars.MSIX_IDENTITY_NAME }}" `
+            -replace "__PUBLISHER__", "${{ vars.MSIX_PUBLISHER }}" `
+            -replace "__PUBLISHER_DISPLAY__", "${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}" `
+            -replace "__VERSION__", $version |
+            Set-Content "$stage\AppxManifest.xml" -Encoding UTF8
+
+          $sdk = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
+            Where-Object { Test-Path "$($_.FullName)\x64\makeappx.exe" } |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $sdk) { throw "makeappx.exe not found in the Windows SDK" }
+
+          $out = "Nostos-${{ github.ref_name }}.msix"
+          & "$($sdk.FullName)\x64\makeappx.exe" pack /d $stage /p $out /o
+          if ($LASTEXITCODE -ne 0) { throw "makeappx failed with $LASTEXITCODE" }
+          Write-Host "Built $out"
+
+      - uses: actions/upload-artifact@v7
+        if: matrix.os == 'windows-latest' && vars.MSIX_IDENTITY_NAME != ''
+        with:
+          name: nostos-msix
+          path: Nostos-*.msix
+
       - name: Windows portable executable
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v7

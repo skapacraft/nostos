@@ -3,11 +3,17 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the numbering follows [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [1.0.0] 2026-08-09
 
-Nothing has been published yet: the `0.1.0` below describes the state of the
-code, not a distributed binary. It still lacks signing with an Apple Developer
-ID certificate, without which Gatekeeper refuses the macOS package.
+First published version.
+
+The number is 1.0.0 and not 0.x because this is what gets distributed: on a
+store, a leading zero reads as abandoned rather than as modest. It does what
+the sections below describe, on the three systems CI starts it on.
+
+macOS packages are not signed with an Apple Developer ID certificate, so
+Gatekeeper refuses them until that is in place. Windows and Linux are
+unaffected.
 
 ### Added
 
@@ -60,10 +66,6 @@ ID certificate, without which Gatekeeper refuses the macOS package.
   zone boundaries derived from OpenStreetMap (ODbL-1.0), plus the licences of
   every direct dependency.
 - The `PRODID` of exported calendars declared `IT`; it now declares `EN`.
-
-## [0.1.0] not yet released
-
-First complete version of the application.
 
 ### Sources and archives
 
