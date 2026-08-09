@@ -149,19 +149,46 @@ pub struct SidecarData {
     pub url: Option<String>,
 }
 
+/// Motivo per cui un sidecar resta dov'è invece di essere messo da parte.
+///
+/// È un codice, non una frase: il testo lo sceglie chi mostra, nella lingua
+/// che sta usando. Vale anche per i conteggi che l'interfaccia raggruppa.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SidecarKept {
+    /// PNG, GIF e video: nessun blocco EXIF dove scrivere.
+    NoExifContainer,
+    /// Il file non ha un blocco EXIF leggibile.
+    UnreadableExif,
+    /// La data di scatto non risulta ancora scritta nel file.
+    MissingDate,
+    /// Le coordinate non risultano ancora scritte nel file.
+    MissingGeo,
+    /// La descrizione non risulta ancora scritta nel file.
+    MissingDescription,
+    /// I volti riconosciuti non risultano ancora scritti nel file.
+    MissingPeople,
+    /// Il contrassegno di preferito non risulta ancora scritto nel file.
+    MissingFavorite,
+    /// Conteggio delle visualizzazioni: nei metadati non ha dove stare.
+    ViewCountHasNoTag,
+    /// Indirizzo su Google Foto: nei metadati non ha dove stare.
+    PhotoUrlHasNoTag,
+}
+
 impl SidecarData {
     /// Elenca i dati del sidecar che non finiranno dentro il file.
     ///
     /// Serve a poter dire all'utente cosa resta indietro invece di lasciarglielo
     /// scoprire: sono contatori e indirizzi interni a Google Foto, non metadati
     /// della fotografia, ma la differenza la decide chi possiede le foto.
-    pub fn unwritable(&self) -> Vec<&'static str> {
+    pub fn unwritable(&self) -> Vec<SidecarKept> {
         let mut resto = Vec::new();
         if self.image_views.is_some() {
-            resto.push("conteggio delle visualizzazioni");
+            resto.push(SidecarKept::ViewCountHasNoTag);
         }
         if self.url.is_some() {
-            resto.push("indirizzo su Google Foto");
+            resto.push(SidecarKept::PhotoUrlHasNoTag);
         }
         resto
     }
@@ -1066,15 +1093,15 @@ fn write_exif_tags(target: &Path, record: &MediaRecord) -> Result<()> {
 /// I dati elencati da [`SidecarData::unwritable`] non compaiono qui: non
 /// esiste un tag dove metterli, quindi aspettarli renderebbe la lista non
 /// vuota per sempre.
-pub fn sidecar_residual(media: &Path, sidecar: &SidecarData) -> Result<Vec<&'static str>> {
+pub fn sidecar_residual(media: &Path, sidecar: &SidecarData) -> Result<Vec<SidecarKept>> {
     if !is_exif_writable(media) {
-        return Ok(vec!["il formato non ha un blocco EXIF dove scrivere"]);
+        return Ok(vec![SidecarKept::NoExifContainer]);
     }
 
     let file = std::fs::File::open(media).map_err(|e| TakeoutError::io(media, e))?;
     let mut reader = std::io::BufReader::new(file);
     let Ok(exif) = exif::Reader::new().read_from_container(&mut reader) else {
-        return Ok(vec!["il file non ha un blocco EXIF leggibile"]);
+        return Ok(vec![SidecarKept::UnreadableExif]);
     };
 
     let mut mancanti = Vec::new();
@@ -1099,25 +1126,25 @@ pub fn sidecar_residual(media: &Path, sidecar: &SidecarData) -> Result<Vec<&'sta
             .is_some_and(|data| (data - atteso).num_seconds().abs() <= 1);
 
         if !coincide {
-            mancanti.push("la data di scatto");
+            mancanti.push(SidecarKept::MissingDate);
         }
     }
 
     if sidecar.geo.is_some() && read_gps(&exif).filter(|g| !g.is_null_island()).is_none() {
-        mancanti.push("le coordinate");
+        mancanti.push(SidecarKept::MissingGeo);
     }
 
     if sidecar.description.is_some() && exif.get_field(Tag::ImageDescription, In::PRIMARY).is_none()
     {
-        mancanti.push("la descrizione");
+        mancanti.push(SidecarKept::MissingDescription);
     }
 
     if !sidecar.people.is_empty() && !has_tag(&exif, XP_KEYWORDS) {
-        mancanti.push("i volti riconosciuti");
+        mancanti.push(SidecarKept::MissingPeople);
     }
 
     if sidecar.favorited && !has_tag(&exif, RATING) {
-        mancanti.push("il contrassegno di preferito");
+        mancanti.push(SidecarKept::MissingFavorite);
     }
 
     Ok(mancanti)
@@ -1673,8 +1700,8 @@ mod tests {
         assert_eq!(
             sidecar.unwritable(),
             [
-                "conteggio delle visualizzazioni",
-                "indirizzo su Google Foto"
+                SidecarKept::ViewCountHasNoTag,
+                SidecarKept::PhotoUrlHasNoTag
             ],
             "ciò che non entra nel file va saputo dire"
         );

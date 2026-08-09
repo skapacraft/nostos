@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 use walkdir::WalkDir;
 
-use crate::app_state::{ExportReport, Result, TakeoutError};
+use crate::app_state::{ExportReport, Notice, Result, TakeoutError};
 
 /// Suffissi che Google aggiunge alle versioni modificate di una foto.
 ///
@@ -131,7 +131,7 @@ pub struct AlbumIndex {
     pub edited_pairs: Vec<EditedPair>,
     /// Foto presenti solo in un album e in nessuna cartella per anno.
     pub album_only: usize,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Notice>,
 }
 
 /// Manifest scritto su disco prima di deduplicare.
@@ -330,13 +330,7 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
 
     let prefisso = year_prefix(&nomi);
     if prefisso.is_none() && nomi.iter().filter(|n| classify_folder(n).is_year()).count() > 1 {
-        index.warnings.push(
-            "Più cartelle finiscono con un anno senza condividere un prefisso: \
-             non è possibile dire quali siano annate e quali album con l'anno \
-             nel nome. Sono state trattate tutte come annate, quindi il \
-             manifest potrebbe non registrare l'appartenenza a un album."
-                .to_string(),
-        );
+        index.warnings.push(Notice::AmbiguousYearFolders);
     }
 
     for name in nomi {
@@ -433,16 +427,14 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
     }
 
     if index.album_only > 0 {
-        index.warnings.push(format!(
-            "{} foto compaiono solo dentro un album e in nessuna cartella per anno: rimuoverle dagli album le farebbe sparire del tutto.",
-            index.album_only
-        ));
+        index.warnings.push(Notice::PhotosOnlyInAlbums {
+            count: index.album_only,
+        });
     }
     if index.membership_count > 0 {
-        index.warnings.push(format!(
-            "{} foto sono duplicate tra cartelle per anno e album. Esporta il manifest prima di deduplicare, altrimenti l'appartenenza agli album va persa.",
-            index.membership_count
-        ));
+        index.warnings.push(Notice::PhotosSharedWithAlbums {
+            count: index.membership_count,
+        });
     }
 
     Ok(index)
@@ -553,7 +545,7 @@ mod tests {
         let index = build_index(&root, 100).expect("indice");
         assert_eq!(index.year_folders.len(), 2, "in dubbio restano annate");
         assert!(
-            index.warnings.iter().any(|w| w.contains("prefisso")),
+            index.warnings.contains(&Notice::AmbiguousYearFolders),
             "l'ambiguità va detta, non nascosta: {:?}",
             index.warnings
         );

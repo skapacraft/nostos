@@ -24,7 +24,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::app_state::{trace_dev, Phase, Progress, ProgressSink, Result, TakeoutError};
+use crate::app_state::{trace_dev, Notice, Phase, Progress, ProgressSink, Result, TakeoutError};
 
 /// Estensioni dei segnaposto Google: file senza contenuto reale.
 const STUB_EXTENSIONS: &[&str] = &[
@@ -82,22 +82,6 @@ pub enum FileCategory {
 }
 
 impl FileCategory {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Document => "Documenti",
-            Self::Spreadsheet => "Fogli di calcolo",
-            Self::Presentation => "Presentazioni",
-            Self::Pdf => "PDF",
-            Self::Image => "Immagini",
-            Self::Video => "Video",
-            Self::Audio => "Audio",
-            Self::Archive => "Archivi",
-            Self::Code => "Codice",
-            Self::Placeholder => "Segnaposto senza contenuto",
-            Self::Other => "Altro",
-        }
-    }
-
     /// Deduce la categoria dall'estensione.
     pub fn from_path(path: &Path) -> Self {
         let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
@@ -133,7 +117,6 @@ impl FileCategory {
 #[serde(rename_all = "camelCase")]
 pub struct CategoryStats {
     pub category: FileCategory,
-    pub label: String,
     pub file_count: usize,
     pub total_bytes: u64,
 }
@@ -182,7 +165,7 @@ pub struct DriveReport {
     /// Byte recuperabili eliminando i duplicati.
     pub duplicate_bytes: u64,
     pub largest_files: Vec<LargeFile>,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Notice>,
 }
 
 /// Legge l'URL contenuto in un segnaposto Google.
@@ -218,7 +201,9 @@ pub fn scan_directory(root: &Path, max_items: usize) -> Result<DriveReport> {
         let entry = match entry {
             Ok(entry) => entry,
             Err(err) => {
-                report.warnings.push(err.to_string());
+                report
+                    .warnings
+                    .push(Notice::read_failed(root.display(), err));
                 continue;
             }
         };
@@ -235,7 +220,9 @@ pub fn scan_directory(root: &Path, max_items: usize) -> Result<DriveReport> {
         let size = match entry.metadata() {
             Ok(meta) => meta.len(),
             Err(err) => {
-                report.warnings.push(format!("{}: {err}", path.display()));
+                report
+                    .warnings
+                    .push(Notice::read_failed(path.display(), err));
                 continue;
             }
         };
@@ -289,7 +276,6 @@ pub fn scan_directory(root: &Path, max_items: usize) -> Result<DriveReport> {
         .into_iter()
         .map(|(category, (file_count, total_bytes))| CategoryStats {
             category,
-            label: category.label().to_string(),
             file_count,
             total_bytes,
         })
@@ -324,10 +310,9 @@ pub fn scan_directory(root: &Path, max_items: usize) -> Result<DriveReport> {
     report.largest_files = all_files;
 
     if report.placeholder_count > 0 {
-        report.warnings.push(format!(
-            "{} file sono segnaposto Google senza contenuto: l'export non include i dati, solo un riferimento online.",
-            report.placeholder_count
-        ));
+        report.warnings.push(Notice::PlaceholdersWithoutContent {
+            count: report.placeholder_count,
+        });
     }
 
     Ok(report)
@@ -426,7 +411,7 @@ pub struct CleanPlan {
     pub hashed_bytes: u64,
     pub duplicate_groups: Vec<ContentDuplicateGroup>,
     pub junk_sample: Vec<PathBuf>,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Notice>,
 }
 
 /// Voce del registro di quarantena.
@@ -637,7 +622,7 @@ pub fn plan_clean(
         let entry = match entry {
             Ok(entry) => entry,
             Err(err) => {
-                plan.warnings.push(err.to_string());
+                plan.warnings.push(Notice::read_failed(root.display(), err));
                 continue;
             }
         };
@@ -783,9 +768,7 @@ pub fn plan_clean(
 /// Verifica che la destinazione non stia dentro la sorgente.
 fn check_destination(root: &Path, destination: &Path) -> Result<()> {
     if destination.starts_with(root) {
-        return Err(TakeoutError::Metadata(
-            "la destinazione non può stare dentro la cartella di origine".to_string(),
-        ));
+        return Err(TakeoutError::DestinationInsideSource);
     }
     Ok(())
 }
@@ -810,9 +793,10 @@ pub fn clean(
         return Ok(report);
     }
 
-    let destination = options.destination.as_ref().ok_or_else(|| {
-        TakeoutError::Metadata("questa modalità richiede una destinazione".to_string())
-    })?;
+    let destination = options
+        .destination
+        .as_ref()
+        .ok_or(TakeoutError::DestinationRequired)?;
     check_destination(root, destination)?;
 
     // In quarantena i file si spostano, quindi lo spazio serve solo se la
@@ -984,6 +968,14 @@ pub fn clean(
     Ok(report)
 }
 
+/// Quante volte ricorre un motivo di permanenza.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeptReason {
+    pub reason: crate::exif_parser::SidecarKept,
+    pub count: usize,
+}
+
 /// Esito dello spostamento dei sidecar il cui contenuto è ormai nei file.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -994,7 +986,7 @@ pub struct SidecarSweepReport {
     /// Sidecar lasciati dov'erano perché ancora unica copia di qualcosa.
     pub kept: usize,
     /// Motivi per cui sono stati lasciati, con quante volte ricorrono.
-    pub kept_reasons: BTreeMap<String, usize>,
+    pub kept_reasons: Vec<KeptReason>,
     /// Campione dei file rimasti, per poterli guardare.
     pub kept_sample: Vec<PathBuf>,
     pub manifest: Option<PathBuf>,
@@ -1062,6 +1054,8 @@ pub fn sweep_applied_sidecars(
         source_root: root.clone(),
         entries: Vec::new(),
     };
+    // Ordinato per avere un elenco stabile fra un'esecuzione e l'altra.
+    let mut conteggi: BTreeMap<exif_parser::SidecarKept, usize> = BTreeMap::new();
 
     for (fatti, file) in media.iter().enumerate() {
         progress(Progress::new(Phase::Writing, fatti, totale, 0));
@@ -1078,7 +1072,7 @@ pub fn sweep_applied_sidecars(
         if !motivi.is_empty() {
             report.kept += 1;
             for motivo in motivi {
-                *report.kept_reasons.entry(motivo.to_string()).or_default() += 1;
+                *conteggi.entry(motivo).or_insert(0) += 1;
             }
             if report.kept_sample.len() < max_items {
                 report.kept_sample.push(sidecar.path.clone());
@@ -1119,6 +1113,11 @@ pub fn sweep_applied_sidecars(
                 .push(format!("{}: {err}", sidecar.path.display())),
         }
     }
+
+    report.kept_reasons = conteggi
+        .into_iter()
+        .map(|(reason, count)| KeptReason { reason, count })
+        .collect();
 
     // Il registro va scritto anche se qualche spostamento è fallito: senza,
     // ciò che è stato spostato non si recupera più.
@@ -1285,8 +1284,8 @@ mod tests {
         assert!(
             report
                 .kept_reasons
-                .keys()
-                .any(|m| m.contains("visualizzazioni")),
+                .iter()
+                .any(|m| m.reason == crate::exif_parser::SidecarKept::ViewCountHasNoTag),
             "il motivo va detto: {:?}",
             report.kept_reasons
         );

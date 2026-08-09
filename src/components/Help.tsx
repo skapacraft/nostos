@@ -3,6 +3,7 @@
 
 import type { ReactNode } from "react";
 
+import { PRIVACY_NOTES } from "../lib/messages";
 import type { AppInfo, PrivacyReport } from "../types";
 
 interface HelpProps {
@@ -205,7 +206,7 @@ export function Help({ info, privacy, onClose }: HelpProps) {
             {privacy.notes.map((note) => (
               <li key={note} className="flex gap-2">
                 <span className="text-emerald-600 dark:text-emerald-400">✓</span>
-                <span>{note}</span>
+                <span>{PRIVACY_NOTES[note]}</span>
               </li>
             ))}
           </ul>

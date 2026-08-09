@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::app_state::{ExportReport, Result, TakeoutError};
+use crate::app_state::{ExportReport, Notice, Result, TakeoutError};
 use crate::contacts::{split_property, unescape, unfold};
 
 /// Lunghezza massima di una riga prima del folding, in ottetti (RFC 5545).
@@ -105,7 +105,7 @@ pub struct CalendarReport {
     pub all_day: usize,
     /// Proprietà proprietarie rimosse durante la pulizia.
     pub dropped_properties: usize,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Notice>,
     pub sample: Vec<CalendarEvent>,
 }
 
@@ -271,7 +271,9 @@ fn collect_events(root: &Path) -> Result<(CalendarReport, Vec<CalendarEvent>)> {
                     }
                 }
             }
-            Err(err) => report.warnings.push(err.to_string()),
+            Err(err) => report
+                .warnings
+                .push(Notice::read_failed(file.display(), err)),
         }
     }
 
@@ -325,7 +327,7 @@ pub fn export_ics(root: &Path, destination: &Path) -> Result<ExportReport> {
     let mut out = String::new();
     out.push_str("BEGIN:VCALENDAR\r\n");
     out.push_str("VERSION:2.0\r\n");
-    out.push_str("PRODID:-//Open Takeout Hub//IT\r\n");
+    out.push_str("PRODID:-//Open Takeout Hub//EN\r\n");
     out.push_str("CALSCALE:GREGORIAN\r\n");
 
     // I valori vengono riscritti come sono stati letti, cioè ancora protetti

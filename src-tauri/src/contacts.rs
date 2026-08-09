@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::app_state::{ExportReport, Result, TakeoutError};
+use crate::app_state::{ExportReport, Notice, Result, TakeoutError};
 
 /// Un contatto normalizzato.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -65,7 +65,7 @@ pub struct ContactsReport {
     pub with_email: usize,
     pub with_phone: usize,
     pub without_contact_info: usize,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Notice>,
     /// Campione dei primi contatti, per l'anteprima nella UI.
     pub sample: Vec<Contact>,
 }
@@ -321,7 +321,9 @@ fn collect_contacts(root: &Path) -> Result<(ContactsReport, Vec<Contact>)> {
                     }
                 }
             }
-            Err(err) => report.warnings.push(err.to_string()),
+            Err(err) => report
+                .warnings
+                .push(Notice::read_failed(file.display(), err)),
         }
     }
 

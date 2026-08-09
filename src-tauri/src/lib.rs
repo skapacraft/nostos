@@ -25,9 +25,9 @@ use walkdir::WalkDir;
 
 use albums::AlbumIndex;
 use app_state::{
-    trace_dev, AppInfo, AppState, ExportReport, FolderSize, LoadedSource, Phase, Preferences,
-    PrivacyReport, Progress, Result, SectionSummary, SourceKind, SourceSummary, SpaceEstimate,
-    TakeoutError, TakeoutSection,
+    trace_dev, AppInfo, AppState, ExportReport, FolderSize, LoadedSource, Notice, Phase,
+    Preferences, PrivacyReport, Progress, Result, SectionSummary, SourceKind, SourceSummary,
+    SpaceEstimate, TakeoutError, TakeoutSection,
 };
 use calendar::CalendarReport;
 use contacts::ContactsReport;
@@ -281,7 +281,6 @@ fn analyze_folder(path: &Path) -> Result<SourceSummary> {
         summary.total_bytes += total_bytes;
         summary.sections.push(SectionSummary {
             section,
-            label: section.label().to_string(),
             dir_name,
             path: child,
             file_count,
@@ -294,9 +293,7 @@ fn analyze_folder(path: &Path) -> Result<SourceSummary> {
         .sort_by_key(|section| std::cmp::Reverse(section.total_bytes));
 
     if summary.sections.is_empty() {
-        summary.warnings.push(
-            "Nessuna sezione Takeout riconosciuta: verifica di aver selezionato la cartella che contiene Google Foto, Drive o Contatti.".to_string(),
-        );
+        summary.warnings.push(Notice::NoSectionsFound);
     }
 
     Ok(summary)
@@ -340,7 +337,6 @@ fn analyze_archive(path: &Path) -> Result<SourceSummary> {
         let section = TakeoutSection::from_dir_name(&dir_name);
         summary.sections.push(SectionSummary {
             section,
-            label: section.label().to_string(),
             path: path.join(&dir_name),
             dir_name,
             file_count: 0,
@@ -349,14 +345,11 @@ fn analyze_archive(path: &Path) -> Result<SourceSummary> {
     }
 
     if !archive.rejected.is_empty() {
-        summary.warnings.push(format!(
-            "{} voci dell'archivio hanno percorsi non sicuri e verranno ignorate in estrazione.",
-            archive.rejected.len()
-        ));
+        summary.warnings.push(Notice::UnsafeArchiveEntries {
+            count: archive.rejected.len(),
+        });
     }
-    summary
-        .warnings
-        .push("Archivio non estratto: estrailo per analizzare foto, contatti e Drive.".to_string());
+    summary.warnings.push(Notice::ArchiveNotExtracted);
 
     Ok(summary)
 }
@@ -2036,8 +2029,8 @@ mod tests {
         println!("analisi delle sezioni in {:?}", inizio.elapsed());
         for sezione in &sorgente.sections {
             println!(
-                "  {:<16} {:>6} file, {:>6.2} GB",
-                sezione.label,
+                "  {:<16?} {:>6} file, {:>6.2} GB",
+                sezione.section,
                 sezione.file_count,
                 sezione.total_bytes as f64 / 1024.0 / 1024.0 / 1024.0
             );
@@ -2156,8 +2149,8 @@ mod tests {
             spostamento.bytes_moved as f64 / 1024.0,
             spostamento.kept
         );
-        for (motivo, quanti) in &spostamento.kept_reasons {
-            println!("    {quanti:>5} per {motivo}");
+        for motivo in &spostamento.kept_reasons {
+            println!("    {:>5} per {:?}", motivo.count, motivo.reason);
         }
         assert!(
             spostamento.failures.is_empty(),

@@ -7,6 +7,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "../lib/api";
 import { toMessage } from "../lib/api";
 import { formatBytes, formatCount, shortenPath } from "../lib/format";
+import { SIDECAR_KEPT_LABELS } from "../lib/messages";
 import type { SidecarSweepReport } from "../types";
 import { RevealButton } from "./RevealButton";
 
@@ -138,9 +139,9 @@ export function SidecarSweep({ path, onError }: SidecarSweepProps) {
                   Lasciati dov'erano: {formatCount(report.kept)}. I motivi:
                 </p>
                 <ul className="list-inside list-disc space-y-0.5">
-                  {Object.entries(report.keptReasons).map(([motivo, quanti]) => (
-                    <li key={motivo}>
-                      {motivo}: {formatCount(quanti)}
+                  {report.keptReasons.map(({ reason, count }) => (
+                    <li key={reason}>
+                      {SIDECAR_KEPT_LABELS[reason]}: {formatCount(count)}
                     </li>
                   ))}
                 </ul>
