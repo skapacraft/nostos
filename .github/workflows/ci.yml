@@ -204,7 +204,7 @@ jobs:
           '
           echo "The page rendered and the application stayed alive."
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: smoke-linux
@@ -240,7 +240,7 @@ jobs:
         shell: pwsh
         run: .github/scripts/smoke-windows.ps1
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: smoke-windows
