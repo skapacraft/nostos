@@ -243,7 +243,7 @@ reachable only from the PNG writing path. This project excludes PNG from
 `EXIF_WRITABLE_EXTENSIONS`, so the vulnerable code is never executed.
 
 The exclusion is not left to the memory of whoever writes the next commit: the
-test `png_resta_fuori_dalla_scrittura_exif` fails if anyone adds PNG to the
+test `png_stays_out_of_exif_writing` fails if anyone adds PNG to the
 list, and its message points back to this exception.
 
 The exception should be removed once `little_exif` moves to `quick-xml` 0.41.

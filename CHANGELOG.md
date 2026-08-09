@@ -23,7 +23,19 @@ ID certificate, without which Gatekeeper refuses the macOS package.
   switches have no default branch, so adding a variant in Rust without the
   matching text fails the frontend build rather than showing a raw code on
   screen.
-- Repository documentation and source comments are in English.
+- Repository documentation, source comments and identifiers are in English.
+  Test names, local variables, the helper script and the environment variables
+  of the manual measurements were renamed: `FOTO` is now `PHOTOS`, `SERIE` is
+  `SERIES`, `USCITA` is `OUTPUT`, `CARTELLA` is `FOLDER`, and
+  `tools/genera_serie_takeout.py` is `tools/generate_takeout_series.py`.
+- The folder for files without a date is named `no-date/` instead of
+  `senza-data/`.
+- Two errors that carried their own prose inside `Metadata(String)` became
+  typed variants of their own: `UnrecognisedSource` and `ConfigDirUnavailable`.
+- Added `ACKNOWLEDGEMENTS.md`, recording what the project took from others: the
+  edited-suffix list from GooglePhotosTakeoutHelper (Apache-2.0) and the time
+  zone boundaries derived from OpenStreetMap (ODbL-1.0), plus the licences of
+  every direct dependency.
 - The `PRODID` of exported calendars declared `IT`; it now declares `EN`.
 
 ## [0.1.0] not yet released
@@ -161,7 +173,7 @@ First complete version of the application.
   photo library, the real-bytes path, a large address book and calendar,
   extraction of a multi-archive series taken from disk, and repair followed by
   setting aside the sidecars on a real folder.
-- `tools/genera_serie_takeout.py` builds the material for the last two: fifteen
+- `tools/generate_takeout_series.py` builds the material for the last two: fifteen
   gigabytes across eight archives, with the known quirks of the export. It
   exists because a test that generates its own data also validates its own
   assumptions, and if an assumption is wrong the test stays green anyway.

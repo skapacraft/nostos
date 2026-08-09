@@ -56,6 +56,12 @@ pub enum TakeoutError {
 
     #[error("this mode requires a destination")]
     DestinationRequired,
+
+    #[error("{0} is neither a Takeout folder nor a takeout-*.zip archive")]
+    UnrecognisedSource(PathBuf),
+
+    #[error("the system configuration folder is unavailable: {0}")]
+    ConfigDirUnavailable(String),
 }
 
 impl TakeoutError {
@@ -91,6 +97,8 @@ pub enum ErrorPayload {
     Poisoned,
     DestinationInsideSource,
     DestinationRequired,
+    UnrecognisedSource { path: String },
+    ConfigDirUnavailable { detail: String },
 }
 
 impl TakeoutError {
@@ -124,6 +132,12 @@ impl TakeoutError {
             Self::Poisoned => ErrorPayload::Poisoned,
             Self::DestinationInsideSource => ErrorPayload::DestinationInsideSource,
             Self::DestinationRequired => ErrorPayload::DestinationRequired,
+            Self::UnrecognisedSource(path) => ErrorPayload::UnrecognisedSource {
+                path: path.display().to_string(),
+            },
+            Self::ConfigDirUnavailable(detail) => ErrorPayload::ConfigDirUnavailable {
+                detail: detail.clone(),
+            },
         }
     }
 }
@@ -321,7 +335,7 @@ pub(crate) mod testing {
                 std::thread::current().id()
             ));
             let _ = std::fs::remove_dir_all(&path);
-            std::fs::create_dir_all(&path).expect("creazione cartella temporanea");
+            std::fs::create_dir_all(&path).expect("creazione folder temporary");
             Self(path)
         }
 
@@ -666,7 +680,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn riconosce_le_sezioni_localizzate() {
+    fn recognises_localised_sections() {
         assert_eq!(
             TakeoutSection::from_dir_name("Google Foto"),
             TakeoutSection::GooglePhotos
@@ -679,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn lo_stato_parte_vuoto_e_si_svuota() {
+    fn the_state_starts_empty_and_empties_again() {
         let state = AppState::new();
         assert!(matches!(state.summary(), Err(TakeoutError::NoSource)));
         state

@@ -132,6 +132,10 @@ export function errorText(payload: ErrorPayload): string {
       return "La destinazione non può stare dentro la cartella di origine.";
     case "destinationRequired":
       return "Questa modalità richiede di scegliere una destinazione.";
+    case "unrecognisedSource":
+      return `${payload.path} non è una cartella Takeout né un archivio takeout-*.zip.`;
+    case "configDirUnavailable":
+      return "La cartella di configurazione del sistema non è raggiungibile.";
   }
 }
 
@@ -142,6 +146,7 @@ export function errorDetail(payload: ErrorPayload): string | null {
     case "archive":
     case "metadata":
     case "task":
+    case "configDirUnavailable":
       return payload.detail;
     default:
       return null;

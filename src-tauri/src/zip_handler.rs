@@ -389,7 +389,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accetta_percorsi_relativi_normali() {
+    fn accepts_ordinary_relative_paths() {
         assert_eq!(
             safe_relative_path("Takeout/Google Foto/IMG_1.jpg"),
             Some(PathBuf::from("Takeout/Google Foto/IMG_1.jpg"))
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn rifiuta_i_tentativi_di_zip_slip() {
+    fn refuses_zip_slip_attempts() {
         assert_eq!(safe_relative_path("../../etc/passwd"), None);
         assert_eq!(safe_relative_path("/etc/passwd"), None);
         assert_eq!(safe_relative_path("Takeout/../../fuori.txt"), None);
@@ -410,17 +410,17 @@ mod tests {
     }
 
     #[test]
-    fn riconosce_i_nomi_degli_archivi_takeout() {
+    fn recognises_takeout_archive_names() {
         assert!(is_takeout_archive(Path::new(
             "takeout-20260805T090000Z-001.zip"
         )));
         assert!(is_takeout_archive(Path::new("/tmp/Takeout.zip")));
-        assert!(!is_takeout_archive(Path::new("foto.zip")));
+        assert!(!is_takeout_archive(Path::new("photos.zip")));
         assert!(!is_takeout_archive(Path::new("takeout.tgz")));
     }
 
     #[test]
-    fn scompone_il_nome_in_serie_e_numero() {
+    fn splits_the_name_into_series_and_number() {
         assert_eq!(
             series_key(Path::new("/t/takeout-20260805T090000Z-001.zip")),
             Some(("takeout-20260805T090000Z".to_string(), 1))
@@ -443,7 +443,7 @@ mod tests {
 
         for (name, content) in entries {
             if name.ends_with('/') {
-                writer.add_directory(*name, options).expect("cartella");
+                writer.add_directory(*name, options).expect("folder");
             } else {
                 writer.start_file(*name, options).expect("voce");
                 std::io::Write::write_all(&mut writer, content.as_bytes()).expect("contenuto");
@@ -454,8 +454,8 @@ mod tests {
     }
 
     #[test]
-    fn unisce_gli_archivi_di_una_serie_in_un_solo_albero() {
-        let temp = crate::app_state::testing::TempDir::new("serie");
+    fn merges_the_archives_of_a_series_into_one_tree() {
+        let temp = crate::app_state::testing::TempDir::new("series_path");
         let dir = temp.path();
 
         // Google splits the export into self-contained archives: the `Takeout/`
@@ -465,7 +465,7 @@ mod tests {
             &[
                 ("Takeout/", ""),
                 ("Takeout/Google Foto/", ""),
-                ("Takeout/Google Foto/IMG_0001.JPG", "primo"),
+                ("Takeout/Google Foto/IMG_0001.JPG", "first"),
             ],
         );
         build_archive(
@@ -484,7 +484,7 @@ mod tests {
         );
 
         let series = discover_series(&dir.join("takeout-20260805T090000Z-002.zip"))
-            .expect("individuazione serie");
+            .expect("individuazione series_path");
         assert_eq!(
             series.archives.len(),
             2,
@@ -493,7 +493,7 @@ mod tests {
         assert!(series.missing.is_empty());
         assert!(series.archives[0].ends_with("takeout-20260805T090000Z-001.zip"));
 
-        let dest = dir.join("estratto");
+        let dest = dir.join("extracted");
         let report = extract_series(&series.archives, &dest, &crate::app_state::no_progress)
             .expect("series extraction");
 
@@ -506,7 +506,7 @@ mod tests {
 
         assert_eq!(
             std::fs::read_to_string(dest.join("Takeout/Google Foto/IMG_0001.JPG")).unwrap(),
-            "primo"
+            "first"
         );
         assert_eq!(
             std::fs::read_to_string(dest.join("Takeout/Google Foto/IMG_0002.JPG")).unwrap(),
@@ -516,7 +516,7 @@ mod tests {
     }
 
     #[test]
-    fn segnala_i_numeri_mancanti_nella_serie() {
+    fn flags_the_numbers_missing_from_the_series() {
         let temp = crate::app_state::testing::TempDir::new("buchi");
         let dir = temp.path();
 
@@ -527,27 +527,29 @@ mod tests {
             );
         }
 
-        let series = discover_series(&dir.join("takeout-20260805T090000Z-001.zip")).expect("serie");
+        let series =
+            discover_series(&dir.join("takeout-20260805T090000Z-001.zip")).expect("series_path");
         assert_eq!(series.archives.len(), 2);
         assert_eq!(series.missing, vec![2], "the download is incomplete");
     }
 
     #[test]
-    fn registra_le_collisioni_senza_sovrascrivere() {
+    fn records_collisions_without_overwriting() {
         let temp = crate::app_state::testing::TempDir::new("collisioni");
         let dir = temp.path();
 
         build_archive(
-            &dir.join("takeout-serie-001.zip"),
+            &dir.join("takeout-series_path-001.zip"),
             &[("Takeout/doppio.txt", "originale")],
         );
         build_archive(
-            &dir.join("takeout-serie-002.zip"),
+            &dir.join("takeout-series_path-002.zip"),
             &[("Takeout/doppio.txt", "sovrascrittura")],
         );
 
-        let series = discover_series(&dir.join("takeout-serie-001.zip")).expect("serie");
-        let dest = dir.join("estratto");
+        let series =
+            discover_series(&dir.join("takeout-series_path-001.zip")).expect("series_path");
+        let dest = dir.join("extracted");
         let report = extract_series(&series.archives, &dest, &crate::app_state::no_progress)
             .expect("estrazione");
 
@@ -561,7 +563,7 @@ mod tests {
     }
 
     #[test]
-    fn riporta_lavanzamento_durante_lestrazione() {
+    fn reports_progress_during_extraction() {
         use crate::app_state::{Phase, Progress};
         use std::sync::Mutex;
 
@@ -572,21 +574,21 @@ mod tests {
             &[("Takeout/a.txt", "a"), ("Takeout/b.txt", "b")],
         );
 
-        let eventi: Mutex<Vec<Progress>> = Mutex::new(Vec::new());
-        let sink = |p: Progress| eventi.lock().unwrap().push(p);
+        let events: Mutex<Vec<Progress>> = Mutex::new(Vec::new());
+        let sink = |p: Progress| events.lock().unwrap().push(p);
 
         extract_series(
             &[dir.join("takeout-p-001.zip")],
-            &dir.join("estratto"),
+            &dir.join("extracted"),
             &sink,
         )
         .expect("estrazione");
 
-        let eventi = eventi.into_inner().unwrap();
-        assert!(eventi.len() >= 3, "scansione, file, completamento");
-        assert_eq!(eventi.first().unwrap().phase, Phase::Scanning);
+        let events = events.into_inner().unwrap();
+        assert!(events.len() >= 3, "scanning, file, completion");
+        assert_eq!(events.first().unwrap().phase, Phase::Scanning);
 
-        let ultimo = eventi.last().unwrap();
+        let ultimo = events.last().unwrap();
         assert_eq!(ultimo.phase, Phase::Done);
         assert_eq!(ultimo.done, ultimo.total);
     }

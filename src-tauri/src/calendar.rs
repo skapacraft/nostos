@@ -375,7 +375,7 @@ mod tests {
          RRULE:FREQ=YEARLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 
     #[test]
-    fn legge_gli_eventi_di_base() {
+    fn reads_basic_events() {
         let (events, dropped) = parse_ics(SAMPLE);
 
         assert_eq!(events.len(), 2);
@@ -388,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn non_confonde_gli_allarmi_con_levento() {
+    fn does_not_confuse_alarms_with_the_event() {
         let (events, _) = parse_ics(SAMPLE);
         // The VALARM has a SUMMARY of its own: it must not overwrite the one
         // belonging to the event that contains it.
@@ -396,32 +396,32 @@ mod tests {
     }
 
     #[test]
-    fn riconosce_ricorrenze_e_giornate_intere() {
+    fn recognises_recurrences_and_all_day_events() {
         let (events, _) = parse_ics(SAMPLE);
         assert!(events[1].is_recurring, "RRULE marks a recurrence");
         assert!(events[1].is_all_day, "VALUE=DATE marks an all-day event");
     }
 
     #[test]
-    fn deduplica_per_uid() {
+    fn deduplicates_by_uid() {
         let doppio = format!("{SAMPLE}{SAMPLE}");
         let temp = crate::app_state::testing::TempDir::new("cal-dedup");
         let file = temp.path().join("calendario.ics");
         crate::app_state::testing::write_file(&file, &doppio);
 
-        let report = scan_directory(temp.path(), 10).expect("scansione");
+        let report = scan_directory(temp.path(), 10).expect("scan");
         assert_eq!(report.total, 4);
         assert_eq!(report.duplicates, 2);
         assert_eq!(report.unique, 2);
     }
 
     #[test]
-    fn esporta_un_ics_pulito_e_rileggibile() {
+    fn exports_a_clean_readable_ics() {
         let temp = crate::app_state::testing::TempDir::new("cal-export");
         let file = temp.path().join("calendario.ics");
         crate::app_state::testing::write_file(&file, SAMPLE);
 
-        let destination = temp.path().join("uscita").join("calendar_cleaned.ics");
+        let destination = temp.path().join("output").join("calendar_cleaned.ics");
         let report = export_ics(temp.path(), &destination).expect("export");
         assert_eq!(report.written, 2);
 
@@ -446,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn ripiega_le_righe_lunghe_senza_spezzare_i_caratteri() {
+    fn folds_long_lines_without_splitting_characters() {
         let lunga = format!("DESCRIPTION:{}", "à".repeat(100));
         let folded = fold_line(&lunga);
 

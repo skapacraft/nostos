@@ -369,10 +369,7 @@ fn load_source(path: String, state: State<'_, AppState>) -> Result<SourceSummary
     } else if zip_handler::is_takeout_archive(&path) {
         analyze_archive(&path)?
     } else {
-        return Err(TakeoutError::Archive(format!(
-            "{} non è una cartella Takeout né un archivio takeout-*.zip",
-            path.display()
-        )));
+        return Err(TakeoutError::UnrecognisedSource(path));
     };
 
     state.set_source(LoadedSource {
@@ -387,7 +384,7 @@ fn load_source(path: String, state: State<'_, AppState>) -> Result<SourceSummary
 ///
 /// The analysis commands accept an explicit path (a section chosen in the UI)
 /// or no path at all, in which case they work on the whole loaded source.
-/// sorgente caricata.
+/// source caricata.
 fn target_path(path: Option<String>, state: &State<'_, AppState>) -> Result<PathBuf> {
     match path {
         Some(path) => Ok(PathBuf::from(path)),
@@ -638,8 +635,8 @@ fn compute_space(source: &Path, destination: &Path) -> Result<SpaceEstimate> {
                     .flatten()
                     .filter(|e| e.file_type().is_file())
                 {
-                    if let Some(nome) = file.file_name().to_str() {
-                        nelle_annate.insert(nome.to_string());
+                    if let Some(name) = file.file_name().to_str() {
+                        nelle_annate.insert(name.to_string());
                     }
                 }
             }
@@ -668,7 +665,7 @@ fn compute_space(source: &Path, destination: &Path) -> Result<SpaceEstimate> {
                 let assente = file
                     .file_name()
                     .to_str()
-                    .is_none_or(|nome| !nelle_annate.contains(nome));
+                    .is_none_or(|name| !nelle_annate.contains(name));
                 if assente {
                     unique_here += 1;
                 }
@@ -712,7 +709,7 @@ fn preferences_path(app: &AppHandle) -> Result<PathBuf> {
     let dir = app
         .path()
         .app_config_dir()
-        .map_err(|e| TakeoutError::Metadata(format!("cartella di configurazione: {e}")))?;
+        .map_err(|e| TakeoutError::ConfigDirUnavailable(e.to_string()))?;
     Ok(dir.join("preferences.json"))
 }
 
@@ -871,7 +868,7 @@ mod tests {
 
         // Contacts: two cards, one duplicated by email.
         write(
-            &takeout.join("Contatti").join("contatti.vcf"),
+            &takeout.join("Contatti").join("contacts.vcf"),
             "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Mario Rossi\r\nEMAIL:mario@example.com\r\nEND:VCARD\r\n\
              BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Mario Rossi\r\nEMAIL:MARIO@example.com\r\nTEL:+39 320 1234567\r\nEND:VCARD\r\n\
              BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Giulia Bianchi\r\nEMAIL:giulia@example.com\r\nEND:VCARD\r\n",
@@ -884,12 +881,12 @@ mod tests {
             &drive.join("appunti.gdoc"),
             r#"{"url": "https://docs.google.com/open?id=abc123", "doc_id": "abc123"}"#,
         );
-        write(&drive.join("a").join("copia.txt"), "stesso contenuto");
-        write(&drive.join("b").join("copia.txt"), "stesso contenuto");
+        write(&drive.join("a").join("copy.txt"), "stesso contenuto");
+        write(&drive.join("b").join("copy.txt"), "stesso contenuto");
     }
 
     #[test]
-    fn riconosce_le_sezioni_di_un_takeout_sintetico() {
+    fn recognises_the_sections_of_a_synthetic_takeout() {
         let temp = TempDir::new("sezioni");
         build_fixture(temp.path());
 
@@ -910,12 +907,12 @@ mod tests {
     }
 
     #[test]
-    fn riconcilia_le_date_delle_foto_dal_sidecar() {
-        let temp = TempDir::new("foto");
+    fn reconciles_photo_dates_from_the_sidecar() {
+        let temp = TempDir::new("photos");
         build_fixture(temp.path());
         let photos = temp.path().join("Takeout").join("Google Foto");
 
-        let report = exif_parser::scan_directory(&photos, SAMPLE_SIZE).expect("scansione foto");
+        let report = exif_parser::scan_directory(&photos, SAMPLE_SIZE).expect("scan photos");
         assert_eq!(report.media_count, 1);
         assert_eq!(report.with_sidecar, 1);
         assert_eq!(report.with_exif_date, 0, "the file has no EXIF");
@@ -952,11 +949,11 @@ mod tests {
     }
 
     #[test]
-    fn la_modalita_copia_non_tocca_gli_originali() {
-        let temp = TempDir::new("copia");
+    fn copy_mode_leaves_the_originals_untouched() {
+        let temp = TempDir::new("copy");
         build_fixture(temp.path());
         let photos = temp.path().join("Takeout").join("Google Foto");
-        let uscita = temp.path().join("riparate");
+        let output = temp.path().join("riparate");
 
         let originale_prima = std::fs::read(photos.join("IMG_0001.JPG")).expect("lettura");
         let mtime_prima = std::fs::metadata(photos.join("IMG_0001.JPG"))
@@ -967,12 +964,12 @@ mod tests {
             &photos,
             &exif_parser::WriteOptions {
                 mode: exif_parser::WriteMode::CopyToOutput,
-                output_root: Some(uscita.clone()),
+                output_root: Some(output.clone()),
                 ..Default::default()
             },
             &app_state::no_progress,
         )
-        .expect("copia riparata");
+        .expect("copy riparata");
 
         assert_eq!(report.candidates, 1);
         assert!(report.failures.is_empty(), "{:?}", report.failures);
@@ -990,11 +987,11 @@ mod tests {
         );
 
         // The copy exists and carries the capture date.
-        let copia = uscita.join("IMG_0001.JPG");
-        assert!(copia.is_file(), "the copy has to be produced");
-        let seconds = std::fs::metadata(&copia)
+        let copy = output.join("IMG_0001.JPG");
+        assert!(copy.is_file(), "the copy has to be produced");
+        let seconds = std::fs::metadata(&copy)
             .and_then(|m| m.modified())
-            .expect("mtime copia")
+            .expect("mtime copy")
             .duration_since(std::time::UNIX_EPOCH)
             .expect("epoch")
             .as_secs();
@@ -1004,7 +1001,7 @@ mod tests {
 
         // The acid test: the tags written have to be readable back, and the round
         // trip through degrees/minutes/seconds has to preserve the coordinates.
-        let riletto = exif_parser::read_exif(&copia).expect("rilettura EXIF");
+        let riletto = exif_parser::read_exif(&copy).expect("rilettura EXIF");
         assert_eq!(
             riletto.taken_at.expect("data scritta").timestamp(),
             1_577_880_000,
@@ -1024,7 +1021,7 @@ mod tests {
         );
 
         // The repaired file stays a valid JPEG, not a corrupted container.
-        let bytes = std::fs::read(&copia).expect("lettura copia");
+        let bytes = std::fs::read(&copy).expect("lettura copy");
         assert_eq!(&bytes[..2], &[0xFF, 0xD8], "firma JPEG intatta");
 
         // The decisive test on the time zone: the round trip above would come out
@@ -1043,11 +1040,11 @@ mod tests {
     }
 
     #[test]
-    fn la_copia_include_anche_i_formati_senza_exif() {
-        let temp = TempDir::new("copia-video");
+    fn the_copy_includes_formats_without_exif_too() {
+        let temp = TempDir::new("copy-video");
         build_fixture(temp.path());
         let photos = temp.path().join("Takeout").join("Google Foto");
-        let uscita = temp.path().join("riparate");
+        let output = temp.path().join("riparate");
 
         // A video with its sidecar: we cannot write its EXIF, but the output tree
         // has to stay complete, otherwise the user ends up with a copy holding only
@@ -1062,35 +1059,35 @@ mod tests {
             &photos,
             &exif_parser::WriteOptions {
                 mode: exif_parser::WriteMode::CopyToOutput,
-                output_root: Some(uscita.clone()),
+                output_root: Some(output.clone()),
                 ..Default::default()
             },
             &app_state::no_progress,
         )
-        .expect("copia riparata");
+        .expect("copy riparata");
 
         assert!(report.failures.is_empty(), "{:?}", report.failures);
         assert_eq!(report.skipped_unsupported, 1, "the video has no EXIF");
         assert!(
-            uscita.join("VID_0001.MP4").is_file(),
+            output.join("VID_0001.MP4").is_file(),
             "the video still has to be copied into the output tree"
         );
-        assert!(uscita.join("IMG_0001.JPG").is_file());
+        assert!(output.join("IMG_0001.JPG").is_file());
 
         // With no EXIF written the date lives only in the mtime, which is fragile:
         // the sidecar has to follow the file, otherwise the only durable source
         // stays behind in the source folder.
         assert_eq!(report.sidecars_copied, 1);
         assert!(
-            uscita.join("VID_0001.MP4.json").is_file(),
+            output.join("VID_0001.MP4.json").is_file(),
             "the video sidecar has to be kept beside the copy"
         );
         // For the JPEG the EXIF was written inside the file: the sidecar would be
         // a duplication and is not carried over.
-        assert!(!uscita.join("IMG_0001.JPG.json").exists());
+        assert!(!output.join("IMG_0001.JPG.json").exists());
 
         // Even without EXIF, the file date has to be aligned.
-        let seconds = std::fs::metadata(uscita.join("VID_0001.MP4"))
+        let seconds = std::fs::metadata(output.join("VID_0001.MP4"))
             .and_then(|m| m.modified())
             .expect("mtime video")
             .duration_since(std::time::UNIX_EPOCH)
@@ -1103,7 +1100,7 @@ mod tests {
     /// is the one deserving the harshest test: it has to write the tags and align
     /// the date **without** altering a single byte of the image.
     #[test]
-    fn la_modalita_in_place_riscrive_senza_toccare_i_pixel() {
+    fn in_place_mode_rewrites_without_touching_the_pixels() {
         let temp = TempDir::new("in-place");
         build_fixture(temp.path());
         let photos = temp.path().join("Takeout").join("Google Foto");
@@ -1182,10 +1179,10 @@ mod tests {
     }
 
     #[test]
-    fn dispone_luscita_in_ordine_cronologico() {
+    fn lays_the_output_out_chronologically() {
         let temp = TempDir::new("layout");
-        let photos = temp.path().join("foto");
-        let uscita = temp.path().join("cronologico");
+        let photos = temp.path().join("photos");
+        let output = temp.path().join("cronologico");
 
         // Two photos sharing a name in different folders, as happens when the same
         // image sits in an album and in a year folder, plus one with no derivable
@@ -1207,28 +1204,28 @@ mod tests {
             &exif_parser::WriteOptions {
                 mode: exif_parser::WriteMode::CopyToOutput,
                 layout: exif_parser::OutputLayout::ByYearMonth,
-                output_root: Some(uscita.clone()),
+                output_root: Some(output.clone()),
                 ..Default::default()
             },
             &app_state::no_progress,
         )
-        .expect("uscita cronologica");
+        .expect("output cronologica");
         assert!(report.failures.is_empty(), "{:?}", report.failures);
 
         // 2020-01-01 and 2020-03-01 end up in different months, so there is no
         // collision despite the identical name.
-        assert!(uscita.join("2020/01/IMG_1.JPG").is_file());
-        assert!(uscita.join("2020/03/IMG_1.JPG").is_file());
+        assert!(output.join("2020/01/IMG_1.JPG").is_file());
+        assert!(output.join("2020/03/IMG_1.JPG").is_file());
 
         // Anything without a date is not filed under an invented month.
-        assert!(uscita.join("no-date/senza.JPG").is_file());
+        assert!(output.join("no-date/senza.JPG").is_file());
     }
 
     #[test]
-    fn non_sovrascrive_i_nomi_uguali_nella_stessa_cartella() {
+    fn does_not_overwrite_equal_names_in_the_same_folder() {
         let temp = TempDir::new("collisioni-layout");
-        let photos = temp.path().join("foto");
-        let uscita = temp.path().join("piatto");
+        let photos = temp.path().join("photos");
+        let output = temp.path().join("piatto");
 
         // Same name, same date, different folders: in the flat layout they would
         // end up on the same path.
@@ -1245,23 +1242,23 @@ mod tests {
             &exif_parser::WriteOptions {
                 mode: exif_parser::WriteMode::CopyToOutput,
                 layout: exif_parser::OutputLayout::Flat,
-                output_root: Some(uscita.clone()),
+                output_root: Some(output.clone()),
                 ..Default::default()
             },
             &app_state::no_progress,
         )
-        .expect("uscita piatta");
+        .expect("output piatta");
         assert!(report.failures.is_empty(), "{:?}", report.failures);
 
         // All three have to survive, with an incrementing counter.
-        let prodotti = std::fs::read_dir(&uscita)
-            .expect("lettura uscita")
+        let produced = std::fs::read_dir(&output)
+            .expect("lettura output")
             .flatten()
             .count();
-        assert_eq!(prodotti, 3, "no photo may be overwritten");
-        assert!(uscita.join("IMG_1.JPG").is_file());
-        assert!(uscita.join("IMG_1 (2).JPG").is_file());
-        assert!(uscita.join("IMG_1 (3).JPG").is_file());
+        assert_eq!(produced, 3, "no photo may be overwritten");
+        assert!(output.join("IMG_1.JPG").is_file());
+        assert!(output.join("IMG_1 (2).JPG").is_file());
+        assert!(output.join("IMG_1 (3).JPG").is_file());
     }
 
     /// On a library of tens of gigabytes the repaired copy needs as many again:
@@ -1272,19 +1269,19 @@ mod tests {
     /// sitting only in an album would be left behind, and whoever looks at the
     /// result would not notice.
     #[test]
-    fn distingue_le_annate_dagli_album_e_conta_le_foto_uniche() {
+    fn tells_years_from_albums_and_counts_unique_photos() {
         let temp = TempDir::new("tranche");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
 
-        write_bytes(&foto.join("Foto da 2020").join("IMG_1.JPG"), MINIMAL_JPEG);
-        write_bytes(&foto.join("Foto da 2020").join("IMG_2.JPG"), MINIMAL_JPEG);
+        write_bytes(&photos.join("Foto da 2020").join("IMG_1.JPG"), MINIMAL_JPEG);
+        write_bytes(&photos.join("Foto da 2020").join("IMG_2.JPG"), MINIMAL_JPEG);
         // An album with one copy and one photo that exists nowhere else.
-        write_bytes(&foto.join("Vacanze").join("IMG_1.JPG"), MINIMAL_JPEG);
-        write_bytes(&foto.join("Vacanze").join("SOLO_QUI.JPG"), MINIMAL_JPEG);
+        write_bytes(&photos.join("Vacanze").join("IMG_1.JPG"), MINIMAL_JPEG);
+        write_bytes(&photos.join("Vacanze").join("SOLO_QUI.JPG"), MINIMAL_JPEG);
         // An album made only of copies: skipping it costs nothing.
-        write_bytes(&foto.join("Compleanno").join("IMG_2.JPG"), MINIMAL_JPEG);
+        write_bytes(&photos.join("Compleanno").join("IMG_2.JPG"), MINIMAL_JPEG);
 
-        let stima = compute_space(&foto, temp.path()).expect("stima");
+        let stima = compute_space(&photos, temp.path()).expect("stima");
 
         let annata = stima
             .subfolders
@@ -1320,19 +1317,19 @@ mod tests {
     }
 
     #[test]
-    fn rifiuta_se_manca_lo_spazio_sulla_destinazione() {
+    fn refuses_when_the_destination_lacks_space() {
         let temp = TempDir::new("spazio");
         build_fixture(temp.path());
         let photos = temp.path().join("Takeout").join("Google Foto");
 
         // An absurd space requirement cannot be available anywhere, so the check
         // has to trigger.
-        let esito = app_state::require_free_space(temp.path(), u64::MAX / 2);
-        assert!(esito.is_err(), "it has to be refused before writing");
-        let messaggio = esito.unwrap_err().to_string();
+        let outcome = app_state::require_free_space(temp.path(), u64::MAX / 2);
+        assert!(outcome.is_err(), "it has to be refused before writing");
+        let message = outcome.unwrap_err().to_string();
         assert!(
-            messaggio.contains("not enough space"),
-            "the message has to say what is missing: {messaggio}"
+            message.contains("not enough space"),
+            "the message has to say what is missing: {message}"
         );
 
         // With a plausible request it passes instead, and the repair proceeds.
@@ -1342,42 +1339,42 @@ mod tests {
             &photos,
             &exif_parser::WriteOptions {
                 mode: exif_parser::WriteMode::CopyToOutput,
-                output_root: Some(temp.path().join("uscita")),
+                output_root: Some(temp.path().join("output")),
                 ..Default::default()
             },
             &app_state::no_progress,
         )
-        .expect("riparazione");
+        .expect("repair");
         assert!(report.failures.is_empty());
     }
 
     #[test]
-    fn rifiuta_una_destinazione_dentro_la_sorgente() {
+    fn refuses_a_destination_inside_the_source() {
         let temp = TempDir::new("ricorsione");
         build_fixture(temp.path());
         let photos = temp.path().join("Takeout").join("Google Foto");
 
-        let esito = exif_parser::apply_metadata(
+        let outcome = exif_parser::apply_metadata(
             &photos,
             &exif_parser::WriteOptions {
                 mode: exif_parser::WriteMode::CopyToOutput,
-                output_root: Some(photos.join("uscita")),
+                output_root: Some(photos.join("output")),
                 ..Default::default()
             },
             &app_state::no_progress,
         );
 
-        assert!(esito.is_err(), "a nested destination has to be refused");
+        assert!(outcome.is_err(), "a nested destination has to be refused");
     }
 
     #[test]
-    fn deduplica_i_contatti() {
-        let temp = TempDir::new("contatti");
+    fn deduplicates_contacts() {
+        let temp = TempDir::new("contacts");
         build_fixture(temp.path());
 
         let report =
             contacts::scan_directory(&temp.path().join("Takeout").join("Contatti"), SAMPLE_SIZE)
-                .expect("scansione contatti");
+                .expect("scan contacts");
 
         assert_eq!(report.total, 3);
         assert_eq!(
@@ -1397,12 +1394,12 @@ mod tests {
     }
 
     #[test]
-    fn segnala_i_segnaposto_e_i_duplicati_di_drive() {
+    fn flags_drive_placeholders_and_duplicates() {
         let temp = TempDir::new("drive");
         build_fixture(temp.path());
 
         let report = drive::scan_directory(&temp.path().join("Takeout").join("Drive"), MAX_ITEMS)
-            .expect("scansione drive");
+            .expect("scan drive");
 
         assert_eq!(report.file_count, 4);
         assert_eq!(report.placeholder_count, 1);
@@ -1424,7 +1421,7 @@ mod tests {
     /// hand, choosing how many photos to produce if you like:
     ///
     /// ```bash
-    /// FOTO=50000 cargo test --release misura_su_libreria_grande -- --ignored --nocapture
+    /// PHOTOS=50000 cargo test --release measures_a_large_library -- --ignored --nocapture
     /// ```
     ///
     /// It has to run in release, and not out of fussiness: in debug the Rust code
@@ -1444,10 +1441,10 @@ mod tests {
     /// interface on every scan, and an uncapped list there becomes megabytes of JSON.
     #[test]
     #[ignore = "genera decine di migliaia di file: si lancia a mano"]
-    fn misura_su_libreria_grande() {
+    fn measures_a_large_library() {
         use std::time::Instant;
 
-        let foto_totali: usize = std::env::var("FOTO")
+        let total_photos: usize = std::env::var("PHOTOS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(20_000);
@@ -1458,7 +1455,7 @@ mod tests {
         // A structure resembling a real export: year folders, albums repeating part
         // of the photos, edited versions, and a share with no derivable date.
         //
-        let anni = [2019, 2020, 2021, 2022, 2023];
+        let years = [2019, 2020, 2021, 2022, 2023];
         let album = [
             "Vacanze in Sicilia",
             "Compleanno di Anna",
@@ -1466,8 +1463,8 @@ mod tests {
             "Matrimonio",
         ];
 
-        let inizio = Instant::now();
-        let mut nomi: Vec<(String, usize)> = Vec::with_capacity(foto_totali);
+        let started = Instant::now();
+        let mut names: Vec<(String, usize)> = Vec::with_capacity(total_photos);
 
         /// Produces a valid JPEG different from every other one, keeping the same
         /// size.
@@ -1479,58 +1476,58 @@ mod tests {
         /// and different content you get instead the most demanding scenario for
         /// deduplication, which has to read every file to discover they are all
         /// distinct.
-        fn jpeg_unico(indice: usize) -> Vec<u8> {
+        fn unique_jpeg(index: usize) -> Vec<u8> {
             let mut bytes = MINIMAL_JPEG.to_vec();
-            bytes.extend_from_slice(&(indice as u64).to_le_bytes());
+            bytes.extend_from_slice(&(index as u64).to_le_bytes());
             bytes
         }
 
-        for indice in 0..foto_totali {
-            let anno = anni[indice % anni.len()];
-            let mese = (indice % 12) + 1;
-            let giorno = (indice % 28) + 1;
-            let nome = format!("IMG_{anno}{mese:02}{giorno:02}_{:06}.JPG", indice % 240_000);
-            let cartella = root.join(format!("Foto da {anno}"));
+        for index in 0..total_photos {
+            let anno = years[index % years.len()];
+            let mese = (index % 12) + 1;
+            let giorno = (index % 28) + 1;
+            let name = format!("IMG_{anno}{mese:02}{giorno:02}_{:06}.JPG", index % 240_000);
+            let folder = root.join(format!("Foto da {anno}"));
 
-            write_bytes(&cartella.join(&nome), &jpeg_unico(indice));
+            write_bytes(&folder.join(&name), &unique_jpeg(index));
 
             // One photo in five is left without a sidecar: it will have to make do
             // with the date derived from the name.
-            if indice % 5 != 0 {
-                let istante = 1_577_880_000 + (indice as i64 * 37);
+            if index % 5 != 0 {
+                let istante = 1_577_880_000 + (index as i64 * 37);
                 // One in three has coordinates, so it goes through the time zone
                 // conversion, which is the most expensive path.
-                let geo = if indice % 3 == 0 {
+                let geo = if index % 3 == 0 {
                     r#", "geoData": {"latitude": 45.4642, "longitude": 9.19, "altitude": 120.0}"#
                 } else {
                     ""
                 };
                 write(
-                    &cartella.join(format!("{nome}.supplemental-metadata.json")),
+                    &folder.join(format!("{name}.supplemental-metadata.json")),
                     &format!(r#"{{"photoTakenTime": {{"timestamp": "{istante}"}}{geo}}}"#),
                 );
             }
 
             // One photo in twenty has an edited version beside it.
-            if indice % 20 == 0 {
-                let modificata = nome.replace(".JPG", "-modificato.JPG");
+            if index % 20 == 0 {
+                let modificata = name.replace(".JPG", "-modificato.JPG");
                 // An edited version has different pixels: it is not a duplicate.
                 write_bytes(
-                    &cartella.join(&modificata),
-                    &jpeg_unico(indice + foto_totali),
+                    &folder.join(&modificata),
+                    &unique_jpeg(index + total_photos),
                 );
             }
 
-            nomi.push((nome, indice));
+            names.push((name, index));
         }
 
         // A tenth of the photos also appear in an album: the case that makes the
         // manifest necessary.
         // These are the genuine duplicates: an identical copy of the photo already
         // sitting in the year folder.
-        for (nome, indice) in nomi.iter().filter(|(_, i)| i % 10 == 0) {
-            let scelto = album[indice % album.len()];
-            write_bytes(&root.join(scelto).join(nome), &jpeg_unico(*indice));
+        for (name, index) in names.iter().filter(|(_, i)| i % 10 == 0) {
+            let scelto = album[index % album.len()];
+            write_bytes(&root.join(scelto).join(name), &unique_jpeg(*index));
         }
 
         let file_totali = WalkDir::new(&root)
@@ -1538,7 +1535,7 @@ mod tests {
             .flatten()
             .filter(|e| e.file_type().is_file())
             .count();
-        let byte_totali: u64 = WalkDir::new(&root)
+        let total_bytes: u64 = WalkDir::new(&root)
             .into_iter()
             .flatten()
             .filter(|e| e.file_type().is_file())
@@ -1547,40 +1544,40 @@ mod tests {
             .sum();
 
         println!("\n=== libreria generata ===");
-        println!("  foto:        {foto_totali}");
+        println!("  photos:        {total_photos}");
         println!("  file totali: {file_totali}");
-        println!("  byte:        {:.1} MB", byte_totali as f64 / 1e6);
-        println!("  generazione: {:.1} s", inizio.elapsed().as_secs_f64());
+        println!("  byte:        {:.1} MB", total_bytes as f64 / 1e6);
+        println!("  generazione: {:.1} s", started.elapsed().as_secs_f64());
 
         /// Measures duration and weight of the serialised report, that is how much
         /// really goes through the IPC channel.
-        fn misura<T: serde::Serialize>(nome: &str, lavoro: impl FnOnce() -> T) {
-            let inizio = Instant::now();
-            let esito = lavoro();
-            let durata = inizio.elapsed();
-            let json = serde_json::to_string(&esito).unwrap_or_default();
+        fn measure<T: serde::Serialize>(name: &str, work: impl FnOnce() -> T) {
+            let started = Instant::now();
+            let outcome = work();
+            let elapsed = started.elapsed();
+            let json = serde_json::to_string(&outcome).unwrap_or_default();
             println!(
-                "  {nome:<22} {:>7.2} s   report {:>8.2} MB",
-                durata.as_secs_f64(),
+                "  {name:<22} {:>7.2} s   report {:>8.2} MB",
+                elapsed.as_secs_f64(),
                 json.len() as f64 / 1e6
             );
         }
 
         println!("\n=== operazioni ===");
-        misura("scansione foto", || {
+        measure("scan photos", || {
             exif_parser::scan_directory(&root, SAMPLE_SIZE).expect("scan")
         });
-        misura("indice album", || {
-            albums::build_index(&root, MAX_ITEMS).expect("indice")
+        measure("index album", || {
+            albums::build_index(&root, MAX_ITEMS).expect("index")
         });
-        misura("piano di pulizia", || {
+        measure("plan di pulizia", || {
             drive::plan_clean(
                 &root,
                 &drive::CleanOptions::default(),
                 MAX_ITEMS,
                 &app_state::no_progress,
             )
-            .expect("piano")
+            .expect("plan")
         });
         println!();
     }
@@ -1594,13 +1591,13 @@ mod tests {
     /// peak grows with the size of the individual media.
     ///
     /// ```bash
-    /// GB=2 cargo test --release misura_su_file_grandi -- --ignored --nocapture
+    /// GB=2 cargo test --release measures_large_files -- --ignored --nocapture
     /// ```
     ///
     /// The memory peak is not measured from here: it is read from outside.
     ///
     /// ```bash
-    /// /usr/bin/time -l cargo test --release misura_su_file_grandi -- --ignored --nocapture
+    /// /usr/bin/time -l cargo test --release measures_large_files -- --ignored --nocapture
     /// ```
     ///
     /// Mind which number you look at. The `maximum resident set size` on macOS
@@ -1613,7 +1610,7 @@ mod tests {
     /// threads and the rewrite threshold ought to guarantee.
     #[test]
     #[ignore = "scrive qualche gigabyte: si lancia a mano"]
-    fn misura_su_file_grandi() {
+    fn measures_large_files() {
         use std::io::Write;
         use std::time::Instant;
 
@@ -1630,11 +1627,11 @@ mod tests {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(2);
-        let quanti = ((gigabyte * 1024 * 1024 * 1024) / GRANDE).max(2) as usize;
+        let count = ((gigabyte * 1024 * 1024 * 1024) / GRANDE).max(2) as usize;
 
         let temp = TempDir::new("byte");
         let root = temp.path().join("Foto da 2024");
-        let uscita = temp.path().join("riparate");
+        let output = temp.path().join("riparate");
 
         /// Writes a valid JPEG of the requested size.
         ///
@@ -1642,93 +1639,93 @@ mod tests {
         /// readable. The padding depends on the seed, so two files of the same size
         /// have different content and deduplication has to read them whole to find
         /// out.
-        fn scrivi_grande(path: &Path, dimensione: u64, seme: u8) {
+        fn write_large(path: &Path, dimensione: u64, seme: u8) {
             std::fs::create_dir_all(path.parent().expect("genitore")).expect("cartelle");
             let file = std::fs::File::create(path).expect("creazione");
             let mut out = std::io::BufWriter::with_capacity(8 << 20, file);
             out.write_all(MINIMAL_JPEG).expect("intestazione");
 
             let blocco = vec![seme; 8 << 20];
-            let mut scritti = MINIMAL_JPEG.len() as u64;
-            while scritti < dimensione {
-                let quanti = (dimensione - scritti).min(blocco.len() as u64) as usize;
-                out.write_all(&blocco[..quanti]).expect("riempimento");
-                scritti += quanti as u64;
+            let mut written = MINIMAL_JPEG.len() as u64;
+            while written < dimensione {
+                let count = (dimensione - written).min(blocco.len() as u64) as usize;
+                out.write_all(&blocco[..count]).expect("riempimento");
+                written += count as u64;
             }
             out.flush().expect("flush");
         }
 
-        let inizio = Instant::now();
-        for indice in 0..quanti {
-            let nome = format!("GRANDE_{indice:03}.JPG");
-            scrivi_grande(&root.join(&nome), GRANDE, indice as u8);
+        let started = Instant::now();
+        for index in 0..count {
+            let name = format!("GRANDE_{index:03}.JPG");
+            write_large(&root.join(&name), GRANDE, index as u8);
             // Sidecars differing from one another, as in a real export: the title
             // reports the file name and the instant changes with every photo.
             write(
-                &root.join(format!("{nome}.supplemental-metadata.json")),
+                &root.join(format!("{name}.supplemental-metadata.json")),
                 &format!(
-                    r#"{{"title": "{nome}", "photoTakenTime": {{"timestamp": "{}"}}, "geoData": {{"latitude": 45.4642, "longitude": 9.19, "altitude": 120.0}}}}"#,
-                    1_577_880_000_i64 + indice as i64
+                    r#"{{"title": "{name}", "photoTakenTime": {{"timestamp": "{}"}}, "geoData": {{"latitude": 45.4642, "longitude": 9.19, "altitude": 120.0}}}}"#,
+                    1_577_880_000_i64 + index as i64
                 ),
             );
         }
         // An identical copy of the first: a genuine duplicate to find by content.
-        scrivi_grande(&temp.path().join("Album").join("GRANDE_000.JPG"), GRANDE, 0);
+        write_large(&temp.path().join("Album").join("GRANDE_000.JPG"), GRANDE, 0);
         // And one past the threshold, which has to be skipped by the rewrite.
-        scrivi_grande(&root.join("ENORME.JPG"), ENORME, 200);
+        write_large(&root.join("ENORME.JPG"), ENORME, 200);
 
-        let byte_totali: u64 = WalkDir::new(temp.path())
+        let total_bytes: u64 = WalkDir::new(temp.path())
             .into_iter()
             .flatten()
             .filter(|e| e.file_type().is_file())
             .filter_map(|e| e.metadata().ok())
             .map(|m| m.len())
             .sum();
-        let generazione = inizio.elapsed().as_secs_f64();
+        let generazione = started.elapsed().as_secs_f64();
 
         println!("\n=== libreria generata ===");
-        println!("  large media: {quanti} of {} MB", GRANDE / 1024 / 1024);
+        println!("  large media: {count} of {} MB", GRANDE / 1024 / 1024);
         println!("  plus one of:  {} MB", ENORME / 1024 / 1024);
-        println!("  totale:       {:.2} GB", byte_totali as f64 / 1e9);
+        println!("  total:       {:.2} GB", total_bytes as f64 / 1e9);
         println!(
             "  scrittura:    {generazione:.1} s  ({:.0} MB/s)",
-            byte_totali as f64 / 1e6 / generazione
+            total_bytes as f64 / 1e6 / generazione
         );
 
         println!("\n=== operazioni ===");
 
-        let inizio = Instant::now();
-        let piano = drive::plan_clean(
+        let started = Instant::now();
+        let plan = drive::plan_clean(
             temp.path(),
             &drive::CleanOptions::default(),
             MAX_ITEMS,
             &app_state::no_progress,
         )
-        .expect("piano");
-        let durata = inizio.elapsed().as_secs_f64();
+        .expect("plan");
+        let elapsed = started.elapsed().as_secs_f64();
         println!(
-            "  deduplica     {durata:>7.2} s   letti {:.2} GB  ({:.0} MB/s)",
-            piano.hashed_bytes as f64 / 1e9,
-            piano.hashed_bytes as f64 / 1e6 / durata
+            "  deduplica     {elapsed:>7.2} s   letti {:.2} GB  ({:.0} MB/s)",
+            plan.hashed_bytes as f64 / 1e9,
+            plan.hashed_bytes as f64 / 1e6 / elapsed
         );
         assert_eq!(
-            piano.duplicate_copies, 1,
+            plan.duplicate_copies, 1,
             "the identical copy has to be found"
         );
 
-        let inizio = Instant::now();
+        let started = Instant::now();
         let report = exif_parser::apply_metadata(
             &root,
             &exif_parser::WriteOptions {
                 mode: exif_parser::WriteMode::CopyToOutput,
-                output_root: Some(uscita.clone()),
+                output_root: Some(output.clone()),
                 ..Default::default()
             },
             &app_state::no_progress,
         )
-        .expect("riparazione");
-        let durata = inizio.elapsed().as_secs_f64();
-        let scritti: u64 = WalkDir::new(&uscita)
+        .expect("repair");
+        let elapsed = started.elapsed().as_secs_f64();
+        let written: u64 = WalkDir::new(&output)
             .into_iter()
             .flatten()
             .filter(|e| e.file_type().is_file())
@@ -1736,18 +1733,18 @@ mod tests {
             .map(|m| m.len())
             .sum();
         println!(
-            "  riparazione   {durata:>7.2} s   scritti {:.2} GB  ({:.0} MB/s)",
-            scritti as f64 / 1e9,
-            scritti as f64 / 1e6 / durata
+            "  repair   {elapsed:>7.2} s   written {:.2} GB  ({:.0} MB/s)",
+            written as f64 / 1e9,
+            written as f64 / 1e6 / elapsed
         );
 
-        println!("\n=== esito riparazione ===");
-        println!("  EXIF scritti:        {}", report.exif_written);
+        println!("\n=== outcome repair ===");
+        println!("  EXIF written:        {}", report.exif_written);
         println!("  past the threshold:  {}", report.skipped_too_large);
         println!("  errori:              {}", report.failures.len());
         assert!(report.failures.is_empty(), "{:?}", report.failures);
         assert_eq!(
-            report.exif_written, quanti,
+            report.exif_written, count,
             "i media sotto soglia si riscrivono"
         );
         assert_eq!(
@@ -1756,7 +1753,7 @@ mod tests {
         );
         // Skipping it does not mean losing it: the copy has to be there anyway.
         assert!(
-            uscita.join("ENORME.JPG").is_file(),
+            output.join("ENORME.JPG").is_file(),
             "the file past the threshold has to be copied anyway"
         );
         println!();
@@ -1770,36 +1767,36 @@ mod tests {
     /// deduplication, which compares every card with the ones already seen.
     ///
     /// ```bash
-    /// CONTATTI=20000 EVENTI=50000 cargo test --release misura_su_rubrica_grande -- --ignored --nocapture
+    /// CONTACTS=20000 EVENTS=50000 cargo test --release measures_a_large_address_book -- --ignored --nocapture
     /// ```
     #[test]
     #[ignore = "genera file di decine di megabyte: si lancia a mano"]
-    fn misura_su_rubrica_grande() {
+    fn measures_a_large_address_book() {
         use std::time::Instant;
 
-        let contatti: usize = std::env::var("CONTATTI")
+        let contacts: usize = std::env::var("CONTACTS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(20_000);
-        let eventi: usize = std::env::var("EVENTI")
+        let events: usize = std::env::var("EVENTS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(50_000);
 
-        let temp = TempDir::new("rubrica");
-        let radice = temp.path().join("Takeout");
+        let temp = TempDir::new("address_book");
+        let root = temp.path().join("Takeout");
 
-        let inizio = Instant::now();
+        let started = Instant::now();
 
         // Address book: a single .vcf, the way Google exports it. One card in ten is
         // a duplicate with the same email, the case deduplication has to recognise;
         // one in seven has a long line, forcing the parser to rejoin the line
         // folding.
-        let mut vcf = String::with_capacity(contatti * 180);
-        for indice in 0..contatti {
+        let mut vcf = String::with_capacity(contacts * 180);
+        for index in 0..contacts {
             // One card in ten repeats the identity of the previous one: the real case
             // of someone who saved the same contact twice.
-            let chi = if indice % 10 == 9 { indice - 1 } else { indice };
+            let chi = if index % 10 == 9 { index - 1 } else { index };
             vcf.push_str("BEGIN:VCARD\r\nVERSION:3.0\r\n");
             vcf.push_str(&format!("FN:Persona Numero {chi}\r\n"));
             vcf.push_str(&format!("N:Numero;Persona{chi};;;\r\n"));
@@ -1808,28 +1805,28 @@ mod tests {
                 "TEL;TYPE=CELL:+39 320 {:07}\r\n",
                 chi % 10_000_000
             ));
-            if indice % 7 == 0 {
+            if index % 7 == 0 {
                 // A line split according to the folding rule.
                 vcf.push_str("NOTE:Appunto lungo che continua\r\n  sulla riga successiva\r\n");
             }
             vcf.push_str("END:VCARD\r\n");
         }
-        write(&radice.join("Contatti").join("Tutti i contatti.vcf"), &vcf);
+        write(&root.join("Contatti").join("Tutti i contatti.vcf"), &vcf);
 
         // Calendar: five files, like five calendars in the account. One event in
         // eight is recurring, one in twenty is all-day, and each carries
         // proprietary Google properties to strip.
         for calendario in 0..5 {
-            let quanti = eventi / 5;
-            let mut ics = String::with_capacity(quanti * 260);
+            let count = events / 5;
+            let mut ics = String::with_capacity(count * 260);
             ics.push_str("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Google Inc//EN\r\n");
-            for indice in 0..quanti {
-                let giorno = (indice % 28) + 1;
-                let mese = (indice % 12) + 1;
-                let anno = 2018 + (indice % 8);
+            for index in 0..count {
+                let giorno = (index % 28) + 1;
+                let mese = (index % 12) + 1;
+                let anno = 2018 + (index % 8);
                 ics.push_str("BEGIN:VEVENT\r\n");
-                ics.push_str(&format!("UID:evento-{calendario}-{indice}@google.com\r\n"));
-                if indice % 20 == 0 {
+                ics.push_str(&format!("UID:evento-{calendario}-{index}@google.com\r\n"));
+                if index % 20 == 0 {
                     ics.push_str(&format!(
                         "DTSTART;VALUE=DATE:{anno}{mese:02}{giorno:02}\r\n"
                     ));
@@ -1841,10 +1838,10 @@ mod tests {
                         "DTEND;TZID=Europe/Rome:{anno}{mese:02}{giorno:02}T100000\r\n"
                     ));
                 }
-                ics.push_str(&format!("SUMMARY:Impegno numero {indice}\r\n"));
+                ics.push_str(&format!("SUMMARY:Impegno numero {index}\r\n"));
                 ics.push_str("LOCATION:Ufficio\r\n");
                 ics.push_str("X-GOOGLE-CONFERENCE:https://meet.google.com/abc-defg-hij\r\n");
-                if indice % 8 == 0 {
+                if index % 8 == 0 {
                     ics.push_str("RRULE:FREQ=WEEKLY;COUNT=10\r\n");
                 }
                 ics.push_str(
@@ -1854,14 +1851,14 @@ mod tests {
             }
             ics.push_str("END:VCALENDAR\r\n");
             write(
-                &radice
+                &root
                     .join("Calendario")
                     .join(format!("calendario-{calendario}.ics")),
                 &ics,
             );
         }
 
-        let byte: u64 = WalkDir::new(&radice)
+        let byte: u64 = WalkDir::new(&root)
             .into_iter()
             .flatten()
             .filter(|e| e.file_type().is_file())
@@ -1870,58 +1867,61 @@ mod tests {
             .sum();
 
         println!("\n=== generati ===");
-        println!("  contatti:  {contatti} in un solo .vcf");
-        println!("  eventi:    {eventi} in 5 .ics");
+        println!("  contacts:  {contacts} in un solo .vcf");
+        println!("  events:    {events} in 5 .ics");
         println!("  byte:      {:.1} MB", byte as f64 / 1e6);
-        println!("  scrittura: {:.1} s", inizio.elapsed().as_secs_f64());
+        println!("  scrittura: {:.1} s", started.elapsed().as_secs_f64());
 
-        fn misura<T: serde::Serialize>(nome: &str, lavoro: impl FnOnce() -> T) -> T {
-            let inizio = Instant::now();
-            let esito = lavoro();
-            let json = serde_json::to_string(&esito).unwrap_or_default();
+        fn measure<T: serde::Serialize>(name: &str, work: impl FnOnce() -> T) -> T {
+            let started = Instant::now();
+            let outcome = work();
+            let json = serde_json::to_string(&outcome).unwrap_or_default();
             println!(
-                "  {nome:<24} {:>6.2} s   report {:>7.2} MB",
-                inizio.elapsed().as_secs_f64(),
+                "  {name:<24} {:>6.2} s   report {:>7.2} MB",
+                started.elapsed().as_secs_f64(),
                 json.len() as f64 / 1e6
             );
-            esito
+            outcome
         }
 
         println!("\n=== operazioni ===");
-        let rubrica = misura("scansione contatti", || {
-            contacts::scan_directory(&radice.join("Contatti"), SAMPLE_SIZE).expect("contatti")
+        let address_book = measure("scan contacts", || {
+            contacts::scan_directory(&root.join("Contatti"), SAMPLE_SIZE).expect("contacts")
         });
-        let agenda = misura("scansione calendario", || {
-            calendar::scan_directory(&radice.join("Calendario"), SAMPLE_SIZE).expect("calendario")
+        let calendar_report = measure("scan calendario", || {
+            calendar::scan_directory(&root.join("Calendario"), SAMPLE_SIZE).expect("calendario")
         });
 
-        let uscita = temp.path().join("uscita");
-        misura("export vCard", || {
-            contacts::export_vcf(&radice.join("Contatti"), &uscita.join("contatti.vcf"))
-                .expect("export contatti")
+        let output = temp.path().join("output");
+        measure("export vCard", || {
+            contacts::export_vcf(&root.join("Contatti"), &output.join("contacts.vcf"))
+                .expect("export contacts")
         });
-        misura("export iCalendar", || {
-            calendar::export_ics(&radice.join("Calendario"), &uscita.join("calendario.ics"))
+        measure("export iCalendar", || {
+            calendar::export_ics(&root.join("Calendario"), &output.join("calendario.ics"))
                 .expect("export calendario")
         });
 
-        println!("\n=== esito ===");
+        println!("\n=== outcome ===");
         println!(
             "  contacts: {} read, {} unique, {} duplicates",
-            rubrica.total, rubrica.unique, rubrica.duplicates
+            address_book.total, address_book.unique, address_book.duplicates
         );
         println!(
             "  events:   {} read, {} unique, {} properties removed",
-            agenda.total, agenda.unique, agenda.dropped_properties
+            calendar_report.total, calendar_report.unique, calendar_report.dropped_properties
         );
 
         // Deduplication has to recognise the repeated cards, not count them at random.
-        assert!(rubrica.duplicates > 0, "the duplicates have to be found");
-        assert_eq!(rubrica.total, contatti);
-        assert_eq!(agenda.total, eventi);
+        assert!(
+            address_book.duplicates > 0,
+            "the duplicates have to be found"
+        );
+        assert_eq!(address_book.total, contacts);
+        assert_eq!(calendar_report.total, events);
         // The alarms must not be mistaken for events.
         assert!(
-            agenda.sample.iter().all(|e| e
+            calendar_report.sample.iter().all(|e| e
                 .summary
                 .as_deref()
                 .is_some_and(|s| s.starts_with("Impegno"))),
@@ -1939,33 +1939,33 @@ mod tests {
     /// built by the very tests verifying it.
     ///
     /// ```bash
-    /// SERIE=~/Downloads/prova-multiarchivio USCITA=~/Downloads/estratto \
-    ///   cargo test --release estrazione_di_una_serie_reale -- --ignored --nocapture
+    /// SERIES=~/Downloads/prova-multiarchivio OUTPUT=~/Downloads/extracted \
+    ///   cargo test --release extracts_a_real_series -- --ignored --nocapture
     /// ```
     ///
-    /// `SERIE` can point at the folder holding the archives or at any one of them:
+    /// `SERIES` can point at the folder holding the archives or at any one of them:
     /// series recognition starts from a single archive and finds the others by
     /// itself, and that behaviour is precisely what this exercises. Without
-    /// `USCITA` the extraction ends up in a temporary folder, removed at the end;
+    /// `OUTPUT` the extraction ends up in a temporary folder, removed at the end;
     /// giving it instead lets the extracted tree be reused for later runs.
     ///
     ///
     /// The test is excluded from CI because it depends on local files and, on a
     /// real series, writes as much as the export weighs.
     #[test]
-    #[ignore = "needs archives on disk: run by hand with SERIE=..."]
-    fn estrazione_di_una_serie_reale() {
+    #[ignore = "needs archives on disk: run by hand with SERIES=..."]
+    fn extracts_a_real_series() {
         use std::time::Instant;
 
-        let Ok(serie) = std::env::var("SERIE") else {
-            println!("SERIE not set: nothing to extract.");
+        let Ok(series_path) = std::env::var("SERIES") else {
+            println!("SERIES not set: nothing to extract.");
             return;
         };
-        let serie = PathBuf::from(serie);
+        let series_path = PathBuf::from(series_path);
 
         // Any archive of the series will do: it finds the rest by itself.
-        let primo = if serie.is_dir() {
-            let mut archivi: Vec<PathBuf> = std::fs::read_dir(&serie)
+        let first = if series_path.is_dir() {
+            let mut archivi: Vec<PathBuf> = std::fs::read_dir(&series_path)
                 .expect("reading the folder given")
                 .filter_map(|v| v.ok().map(|v| v.path()))
                 .filter(|p| zip_handler::is_takeout_archive(p))
@@ -1974,78 +1974,78 @@ mod tests {
             archivi
                 .into_iter()
                 .next()
-                .expect("nessun takeout-*.zip nella cartella indicata")
+                .expect("nessun takeout-*.zip nella folder indicata")
         } else {
-            serie.clone()
+            series_path.clone()
         };
 
-        let inizio = Instant::now();
-        let trovata = zip_handler::discover_series(&primo).expect("series recognition");
+        let started = Instant::now();
+        let found = zip_handler::discover_series(&first).expect("series recognition");
         println!(
             "\nserie riconosciuta partendo da {}",
-            primo.file_name().unwrap_or_default().to_string_lossy()
+            first.file_name().unwrap_or_default().to_string_lossy()
         );
         println!(
             "  {} archives, {:.2} GB compressed, missing: {:?}  ({:?})",
-            trovata.archives.len(),
-            trovata.total_compressed_bytes as f64 / 1024.0 / 1024.0 / 1024.0,
-            trovata.missing,
-            inizio.elapsed()
+            found.archives.len(),
+            found.total_compressed_bytes as f64 / 1024.0 / 1024.0 / 1024.0,
+            found.missing,
+            started.elapsed()
         );
         assert!(
-            trovata.missing.is_empty(),
+            found.missing.is_empty(),
             "the series on disk turns out to be incomplete"
         );
 
-        // With USCITA the tree stays available, otherwise it disappears.
-        let scelta = std::env::var("USCITA").ok();
-        let temporanea = scelta.is_none().then(|| TempDir::new("serie-reale"));
-        let destinazione = match (&scelta, &temporanea) {
+        // With OUTPUT the tree stays available, otherwise it disappears.
+        let chosen = std::env::var("OUTPUT").ok();
+        let temporary = chosen.is_none().then(|| TempDir::new("series_path-reale"));
+        let destination = match (&chosen, &temporary) {
             (Some(percorso), _) => PathBuf::from(percorso),
-            (None, Some(temp)) => temp.path().join("estratto"),
-            (None, None) => unreachable!("without USCITA the temporary always exists"),
+            (None, Some(temp)) => temp.path().join("extracted"),
+            (None, None) => unreachable!("without OUTPUT the temporary always exists"),
         };
 
-        let inizio = Instant::now();
-        let estratto = zip_handler::extract_series(
-            &trovata.archives,
-            &destinazione,
+        let started = Instant::now();
+        let extracted = zip_handler::extract_series(
+            &found.archives,
+            &destination,
             &crate::app_state::no_progress,
         )
         .expect("series extraction");
-        let durata = inizio.elapsed();
-        let gb = estratto.bytes_written as f64 / 1024.0 / 1024.0 / 1024.0;
-        println!("estrazione in {durata:?}");
+        let elapsed = started.elapsed();
+        let gb = extracted.bytes_written as f64 / 1024.0 / 1024.0 / 1024.0;
+        println!("estrazione in {elapsed:?}");
         println!(
             "  {} files, {} folders, {:.2} GB, {:.0} MB/s",
-            estratto.files_written,
-            estratto.dirs_created,
+            extracted.files_written,
+            extracted.dirs_created,
             gb,
-            gb * 1024.0 / durata.as_secs_f64()
+            gb * 1024.0 / elapsed.as_secs_f64()
         );
         println!(
             "  discarded for safety: {}, collisions: {}",
-            estratto.skipped.len(),
-            estratto.collisions.len()
+            extracted.skipped.len(),
+            extracted.collisions.len()
         );
-        for voce in estratto.skipped.iter().take(5) {
+        for voce in extracted.skipped.iter().take(5) {
             println!("    discarded: {voce}");
         }
-        for voce in estratto.collisions.iter().take(5) {
+        for voce in extracted.collisions.iter().take(5) {
             println!("    collision: {voce}");
         }
 
         // A merged Takeout has to have a single root, not one per archive.
-        let radice = estratto.destination.join("Takeout");
+        let root = extracted.destination.join("Takeout");
         assert!(
-            radice.is_dir(),
+            root.is_dir(),
             "the Takeout root is missing from the merged tree"
         );
 
-        let inizio = Instant::now();
-        let sorgente = analyze_folder(&estratto.destination).expect("analysis of the merged tree");
-        println!("section analysis in {:?}", inizio.elapsed());
-        for sezione in &sorgente.sections {
+        let started = Instant::now();
+        let source = analyze_folder(&extracted.destination).expect("analysis of the merged tree");
+        println!("section analysis in {:?}", started.elapsed());
+        for sezione in &source.sections {
             println!(
                 "  {:<16?} {:>6} file, {:>6.2} GB",
                 sezione.section,
@@ -2054,48 +2054,48 @@ mod tests {
             );
         }
 
-        let foto = radice.join("Google Foto");
-        if foto.is_dir() {
-            let inizio = Instant::now();
-            let indice = albums::build_index(&foto, 200).expect("album index");
-            println!("albums in {:?}", inizio.elapsed());
+        let photos = root.join("Google Foto");
+        if photos.is_dir() {
+            let started = Instant::now();
+            let index = albums::build_index(&photos, 200).expect("album index");
+            println!("albums in {:?}", started.elapsed());
             println!(
                 "  {} albums, {} year folders, {} edited pairs",
-                indice.albums.len(),
-                indice.year_folders.len(),
-                indice.edited_pairs.len()
+                index.albums.len(),
+                index.year_folders.len(),
+                index.edited_pairs.len()
             );
             assert!(
-                !indice.albums.is_empty() && !indice.year_folders.is_empty(),
+                !index.albums.is_empty() && !index.year_folders.is_empty(),
                 "years and albums both have to be identified"
             );
 
-            let inizio = Instant::now();
-            let scansione = exif_parser::scan_directory(&foto, SAMPLE_SIZE).expect("scan");
-            println!("photo scan in {:?}", inizio.elapsed());
+            let started = Instant::now();
+            let scan = exif_parser::scan_directory(&photos, SAMPLE_SIZE).expect("scan");
+            println!("photo scan in {:?}", started.elapsed());
             println!(
                 "  {} media, {:.2} GB, {} with sidecar, {} with coordinates",
-                scansione.media_count,
-                scansione.total_bytes as f64 / 1024.0 / 1024.0 / 1024.0,
-                scansione.with_sidecar,
-                scansione.with_geo
+                scan.media_count,
+                scan.total_bytes as f64 / 1024.0 / 1024.0 / 1024.0,
+                scan.with_sidecar,
+                scan.with_geo
             );
             println!(
                 "  {} to repair, {} without EXIF, {} dated from the name, {} unreadable",
-                scansione.needs_repair,
-                scansione.without_exif,
-                scansione.date_from_filename,
-                scansione.unreadable_count
+                scan.needs_repair,
+                scan.without_exif,
+                scan.date_from_filename,
+                scan.unreadable_count
             );
 
             // The sidecars Google generates exist for almost every media file: if few
             // turned up here, recognition of the name truncated to 46 characters would
             // have stopped working.
             assert!(
-                scansione.with_sidecar * 10 > scansione.media_count * 8,
+                scan.with_sidecar * 10 > scan.media_count * 8,
                 "too many media without a sidecar: {} out of {}",
-                scansione.with_sidecar,
-                scansione.media_count
+                scan.with_sidecar,
+                scan.media_count
             );
         }
         println!();
@@ -2109,115 +2109,103 @@ mod tests {
     ///
     ///
     /// ```bash
-    /// CARTELLA="~/Downloads/prova-estratta/Takeout/Google Foto/Foto da 2019" \
-    ///   cargo test --release ripara_e_mette_da_parte_i_sidecar -- --ignored --nocapture
+    /// FOLDER="~/Downloads/prova-estratta/Takeout/Google Foto/Foto da 2019" \
+    ///   cargo test --release repairs_then_sets_the_sidecars_aside -- --ignored --nocapture
     /// ```
     #[test]
-    #[ignore = "needs a folder on disk: run by hand with CARTELLA=..."]
-    fn ripara_e_mette_da_parte_i_sidecar() {
+    #[ignore = "needs a folder on disk: run by hand with FOLDER=..."]
+    fn repairs_then_sets_the_sidecars_aside() {
         use std::time::Instant;
 
-        let Ok(sorgente) = std::env::var("CARTELLA") else {
-            println!("CARTELLA not set: nothing to repair.");
+        let Ok(source) = std::env::var("FOLDER") else {
+            println!("FOLDER not set: nothing to repair.");
             return;
         };
-        let sorgente = PathBuf::from(sorgente);
+        let source = PathBuf::from(source);
 
         let temp = TempDir::new("ripara-e-sposta");
-        let lavoro = temp.path().join("foto");
-        let inizio = Instant::now();
-        let copiati = copia_ricorsiva(&sorgente, &lavoro);
-        println!(
-            "\ncopia di lavoro: {copiati} file in {:?}",
-            inizio.elapsed()
-        );
+        let work = temp.path().join("photos");
+        let started = Instant::now();
+        let copied = copy_tree(&source, &work);
+        println!("\ncopia di work: {copied} file in {:?}", started.elapsed());
 
-        let inizio = Instant::now();
-        let riparazione = exif_parser::apply_metadata(
-            &lavoro,
+        let started = Instant::now();
+        let repair = exif_parser::apply_metadata(
+            &work,
             &exif_parser::WriteOptions {
                 mode: exif_parser::WriteMode::InPlace,
                 ..Default::default()
             },
             &crate::app_state::no_progress,
         )
-        .expect("riparazione");
-        println!("repair in {:?}", inizio.elapsed());
+        .expect("repair");
+        println!("repair in {:?}", started.elapsed());
         println!(
             "  {} candidates, {} EXIF written, {} dates aligned, {} errors",
-            riparazione.candidates,
-            riparazione.exif_written,
-            riparazione.file_times_written,
-            riparazione.failures.len()
+            repair.candidates,
+            repair.exif_written,
+            repair.file_times_written,
+            repair.failures.len()
         );
 
-        let messi_da_parte = temp.path().join("sidecar");
-        let inizio = Instant::now();
-        let spostamento = drive::sweep_applied_sidecars(
-            &lavoro,
-            &messi_da_parte,
-            20,
-            &crate::app_state::no_progress,
-        )
-        .expect("setting the sidecars aside");
-        println!("set aside in {:?}", inizio.elapsed());
+        let set_aside = temp.path().join("sidecar");
+        let started = Instant::now();
+        let sweep =
+            drive::sweep_applied_sidecars(&work, &set_aside, 20, &crate::app_state::no_progress)
+                .expect("setting the sidecars aside");
+        println!("set aside in {:?}", started.elapsed());
         println!(
             "  {} moved ({:.1} kB), {} kept",
-            spostamento.moved,
-            spostamento.bytes_moved as f64 / 1024.0,
-            spostamento.kept
+            sweep.moved,
+            sweep.bytes_moved as f64 / 1024.0,
+            sweep.kept
         );
-        for motivo in &spostamento.kept_reasons {
+        for motivo in &sweep.kept_reasons {
             println!("    {:>5} per {:?}", motivo.count, motivo.reason);
         }
-        assert!(
-            spostamento.failures.is_empty(),
-            "{:?}",
-            spostamento.failures
-        );
+        assert!(sweep.failures.is_empty(), "{:?}", sweep.failures);
 
         // What was repaired must not be left behind, and what was not repaired must
         // not be touched.
         assert!(
-            spostamento.moved > 0,
+            sweep.moved > 0,
             "a successful repair has to free some sidecars"
         );
 
-        let inizio = Instant::now();
-        let ripristino =
-            drive::restore_quarantine(&spostamento.manifest.clone().expect("ledger written"))
-                .expect("ripristino");
-        println!("restore in {:?}", inizio.elapsed());
+        let started = Instant::now();
+        let restored = drive::restore_quarantine(&sweep.manifest.clone().expect("ledger written"))
+            .expect("restored");
+        println!("restore in {:?}", started.elapsed());
         assert_eq!(
-            ripristino.restored, spostamento.moved,
+            restored.restored, sweep.moved,
             "the restore has to put back everything that was moved"
         );
-        assert!(ripristino.failures.is_empty(), "{:?}", ripristino.failures);
+        assert!(restored.failures.is_empty(), "{:?}", restored.failures);
         println!();
     }
 
     /// Copies a folder with everything inside it, returning the files written.
-    fn copia_ricorsiva(sorgente: &Path, destinazione: &Path) -> usize {
-        let mut scritti = 0;
-        for entry in walkdir::WalkDir::new(sorgente)
+    fn copy_tree(source: &Path, destination: &Path) -> usize {
+        let mut written = 0;
+        for entry in walkdir::WalkDir::new(source)
             .follow_links(false)
             .into_iter()
             .flatten()
             .filter(|e| e.file_type().is_file())
         {
-            let relativo = entry.path().strip_prefix(sorgente).expect("relative path");
-            let target = destinazione.join(relativo);
+            let relative = entry.path().strip_prefix(source).expect("relative path");
+            let target = destination.join(relative);
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent).expect("destination folder");
             }
             std::fs::copy(entry.path(), &target).expect("copying the file");
-            scritti += 1;
+            written += 1;
         }
-        scritti
+        written
     }
 
     #[test]
-    fn rifiuta_una_sorgente_non_riconosciuta() {
+    fn refuses_an_unrecognised_source() {
         let temp = TempDir::new("ignota");
         let file = temp.path().join("note.txt");
         write(&file, "contenuto qualsiasi");
@@ -2226,7 +2214,7 @@ mod tests {
         assert!(!zip_handler::is_takeout_archive(&file));
 
         // A folder with no known sections produces a notice, not an error.
-        let summary = analyze_folder(temp.path()).expect("analisi cartella vuota");
+        let summary = analyze_folder(temp.path()).expect("analisi folder vuota");
         assert!(summary.sections.is_empty());
         assert_eq!(summary.warnings.len(), 1);
     }

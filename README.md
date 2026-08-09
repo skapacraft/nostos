@@ -83,7 +83,7 @@ src-tauri/
                      (the cleanup engine works on any folder)
 
 tools/
-  genera_serie_takeout.py   builds a multi-archive test series
+  generate_takeout_series.py   builds a multi-archive test series
 
 src/
   App.tsx              session orchestration
@@ -187,8 +187,8 @@ There are also five measurements excluded from CI, meant to be run by hand. The
 first works on a large library, because it generates tens of thousands of files:
 
 ```bash
-FOTO=100000 cargo test --release --manifest-path src-tauri/Cargo.toml \
-  misura_su_libreria_grande -- --ignored --nocapture
+PHOTOS=100000 cargo test --release --manifest-path src-tauri/Cargo.toml \
+  measures_a_large_library -- --ignored --nocapture
 ```
 
 You do not need a hundred gigabyte export to find scaling problems: what puts
@@ -200,15 +200,15 @@ The real-bytes path has a measurement of its own, which writes a few gigabytes:
 
 ```bash
 GB=2 /usr/bin/time -l cargo test --release --manifest-path src-tauri/Cargo.toml \
-  misura_su_file_grandi -- --ignored --nocapture
+  measures_large_files -- --ignored --nocapture
 ```
 
 A third one covers contacts and calendar, which have the opposite profile: very
 few files, but large, and read into memory in one piece.
 
 ```bash
-CONTATTI=20000 EVENTI=50000 cargo test --release --manifest-path src-tauri/Cargo.toml \
-  misura_su_rubrica_grande -- --ignored --nocapture
+CONTACTS=20000 EVENTS=50000 cargo test --release --manifest-path src-tauri/Cargo.toml \
+  measures_a_large_address_book -- --ignored --nocapture
 ```
 
 The bytes measurement checks deduplication and repair throughput, and above all
@@ -223,11 +223,11 @@ data also validates its own assumptions, and if an assumption is wrong the test
 stays green anyway. The material is prepared with the script in `tools/`:
 
 ```bash
-tools/genera_serie_takeout.py ~/Downloads/prova-multiarchivio
+tools/generate_takeout_series.py ~/Downloads/prova-multiarchivio
 
-SERIE=~/Downloads/prova-multiarchivio USCITA=~/Downloads/prova-estratta \
+SERIES=~/Downloads/prova-multiarchivio OUTPUT=~/Downloads/prova-estratta \
   cargo test --release --manifest-path src-tauri/Cargo.toml \
-  estrazione_di_una_serie_reale -- --ignored --nocapture
+  extracts_a_real_series -- --ignored --nocapture
 ```
 
 On fifteen gigabytes split across eight archives, the way Google produces them
@@ -239,9 +239,9 @@ The fifth repairs a real folder and then sets aside the applied sidecars,
 working on a copy so the original stays untouched:
 
 ```bash
-CARTELLA="~/Downloads/prova-estratta/Takeout/Google Foto/Foto da 2019" \
+FOLDER="~/Downloads/prova-estratta/Takeout/Google Foto/Foto da 2019" \
   cargo test --release --manifest-path src-tauri/Cargo.toml \
-  ripara_e_mette_da_parte_i_sidecar -- --ignored --nocapture
+  repairs_then_sets_the_sidecars_aside -- --ignored --nocapture
 ```
 
 The script does not produce a Google Takeout: it reproduces the structure, the
@@ -324,12 +324,21 @@ Nothing is fetched at runtime. Translations are bundled, because reaching out
 to a translation service would contradict the one promise this application
 makes.
 
-## Attribution
+## Acknowledgements
 
-Time zone boundaries come from [OpenStreetMap](https://www.openstreetmap.org/copyright),
-distributed by the `tzf-dist` package under the
-[Open Database License](https://opendatacommons.org/licenses/odbl/) (ODbL-1.0).
-The data is bundled with the application and consulted locally.
+The list of suffixes Google appends to edited photos comes from
+[GooglePhotosTakeoutHelper](https://github.com/TheLastGimbus/GooglePhotosTakeoutHelper)
+(Apache-2.0).
+
+Time zone boundaries come from
+[timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder),
+built from [OpenStreetMap](https://www.openstreetmap.org/copyright) data and
+reaching this application through the `tzf-rs` crate. The data is licensed
+under the [Open Database License](https://opendatacommons.org/licenses/odbl/)
+(ODbL-1.0), bundled with the application and consulted locally.
+
+The full list, dependencies included, is in
+[ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
 
 ## Author
 

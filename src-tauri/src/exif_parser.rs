@@ -654,7 +654,7 @@ const JSON_EXT: &str = ".json";
 ///
 /// Counting in bytes would break accented letters and ideographs, and filenames
 /// are full of both.
-fn tronca(testo: &str, limite: usize) -> &str {
+fn truncate(testo: &str, limite: usize) -> &str {
     match testo.char_indices().nth(limite) {
         Some((fine, _)) => &testo[..fine],
         None => testo,
@@ -695,16 +695,16 @@ fn sidecar_candidates(media: &Path) -> Vec<PathBuf> {
         format!("{file_name}.supplemental-metadata"),
         file_name.to_string(),
     ] {
-        // The count is in characters, not bytes, for the same reason `tronca`
+        // The count is in characters, not bytes, for the same reason `truncate`
         // cuts on boundaries: an accented name must not produce a different
         // candidate merely because it takes more bytes.
         if base.chars().count() + JSON_EXT.len() <= MAX_SIDECAR_NAME {
             continue;
         }
-        let tagliato = tronca(&base, MAX_SIDECAR_NAME - JSON_EXT.len());
-        let candidato = parent.join(format!("{tagliato}{JSON_EXT}"));
-        if !candidates.contains(&candidato) {
-            candidates.push(candidato);
+        let truncated = truncate(&base, MAX_SIDECAR_NAME - JSON_EXT.len());
+        let candidate = parent.join(format!("{truncated}{JSON_EXT}"));
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
         }
     }
 
@@ -881,8 +881,8 @@ pub fn scan_directory(root: &Path, sample_size: usize) -> Result<PhotoScanReport
 
     // Aggregation stays sequential and in pass order, so the sample shown is
     // always the same for a given library.
-    for esito in esiti {
-        match esito {
+    for outcome in esiti {
+        match outcome {
             Ok(record) => {
                 report.media_count += 1;
                 report.total_bytes += record.size_bytes;
@@ -1568,14 +1568,14 @@ mod tests {
     use crate::app_state::testing::{write_bytes, write_file, TempDir, MINIMAL_JPEG};
 
     #[test]
-    fn interpreta_il_formato_data_exif() {
+    fn parses_the_exif_date_format() {
         let parsed = parse_exif_datetime("2020:01:01 12:00:00").expect("data valida");
         assert_eq!(parsed.timestamp(), 1_577_880_000);
         assert!(parse_exif_datetime("2020-01-01 12:00:00").is_none());
     }
 
     #[test]
-    fn scarta_le_coordinate_a_zero() {
+    fn discards_zero_coordinates() {
         let point = GeoPoint {
             latitude: 0.0,
             longitude: 0.0,
@@ -1585,83 +1585,83 @@ mod tests {
     }
 
     #[test]
-    fn genera_i_nomi_sidecar_attesi() {
-        let candidates = sidecar_candidates(Path::new("/foto/IMG_0001.JPG"));
-        assert!(candidates.contains(&PathBuf::from("/foto/IMG_0001.JPG.json")));
+    fn generates_the_expected_sidecar_names() {
+        let candidates = sidecar_candidates(Path::new("/photos/IMG_0001.JPG"));
+        assert!(candidates.contains(&PathBuf::from("/photos/IMG_0001.JPG.json")));
         assert!(candidates.contains(&PathBuf::from(
-            "/foto/IMG_0001.JPG.supplemental-metadata.json"
+            "/photos/IMG_0001.JPG.supplemental-metadata.json"
         )));
     }
 
     #[test]
-    fn gestisce_i_nomi_sidecar_troncati() {
+    fn handles_shortened_sidecar_names() {
         // Short name: no truncation, and no pointless extra candidate.
-        let corti = sidecar_candidates(Path::new("/foto/IMG_0001.JPG"));
+        let short_name = sidecar_candidates(Path::new("/photos/IMG_0001.JPG"));
         assert!(
-            corti.iter().all(|c| {
-                let nome = c.file_name().unwrap().to_string_lossy();
-                nome.ends_with(".json") && nome.chars().count() <= MAX_SIDECAR_NAME
+            short_name.iter().all(|c| {
+                let name = c.file_name().unwrap().to_string_lossy();
+                name.ends_with(".json") && name.chars().count() <= MAX_SIDECAR_NAME
             }),
             "a short name must not produce a truncated candidate"
         );
 
         // Medium name: it fits in 46 characters on its own, but not with the whole
         // `.supplemental-metadata` appended, which therefore turns up truncated.
-        let medi = sidecar_candidates(Path::new("/foto/PXL_20260115_120000123.jpg"));
+        let medium_name = sidecar_candidates(Path::new("/photos/PXL_20260115_120000123.jpg"));
         assert!(
-            medi.contains(&PathBuf::from(
-                "/foto/PXL_20260115_120000123.jpg.supplemental-m.json"
+            medium_name.contains(&PathBuf::from(
+                "/photos/PXL_20260115_120000123.jpg.supplemental-m.json"
             )),
-            "expected the truncated suffix, found {medi:?}"
+            "expected the truncated suffix, found {medium_name:?}"
         );
 
         // Long name: the cut falls inside the media name itself.
-        let lunghi = sidecar_candidates(Path::new(
-            "/foto/Foto scattata durante la gita del 04-01-2022.jpg",
+        let long_name = sidecar_candidates(Path::new(
+            "/photos/Foto scattata durante la gita del 04-01-2022.jpg",
         ));
         assert!(
-            lunghi.contains(&PathBuf::from(
-                "/foto/Foto scattata durante la gita del 04-01-2.json"
+            long_name.contains(&PathBuf::from(
+                "/photos/Foto scattata durante la gita del 04-01-2.json"
             )),
-            "expected the cut name, found {lunghi:?}"
+            "expected the cut name, found {long_name:?}"
         );
 
         // The cut is counted in characters: an accented name must not produce a
         // shorter candidate merely because it takes more bytes.
-        let accentati = sidecar_candidates(Path::new(
-            "/foto/Foto della città più bella del mondo intero.jpg",
+        let accented = sidecar_candidates(Path::new(
+            "/photos/Foto della città più bella del mondo intero.jpg",
         ));
-        let tagliato = accentati
+        let truncated = accented
             .iter()
             .find(|c| {
-                let nome = c.file_name().unwrap().to_string_lossy();
-                !nome.contains("supplemental") && nome.chars().count() == MAX_SIDECAR_NAME
+                let name = c.file_name().unwrap().to_string_lossy();
+                !name.contains("supplemental") && name.chars().count() == MAX_SIDECAR_NAME
             })
-            .unwrap_or_else(|| panic!("no truncated candidate in {accentati:?}"));
+            .unwrap_or_else(|| panic!("no truncated candidate in {accented:?}"));
         assert_eq!(
-            tagliato.file_name().unwrap().to_string_lossy(),
+            truncated.file_name().unwrap().to_string_lossy(),
             "Foto della città più bella del mondo inte.json"
         );
     }
 
     #[test]
-    fn gestisce_i_duplicati_con_contatore() {
-        let candidates = sidecar_candidates(Path::new("/foto/IMG_0001(1).JPG"));
-        assert!(candidates.contains(&PathBuf::from("/foto/IMG_0001.JPG(1).json")));
+    fn handles_duplicates_with_a_counter() {
+        let candidates = sidecar_candidates(Path::new("/photos/IMG_0001(1).JPG"));
+        assert!(candidates.contains(&PathBuf::from("/photos/IMG_0001.JPG(1).json")));
     }
 
     #[test]
-    fn riconosce_solo_le_estensioni_media() {
+    fn recognises_media_extensions_only() {
         assert!(is_media_file(Path::new("a.HEIC")));
         assert!(is_media_file(Path::new("a.mp4")));
         assert!(!is_media_file(Path::new("a.json")));
     }
 
     #[test]
-    fn scrive_exif_solo_sui_contenitori_che_lo_prevedono() {
-        assert!(is_exif_writable(Path::new("foto.jpg")));
-        assert!(is_exif_writable(Path::new("foto.HEIC")));
-        assert!(is_exif_writable(Path::new("scansione.tiff")));
+    fn writes_exif_only_into_containers_that_support_it() {
+        assert!(is_exif_writable(Path::new("photos.jpg")));
+        assert!(is_exif_writable(Path::new("photos.HEIC")));
+        assert!(is_exif_writable(Path::new("scan.tiff")));
         // Videos keep their metadata in container atoms, not in EXIF.
         assert!(!is_exif_writable(Path::new("clip.mp4")));
         assert!(!is_exif_writable(Path::new("clip.mov")));
@@ -1673,10 +1673,10 @@ mod tests {
     /// JSON would lose them: which is to say the very fault this application
     /// exists to repair would reappear, with one extra step.
     #[test]
-    fn porta_dentro_al_file_anche_descrizione_volti_e_preferito() {
+    fn carries_description_faces_and_favourite_into_the_file_too() {
         let temp = TempDir::new("sidecar-completo");
-        let foto = temp.path().join("IMG_0001.JPG");
-        write_bytes(&foto, MINIMAL_JPEG);
+        let photos = temp.path().join("IMG_0001.JPG");
+        write_bytes(&photos, MINIMAL_JPEG);
         write_file(
             &temp.path().join("IMG_0001.JPG.json"),
             r#"{
@@ -1691,7 +1691,7 @@ mod tests {
             }"#,
         );
 
-        let record = inspect_media(&foto, None).expect("lettura media");
+        let record = inspect_media(&photos, None).expect("lettura media");
         let sidecar = record.sidecar.as_ref().expect("sidecar letto");
         assert_eq!(sidecar.people, ["Anna Bianchi", "Luca Verdi"]);
         assert!(sidecar.favorited);
@@ -1712,10 +1712,10 @@ mod tests {
             },
             &crate::app_state::no_progress,
         )
-        .expect("riparazione");
+        .expect("repair");
         assert_eq!(report.exif_written, 1);
 
-        let bytes = std::fs::read(&foto).expect("rilettura");
+        let bytes = std::fs::read(&photos).expect("rilettura");
         assert_eq!(&bytes[..2], &[0xFF, 0xD8], "it stays a valid JPEG");
 
         // `ImageDescription` is plain text and is found exactly as written.
@@ -1737,7 +1737,7 @@ mod tests {
 
         // A full rating is how the rest of the ecosystem reads the Google Photos
         // star.
-        let riletto = read_exif(&foto).expect("rilettura EXIF");
+        let riletto = read_exif(&photos).expect("rilettura EXIF");
         assert!(
             riletto.taken_at.is_some(),
             "the date must not be lost while writing the rest"
@@ -1758,7 +1758,7 @@ mod tests {
     /// constraint: if anyone adds "png" here, the exception lapses and this test
     /// has to fail as a reminder.
     #[test]
-    fn png_resta_fuori_dalla_scrittura_exif() {
+    fn png_stays_out_of_exif_writing() {
         assert!(
             !EXIF_WRITABLE_EXTENSIONS.contains(&"png"),
             "aggiungere PNG riattiva il parser XML vulnerabile di little_exif: \
@@ -1768,9 +1768,9 @@ mod tests {
     }
 
     #[test]
-    fn deduce_la_data_dai_nomi_generati_dalle_fotocamere() {
+    fn derives_the_date_from_camera_generated_names() {
         let attesa = 1_577_880_000; // 2020-01-01 12:00:00 UTC
-        for nome in [
+        for name in [
             "IMG_20200101_120000.jpg",
             "VID_20200101_120000.mp4",
             "PXL_20200101_120000123.jpg",
@@ -1780,22 +1780,22 @@ mod tests {
             "2020-01-01-120000.heic",
             "20200101120000.jpg",
         ] {
-            let parsed = parse_date_from_filename(nome);
+            let parsed = parse_date_from_filename(name);
             // `IMG-20200101-WA0001` carries no valid time: it has to be rejected.
-            if nome.contains("WA0001") {
-                assert!(parsed.is_none(), "{nome} carries no real time");
+            if name.contains("WA0001") {
+                assert!(parsed.is_none(), "{name} carries no real time");
                 continue;
             }
             assert_eq!(
                 parsed.map(|d| d.timestamp()),
                 Some(attesa),
-                "name not recognised: {nome}"
+                "name not recognised: {name}"
             );
         }
     }
 
     #[test]
-    fn non_scambia_numeri_qualsiasi_per_date() {
+    fn does_not_mistake_any_number_for_a_date() {
         // Impossible date: month 13.
         assert!(parse_date_from_filename("IMG_20201301_120000.jpg").is_none());
         // Impossible hour.
@@ -1808,7 +1808,7 @@ mod tests {
     }
 
     #[test]
-    fn il_nome_interviene_solo_dopo_exif_e_sidecar() {
+    fn the_filename_steps_in_only_after_exif_and_sidecar() {
         // The order is verified on the data: EXIF beats sidecar, sidecar beats
         // name. Here it is enough to establish that the name is the last resort.
         assert_eq!(MetadataSource::Exif as u8, 0);
@@ -1819,7 +1819,7 @@ mod tests {
     /// Google sidecar carries a UTC instant instead: writing it without
     /// conversion would move every photo back by the zone difference.
     #[test]
-    fn converte_listante_utc_nellora_locale_del_luogo() {
+    fn converts_the_utc_instant_to_local_wall_clock_time() {
         let istante = DateTime::from_timestamp(1_577_880_000, 0).expect("istante"); // 12:00 UTC
 
         // Milan in January: CET, one hour ahead.
@@ -1860,7 +1860,7 @@ mod tests {
     }
 
     #[test]
-    fn tiene_conto_dellora_legale() {
+    fn accounts_for_daylight_saving() {
         // Same place, July: CEST, two hours ahead instead of one.
         let luglio = DateTime::from_timestamp(1_593_604_800, 0).expect("istante"); // 2020-07-01 12:00 UTC
         let milano = GeoPoint {
@@ -1874,7 +1874,7 @@ mod tests {
     }
 
     #[test]
-    fn interpreta_loffset_dichiarato_nei_file() {
+    fn parses_the_offset_declared_in_files() {
         assert_eq!(parse_offset("+01:00"), Some(60));
         assert_eq!(parse_offset("-05:00"), Some(-300));
         assert_eq!(parse_offset("+05:30"), Some(330));
@@ -1883,7 +1883,7 @@ mod tests {
     }
 
     #[test]
-    fn converte_i_gradi_decimali_in_gradi_primi_secondi() {
+    fn converts_decimal_degrees_to_degrees_minutes_seconds() {
         // 45.4642 degrees correspond to 45° 27' 51.12".
         let dms = degrees_to_dms(45.4642);
         assert_eq!(dms[0].nominator, 45);

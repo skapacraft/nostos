@@ -209,18 +209,18 @@ pub fn classify_folder_in(name: &str, year_prefix: Option<&str>) -> FolderKind {
 /// prefixes appear the same number of times: no choice would then be better than
 /// a coin toss, and saying so beats deciding.
 fn year_prefix(names: &[String]) -> Option<String> {
-    let mut conteggi: BTreeMap<String, usize> = BTreeMap::new();
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     for name in names {
         let normalized = normalize(name.trim());
         if trailing_year(&normalized).is_some() {
-            *conteggi.entry(folder_prefix(&normalized)).or_default() += 1;
+            *counts.entry(folder_prefix(&normalized)).or_default() += 1;
         }
     }
 
-    let massimo = *conteggi.values().max()?;
-    let mut vincitori = conteggi.iter().filter(|(_, n)| **n == massimo);
-    let (prefisso, _) = vincitori.next()?;
-    vincitori.next().is_none().then(|| prefisso.clone())
+    let massimo = *counts.values().max()?;
+    let mut vincitori = counts.iter().filter(|(_, n)| **n == massimo);
+    let (prefix, _) = vincitori.next()?;
+    vincitori.next().is_none().then(|| prefix.clone())
 }
 
 /// The part of the name preceding the trailing year, trimmed.
@@ -313,7 +313,7 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
 
     // First pass over the names alone: it tells us what this export calls its
     // years, before deciding what is a year and what is an album.
-    let mut nomi: Vec<String> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
     for entry in std::fs::read_dir(root)
         .map_err(|e| TakeoutError::io(root, e))?
         .flatten()
@@ -323,19 +323,25 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
         }
         let name = entry.file_name().to_string_lossy().into_owned();
         if !name.starts_with('.') {
-            nomi.push(name);
+            names.push(name);
         }
     }
-    nomi.sort();
+    names.sort();
 
-    let prefisso = year_prefix(&nomi);
-    if prefisso.is_none() && nomi.iter().filter(|n| classify_folder(n).is_year()).count() > 1 {
+    let prefix = year_prefix(&names);
+    if prefix.is_none()
+        && names
+            .iter()
+            .filter(|n| classify_folder(n).is_year())
+            .count()
+            > 1
+    {
         index.warnings.push(Notice::AmbiguousYearFolders);
     }
 
-    for name in nomi {
+    for name in names {
         let dir = root.join(&name);
-        let kind = classify_folder_in(&name, prefisso.as_deref());
+        let kind = classify_folder_in(&name, prefix.as_deref());
         let media: Vec<String> = WalkDir::new(&dir)
             .follow_links(false)
             .into_iter()
@@ -449,8 +455,8 @@ pub fn export_manifest(root: &Path, destination: &Path) -> Result<ExportReport> 
     let manifest = AlbumManifest {
         created_at: Utc::now(),
         source_root: index.root.clone(),
-        note: "Google Foto esporta gli album come cartelle contenenti una copia \
-               della foto. Questo file conserva l'appartenenza agli album prima \
+        note: "Google Foto esporta gli album come cartelle contenenti una copy \
+               della photos. Questo file conserva l'appartenenza agli album prima \
                che le copie vengano deduplicate."
             .to_string(),
         albums: index.albums,
@@ -478,7 +484,7 @@ mod tests {
     use crate::app_state::testing::{write_bytes, write_file, TempDir, MINIMAL_JPEG};
 
     #[test]
-    fn riconosce_le_cartelle_per_anno_in_piu_lingue() {
+    fn recognises_year_folders_in_several_languages() {
         assert_eq!(classify_folder("Photos from 2020"), FolderKind::Year(2020));
         assert_eq!(classify_folder("Foto da 2026"), FolderKind::Year(2026));
         assert_eq!(classify_folder("2019"), FolderKind::Year(2019));
@@ -488,8 +494,8 @@ mod tests {
     }
 
     #[test]
-    fn distingue_un_album_con_l_anno_nel_nome_dalle_annate() {
-        let nomi: Vec<String> = [
+    fn tells_an_album_named_after_a_year_from_the_years() {
+        let names: Vec<String> = [
             "Foto da 2019",
             "Foto da 2020",
             "Foto da 2021",
@@ -500,22 +506,22 @@ mod tests {
         .map(|s| s.to_string())
         .collect();
 
-        let prefisso = year_prefix(&nomi);
-        assert_eq!(prefisso.as_deref(), Some("foto da"));
+        let prefix = year_prefix(&names);
+        assert_eq!(prefix.as_deref(), Some("foto da"));
 
         // Without the export prefix "Christmas 2024" would pass for a year, and
         // its membership would never reach the manifest.
         assert_eq!(classify_folder("Natale 2024"), FolderKind::Year(2024));
         assert_eq!(
-            classify_folder_in("Natale 2024", prefisso.as_deref()),
+            classify_folder_in("Natale 2024", prefix.as_deref()),
             FolderKind::Album
         );
         assert_eq!(
-            classify_folder_in("Foto da 2020", prefisso.as_deref()),
+            classify_folder_in("Foto da 2020", prefix.as_deref()),
             FolderKind::Year(2020)
         );
         assert_eq!(
-            classify_folder_in("Vacanze in Sicilia", prefisso.as_deref()),
+            classify_folder_in("Vacanze in Sicilia", prefix.as_deref()),
             FolderKind::Album
         );
 
@@ -534,15 +540,15 @@ mod tests {
     }
 
     #[test]
-    fn segnala_quando_non_riesce_a_distinguere_annate_e_album() {
+    fn flags_when_years_and_albums_cannot_be_told_apart() {
         let temp = TempDir::new("annate-ambigue");
         let root = temp.path().join("Google Foto");
         // Two different prefixes, one folder each: no winner.
-        for cartella in ["Foto da 2026", "Natale 2024"] {
-            write_bytes(&root.join(cartella).join("IMG_0001.JPG"), MINIMAL_JPEG);
+        for folder in ["Foto da 2026", "Natale 2024"] {
+            write_bytes(&root.join(folder).join("IMG_0001.JPG"), MINIMAL_JPEG);
         }
 
-        let index = build_index(&root, 100).expect("indice");
+        let index = build_index(&root, 100).expect("index");
         assert_eq!(index.year_folders.len(), 2, "when in doubt they stay years");
         assert!(
             index.warnings.contains(&Notice::AmbiguousYearFolders),
@@ -552,14 +558,14 @@ mod tests {
     }
 
     #[test]
-    fn riconosce_le_cartelle_speciali() {
+    fn recognises_special_folders() {
         assert_eq!(classify_folder("Archive"), FolderKind::Special);
         assert_eq!(classify_folder("Cestino"), FolderKind::Special);
         assert_eq!(classify_folder("TRASH"), FolderKind::Special);
     }
 
     #[test]
-    fn riconosce_le_versioni_modificate() {
+    fn recognises_edited_versions() {
         assert_eq!(
             strip_edited_suffix("IMG_1234-edited.jpg"),
             Some(("IMG_1234.jpg".to_string(), "-edited".to_string()))
@@ -577,7 +583,7 @@ mod tests {
     /// constant written in NFC would fail, and recognition would work in English
     /// but not in French.
     #[test]
-    fn riconosce_i_suffissi_accentati_anche_in_forma_nfd() {
+    fn recognises_accented_suffixes_in_nfd_form_too() {
         let nfd: String = "IMG_1-modifie\u{0301}.jpg".to_string();
         assert_ne!(nfd, "IMG_1-modifié.jpg", "the two forms differ in bytes");
         assert_eq!(
@@ -593,25 +599,25 @@ mod tests {
     /// The case that makes this module necessary: the same photo in a year
     /// folder and in an album.
     #[test]
-    fn registra_lappartenenza_agli_album() {
+    fn records_album_membership() {
         let temp = TempDir::new("album-index");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
 
         crate::app_state::testing::write_bytes(
-            &foto.join("Foto da 2026").join("IMG_1.JPG"),
+            &photos.join("Foto da 2026").join("IMG_1.JPG"),
             MINIMAL_JPEG,
         );
         crate::app_state::testing::write_bytes(
-            &foto.join("Vacanze in Sicilia").join("IMG_1.JPG"),
+            &photos.join("Vacanze in Sicilia").join("IMG_1.JPG"),
             MINIMAL_JPEG,
         );
         crate::app_state::testing::write_bytes(
-            &foto.join("Vacanze in Sicilia").join("IMG_2.JPG"),
+            &photos.join("Vacanze in Sicilia").join("IMG_2.JPG"),
             MINIMAL_JPEG,
         );
-        write_file(&foto.join("Cestino").join("nota.txt"), "x");
+        write_file(&photos.join("Cestino").join("nota.txt"), "x");
 
-        let index = build_index(&foto, usize::MAX).expect("indice");
+        let index = build_index(&photos, usize::MAX).expect("index");
 
         assert_eq!(index.year_folders, vec!["Foto da 2026"]);
         assert_eq!(index.albums.len(), 1);
@@ -639,20 +645,20 @@ mod tests {
     }
 
     #[test]
-    fn il_manifest_e_rileggibile() {
+    fn the_manifest_can_be_read_back() {
         let temp = TempDir::new("album-manifest");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
         crate::app_state::testing::write_bytes(
-            &foto.join("Photos from 2020").join("IMG_1.JPG"),
+            &photos.join("Photos from 2020").join("IMG_1.JPG"),
             MINIMAL_JPEG,
         );
         crate::app_state::testing::write_bytes(
-            &foto.join("Compleanno").join("IMG_1.JPG"),
+            &photos.join("Compleanno").join("IMG_1.JPG"),
             MINIMAL_JPEG,
         );
 
-        let destination = temp.path().join("uscita").join("album.json");
-        let report = export_manifest(&foto, &destination).expect("manifest");
+        let destination = temp.path().join("output").join("album.json");
+        let report = export_manifest(&photos, &destination).expect("manifest");
         assert_eq!(report.written, 1);
 
         let content = std::fs::read_to_string(&destination).expect("lettura");

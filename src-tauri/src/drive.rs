@@ -804,7 +804,7 @@ pub fn clean(
     if options.mode == CleanMode::CopyToOutput {
         // The clean tree holds everything except what gets discarded, so the space
         // needed is the total minus the reclaimable part.
-        let totale: u64 = WalkDir::new(root)
+        let total: u64 = WalkDir::new(root)
             .follow_links(false)
             .into_iter()
             .flatten()
@@ -812,7 +812,7 @@ pub fn clean(
             .filter_map(|e| e.metadata().ok())
             .map(|m| m.len())
             .sum();
-        let da_scrivere = totale.saturating_sub(plan.reclaimable_bytes);
+        let da_scrivere = total.saturating_sub(plan.reclaimable_bytes);
         crate::app_state::require_free_space(destination, da_scrivere)?;
     }
 
@@ -1041,8 +1041,8 @@ pub fn sweep_applied_sidecars(
         index.insert(path);
     }
 
-    let totale = media.len();
-    progress(Progress::new(Phase::Scanning, 0, totale, 0));
+    let total = media.len();
+    progress(Progress::new(Phase::Scanning, 0, total, 0));
 
     let mut report = SidecarSweepReport {
         destination: destination.to_path_buf(),
@@ -1054,24 +1054,24 @@ pub fn sweep_applied_sidecars(
         entries: Vec::new(),
     };
     // Sorted, so the list stays stable between one run and the next.
-    let mut conteggi: BTreeMap<exif_parser::SidecarKept, usize> = BTreeMap::new();
+    let mut counts: BTreeMap<exif_parser::SidecarKept, usize> = BTreeMap::new();
 
     for (fatti, file) in media.iter().enumerate() {
-        progress(Progress::new(Phase::Writing, fatti, totale, 0));
+        progress(Progress::new(Phase::Writing, fatti, total, 0));
 
         let Ok(Some(sidecar)) = exif_parser::read_sidecar(file, Some(&index)) else {
             continue;
         };
 
-        let mut motivi = exif_parser::sidecar_residual(file, &sidecar)?;
+        let mut reasons = exif_parser::sidecar_residual(file, &sidecar)?;
         // What has no home in the metadata remains a valid reason not to touch the
         // JSON, even though no repair will ever be able to resolve it.
-        motivi.extend(sidecar.unwritable());
+        reasons.extend(sidecar.unwritable());
 
-        if !motivi.is_empty() {
+        if !reasons.is_empty() {
             report.kept += 1;
-            for motivo in motivi {
-                *conteggi.entry(motivo).or_insert(0) += 1;
+            for motivo in reasons {
+                *counts.entry(motivo).or_insert(0) += 1;
             }
             if report.kept_sample.len() < max_items {
                 report.kept_sample.push(sidecar.path.clone());
@@ -1113,7 +1113,7 @@ pub fn sweep_applied_sidecars(
         }
     }
 
-    report.kept_reasons = conteggi
+    report.kept_reasons = counts
         .into_iter()
         .map(|(reason, count)| KeptReason { reason, count })
         .collect();
@@ -1129,7 +1129,7 @@ pub fn sweep_applied_sidecars(
         report.manifest = Some(manifest_path);
     }
 
-    progress(Progress::new(Phase::Done, totale, totale, 0));
+    progress(Progress::new(Phase::Done, total, total, 0));
     trace_dev!(
         "sidecars: {} moved, {} kept, {} errors",
         report.moved,
@@ -1200,37 +1200,37 @@ mod tests {
     /// a cleanup. Undoable because "nothing is ever deleted" is worth little
     /// if the file then cannot be put back where it was.
     #[test]
-    fn sposta_solo_i_sidecar_il_cui_contenuto_e_gia_nel_file() {
+    fn moves_only_sidecars_whose_content_is_already_in_the_file() {
         use crate::app_state::testing::{write_bytes, write_file, TempDir, MINIMAL_JPEG};
         use crate::exif_parser::{apply_metadata, WriteMode, WriteOptions};
 
         let temp = TempDir::new("sidecar-spostati");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
 
-        let sidecar = |nome: &str| {
+        let sidecar = |name: &str| {
             format!(
-                r#"{{"title": "{nome}",
+                r#"{{"title": "{name}",
                      "photoTakenTime": {{ "timestamp": "1577880000" }},
                      "geoData": {{ "latitude": 45.4642, "longitude": 9.19, "altitude": 0.0 }} }}"#
             )
         };
 
         // Repairable: once rewritten, the JSON is no longer needed.
-        write_bytes(&foto.join("IMG_0001.JPG"), MINIMAL_JPEG);
-        write_file(&foto.join("IMG_0001.JPG.json"), &sidecar("IMG_0001.JPG"));
+        write_bytes(&photos.join("IMG_0001.JPG"), MINIMAL_JPEG);
+        write_file(&photos.join("IMG_0001.JPG.json"), &sidecar("IMG_0001.JPG"));
 
         // Video: we write no EXIF, so the JSON stays the only home.
-        write_file(&foto.join("VID_0002.mp4"), "not a real video");
-        write_file(&foto.join("VID_0002.mp4.json"), &sidecar("VID_0002.mp4"));
+        write_file(&photos.join("VID_0002.mp4"), "not a real video");
+        write_file(&photos.join("VID_0002.mp4.json"), &sidecar("VID_0002.mp4"));
 
         // Never repaired: the date lives only in the JSON.
-        write_bytes(&foto.join("IMG_0003.JPG"), MINIMAL_JPEG);
-        write_file(&foto.join("IMG_0003.JPG.json"), &sidecar("IMG_0003.JPG"));
+        write_bytes(&photos.join("IMG_0003.JPG"), MINIMAL_JPEG);
+        write_file(&photos.join("IMG_0003.JPG.json"), &sidecar("IMG_0003.JPG"));
 
         // With a Google counter, which has no home in the metadata.
-        write_bytes(&foto.join("IMG_0004.JPG"), MINIMAL_JPEG);
+        write_bytes(&photos.join("IMG_0004.JPG"), MINIMAL_JPEG);
         write_file(
-            &foto.join("IMG_0004.JPG.json"),
+            &photos.join("IMG_0004.JPG.json"),
             r#"{"title": "IMG_0004.JPG",
                 "photoTakenTime": { "timestamp": "1577880000" },
                 "imageViews": "128"}"#,
@@ -1238,46 +1238,47 @@ mod tests {
 
         // Repair only the first two photos, leaving IMG_0003 behind.
         let da_riparare = temp.path().join("solo-alcune");
-        for nome in ["IMG_0001.JPG", "IMG_0004.JPG"] {
-            write_bytes(&da_riparare.join(nome), MINIMAL_JPEG);
+        for name in ["IMG_0001.JPG", "IMG_0004.JPG"] {
+            write_bytes(&da_riparare.join(name), MINIMAL_JPEG);
             std::fs::copy(
-                foto.join(format!("{nome}.json")),
-                da_riparare.join(format!("{nome}.json")),
+                photos.join(format!("{name}.json")),
+                da_riparare.join(format!("{name}.json")),
             )
-            .expect("copia sidecar");
+            .expect("copy sidecar");
         }
         apply_metadata(
-            &foto,
+            &photos,
             &WriteOptions {
                 mode: WriteMode::InPlace,
                 ..WriteOptions::default()
             },
             &crate::app_state::no_progress,
         )
-        .expect("riparazione");
+        .expect("repair");
         // Put IMG_0003 back to its starting state: repaired is not what we want.
-        write_bytes(&foto.join("IMG_0003.JPG"), MINIMAL_JPEG);
+        write_bytes(&photos.join("IMG_0003.JPG"), MINIMAL_JPEG);
 
         let quarantena = temp.path().join("sidecar-applicati");
-        let report = sweep_applied_sidecars(&foto, &quarantena, 10, &crate::app_state::no_progress)
-            .expect("spostamento");
+        let report =
+            sweep_applied_sidecars(&photos, &quarantena, 10, &crate::app_state::no_progress)
+                .expect("sweep");
 
         assert_eq!(report.moved, 1, "solo IMG_0001 è pienamente riparata");
         assert_eq!(report.kept, 3, "the other three stay: {report:?}");
         assert!(
-            !foto.join("IMG_0001.JPG.json").exists(),
+            !photos.join("IMG_0001.JPG.json").exists(),
             "the applied sidecar has to be moved"
         );
         assert!(
-            foto.join("VID_0002.mp4.json").exists(),
+            photos.join("VID_0002.mp4.json").exists(),
             "with no EXIF the JSON is the only home: leave it alone"
         );
         assert!(
-            foto.join("IMG_0003.JPG.json").exists(),
+            photos.join("IMG_0003.JPG.json").exists(),
             "an unrepaired file does not lose its sidecar"
         );
         assert!(
-            foto.join("IMG_0004.JPG.json").exists(),
+            photos.join("IMG_0004.JPG.json").exists(),
             "data with no home in the metadata holds the sidecar back"
         );
         assert!(
@@ -1291,16 +1292,16 @@ mod tests {
 
         // And it must be possible to go back.
         let manifest = report.manifest.expect("registro scritto");
-        let ripristino = restore_quarantine(&manifest).expect("ripristino");
-        assert_eq!(ripristino.restored, 1);
+        let restored = restore_quarantine(&manifest).expect("restored");
+        assert_eq!(restored.restored, 1);
         assert!(
-            foto.join("IMG_0001.JPG.json").exists(),
+            photos.join("IMG_0001.JPG.json").exists(),
             "the restore puts the sidecar back where it was"
         );
     }
 
     #[test]
-    fn classifica_per_estensione() {
+    fn classifies_by_extension() {
         assert_eq!(
             FileCategory::from_path(Path::new("relazione.docx")),
             FileCategory::Document
@@ -1310,7 +1311,7 @@ mod tests {
             FileCategory::Spreadsheet
         );
         assert_eq!(
-            FileCategory::from_path(Path::new("foto.HEIC")),
+            FileCategory::from_path(Path::new("photos.HEIC")),
             FileCategory::Image
         );
         assert_eq!(
@@ -1328,7 +1329,7 @@ mod tests {
 
         // Same content, different names and folders: genuine duplicates.
         write_file(&drive.join("relazione.docx"), "contenuto A");
-        write_file(&drive.join("copia").join("relazione.docx"), "contenuto A");
+        write_file(&drive.join("copy").join("relazione.docx"), "contenuto A");
 
         // Same size as the previous ones but different content: deduplication by
         // name and size would get these wrong, deduplication by content does not.
@@ -1344,7 +1345,7 @@ mod tests {
     }
 
     #[test]
-    fn riconosce_la_spazzatura_di_sistema() {
+    fn recognises_system_junk() {
         assert!(is_junk(Path::new("/x/.DS_Store")));
         assert!(is_junk(Path::new("/x/desktop.ini")));
         assert!(is_junk(Path::new("/x/Thumbs.db")));
@@ -1356,23 +1357,26 @@ mod tests {
     }
 
     #[test]
-    fn conserva_la_copia_dal_nome_piu_corto() {
+    fn keeps_the_copy_with_the_shortest_name() {
         let mut paths = vec![
-            PathBuf::from("/foto/IMG_1268 2.JPG"),
-            PathBuf::from("/foto/IMG_1268.JPG"),
+            PathBuf::from("/photos/IMG_1268 2.JPG"),
+            PathBuf::from("/photos/IMG_1268.JPG"),
         ];
         // The " 2" suffix marks the copy, not the original.
-        assert_eq!(choose_kept(&mut paths), PathBuf::from("/foto/IMG_1268.JPG"));
+        assert_eq!(
+            choose_kept(&mut paths),
+            PathBuf::from("/photos/IMG_1268.JPG")
+        );
         assert_eq!(paths.len(), 1);
     }
 
     #[test]
-    fn distingue_i_duplicati_veri_dai_sosia_per_dimensione() {
-        let temp = TempDir::new("drive-piano");
+    fn tells_real_duplicates_from_size_lookalikes() {
+        let temp = TempDir::new("drive-plan");
         let drive = build_drive(temp.path());
 
         let plan =
-            plan_clean(&drive, &CleanOptions::default(), usize::MAX, &no_progress).expect("piano");
+            plan_clean(&drive, &CleanOptions::default(), usize::MAX, &no_progress).expect("plan");
 
         assert_eq!(plan.files_scanned, 7);
         assert_eq!(plan.junk_files, 3, "DS_Store, AppleDouble e __MACOSX");
@@ -1387,15 +1391,15 @@ mod tests {
         let gruppo = &plan.duplicate_groups[0];
         assert!(gruppo.kept.ends_with("relazione.docx"));
         assert_eq!(gruppo.copies.len(), 1);
-        assert!(gruppo.copies[0].ends_with("copia/relazione.docx"));
+        assert!(gruppo.copies[0].ends_with("copy/relazione.docx"));
 
         // The plan touched nothing.
-        assert!(drive.join("copia").join("relazione.docx").is_file());
+        assert!(drive.join("copy").join("relazione.docx").is_file());
         assert!(drive.join(".DS_Store").is_file());
     }
 
     #[test]
-    fn la_simulazione_non_scrive_nulla() {
+    fn the_dry_run_writes_nothing() {
         let temp = TempDir::new("drive-simulazione");
         let drive = build_drive(temp.path());
         let prima: Vec<PathBuf> = WalkDir::new(&drive)
@@ -1415,13 +1419,13 @@ mod tests {
     }
 
     #[test]
-    fn la_quarantena_si_annulla_completamente() {
+    fn quarantine_undoes_completely() {
         let temp = TempDir::new("drive-quarantena");
         let drive = build_drive(temp.path());
         let quarantena = temp.path().join("quarantena");
 
         /// Snapshot of paths and contents, to compare before and after.
-        fn istantanea(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
             let mut out: Vec<(PathBuf, Vec<u8>)> = WalkDir::new(root)
                 .into_iter()
                 .flatten()
@@ -1435,7 +1439,7 @@ mod tests {
             out
         }
 
-        let prima = istantanea(&drive);
+        let prima = snapshot(&drive);
         assert_eq!(prima.len(), 7);
 
         let report = clean(
@@ -1454,37 +1458,37 @@ mod tests {
         assert_eq!(report.junk_handled, 3);
 
         // The files were moved, not deleted.
-        assert!(!drive.join("copia").join("relazione.docx").exists());
+        assert!(!drive.join("copy").join("relazione.docx").exists());
         assert!(!drive.join(".DS_Store").exists());
-        assert_eq!(istantanea(&drive).len(), 3, "the three unique files remain");
-        assert!(quarantena.join("copia").join("relazione.docx").is_file());
+        assert_eq!(snapshot(&drive).len(), 3, "the three unique files remain");
+        assert!(quarantena.join("copy").join("relazione.docx").is_file());
 
         // The ledger exists and can be read.
         let manifest = report.manifest.expect("registro scritto");
         assert!(manifest.is_file());
 
         // And now the part that counts: back to exactly where we started.
-        let restore = restore_quarantine(&manifest).expect("ripristino");
+        let restore = restore_quarantine(&manifest).expect("restored");
         assert_eq!(restore.restored, 4);
         assert!(restore.failures.is_empty(), "{:?}", restore.failures);
         assert_eq!(
-            istantanea(&drive),
+            snapshot(&drive),
             prima,
             "after the restore the tree has to be identical to the original"
         );
     }
 
     #[test]
-    fn lalbero_pulito_esclude_duplicati_e_spazzatura() {
-        let temp = TempDir::new("drive-copia");
+    fn the_clean_tree_excludes_duplicates_and_junk() {
+        let temp = TempDir::new("drive-copy");
         let drive = build_drive(temp.path());
-        let uscita = temp.path().join("pulito");
+        let output = temp.path().join("pulito");
 
         let report = clean(
             &drive,
             &CleanOptions {
                 mode: CleanMode::CopyToOutput,
-                destination: Some(uscita.clone()),
+                destination: Some(output.clone()),
                 ..Default::default()
             },
             &no_progress,
@@ -1493,52 +1497,52 @@ mod tests {
 
         assert!(report.failures.is_empty(), "{:?}", report.failures);
 
-        let prodotti: Vec<String> = WalkDir::new(&uscita)
+        let produced: Vec<String> = WalkDir::new(&output)
             .into_iter()
             .flatten()
             .filter(|e| e.file_type().is_file())
             .map(|e| {
                 e.path()
-                    .strip_prefix(&uscita)
+                    .strip_prefix(&output)
                     .unwrap_or(e.path())
                     .to_string_lossy()
                     .into_owned()
             })
             .collect();
 
-        assert_eq!(prodotti.len(), 3, "one specimen per content: {prodotti:?}");
-        assert!(prodotti.iter().any(|p| p == "relazione.docx"));
-        assert!(prodotti.iter().any(|p| p == "altro.txt"));
-        assert!(prodotti.iter().any(|p| p == "terzo.txt"));
-        assert!(!prodotti.iter().any(|p| p.contains("DS_Store")));
-        assert!(!prodotti.iter().any(|p| p.contains("__MACOSX")));
+        assert_eq!(produced.len(), 3, "one specimen per content: {produced:?}");
+        assert!(produced.iter().any(|p| p == "relazione.docx"));
+        assert!(produced.iter().any(|p| p == "altro.txt"));
+        assert!(produced.iter().any(|p| p == "terzo.txt"));
+        assert!(!produced.iter().any(|p| p.contains("DS_Store")));
+        assert!(!produced.iter().any(|p| p.contains("__MACOSX")));
 
         // The source was not touched.
-        assert!(drive.join("copia").join("relazione.docx").is_file());
+        assert!(drive.join("copy").join("relazione.docx").is_file());
         assert!(drive.join(".DS_Store").is_file());
     }
 
     #[test]
-    fn il_sidecar_segue_il_media_rimosso() {
+    fn the_sidecar_follows_the_removed_media() {
         let temp = TempDir::new("drive-sidecar");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
 
         // Two shots with identical content, the way Google produces them when the
         // same photo sits in several albums, each with its own sidecar.
-        write_file(&foto.join("IMG_1268.JPG"), "pixel identici");
+        write_file(&photos.join("IMG_1268.JPG"), "pixel identici");
         write_file(
-            &foto.join("IMG_1268.JPG.supplemental-metadata.json"),
+            &photos.join("IMG_1268.JPG.supplemental-metadata.json"),
             r#"{"title": "IMG_1268.JPG"}"#,
         );
-        write_file(&foto.join("IMG_1268 2.JPG"), "pixel identici");
+        write_file(&photos.join("IMG_1268 2.JPG"), "pixel identici");
         write_file(
-            &foto.join("IMG_1268 2.JPG.supplemental-metadata.json"),
+            &photos.join("IMG_1268 2.JPG.supplemental-metadata.json"),
             r#"{"title": "IMG_1268 2.JPG"}"#,
         );
 
         let quarantena = temp.path().join("quarantena");
         let report = clean(
-            &foto,
+            &photos,
             &CleanOptions {
                 mode: CleanMode::Quarantine,
                 destination: Some(quarantena.clone()),
@@ -1553,23 +1557,23 @@ mod tests {
         assert_eq!(report.companions_handled, 1, "the sidecar has to follow");
 
         // The original survives, with its sidecar.
-        assert!(foto.join("IMG_1268.JPG").is_file());
-        assert!(foto
+        assert!(photos.join("IMG_1268.JPG").is_file());
+        assert!(photos
             .join("IMG_1268.JPG.supplemental-metadata.json")
             .is_file());
 
         // The copy left along with its own sidecar: no orphans.
-        assert!(!foto.join("IMG_1268 2.JPG").exists());
-        assert!(!foto
+        assert!(!photos.join("IMG_1268 2.JPG").exists());
+        assert!(!photos
             .join("IMG_1268 2.JPG.supplemental-metadata.json")
             .exists());
 
         // And we go all the way back.
         let manifest = report.manifest.expect("registro");
-        let restore = restore_quarantine(&manifest).expect("ripristino");
+        let restore = restore_quarantine(&manifest).expect("restored");
         assert_eq!(restore.restored, 2);
-        assert!(foto.join("IMG_1268 2.JPG").is_file());
-        assert!(foto
+        assert!(photos.join("IMG_1268 2.JPG").is_file());
+        assert!(photos
             .join("IMG_1268 2.JPG.supplemental-metadata.json")
             .is_file());
     }
@@ -1579,18 +1583,18 @@ mod tests {
     /// photo left without would lose date and coordinates: damage that, looking
     /// at the surviving files, is not even visible.
     #[test]
-    fn i_sidecar_non_vengono_deduplicati_tra_loro() {
+    fn sidecars_are_not_deduplicated_against_each_other() {
         let temp = TempDir::new("sidecar-dedup");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
 
         // Two different photos, with sidecars of identical content.
-        write_file(&foto.join("IMG_1.JPG"), "pixel della prima");
-        write_file(&foto.join("IMG_2.JPG"), "pixel della second");
-        write_file(&foto.join("IMG_1.JPG.json"), r#"{"t": "1577880000"}"#);
-        write_file(&foto.join("IMG_2.JPG.json"), r#"{"t": "1577880000"}"#);
+        write_file(&photos.join("IMG_1.JPG"), "pixel della prima");
+        write_file(&photos.join("IMG_2.JPG"), "pixel della second");
+        write_file(&photos.join("IMG_1.JPG.json"), r#"{"t": "1577880000"}"#);
+        write_file(&photos.join("IMG_2.JPG.json"), r#"{"t": "1577880000"}"#);
 
         let plan =
-            plan_clean(&foto, &CleanOptions::default(), usize::MAX, &no_progress).expect("piano");
+            plan_clean(&photos, &CleanOptions::default(), usize::MAX, &no_progress).expect("plan");
 
         assert_eq!(
             plan.duplicate_copies, 0,
@@ -1601,37 +1605,37 @@ mod tests {
     }
 
     #[test]
-    fn il_prefisso_dei_companion_non_confonde_nomi_simili() {
-        let temp = TempDir::new("drive-prefisso");
-        let foto = temp.path().join("f");
-        write_file(&foto.join("IMG_1268.JPG"), "a");
-        write_file(&foto.join("IMG_1268.JPG.json"), "sidecar del primo");
-        write_file(&foto.join("IMG_1268 2.JPG"), "b");
-        write_file(&foto.join("IMG_1268 2.JPG.json"), "sidecar del secondo");
+    fn the_companion_prefix_does_not_confuse_similar_names() {
+        let temp = TempDir::new("drive-prefix");
+        let photos = temp.path().join("f");
+        write_file(&photos.join("IMG_1268.JPG"), "a");
+        write_file(&photos.join("IMG_1268.JPG.json"), "sidecar del first");
+        write_file(&photos.join("IMG_1268 2.JPG"), "b");
+        write_file(&photos.join("IMG_1268 2.JPG.json"), "sidecar del secondo");
 
         // The index is the one `plan_clean` builds during the scan.
-        let mut indice: DirIndex = HashMap::new();
-        indice.insert(
-            foto.clone(),
-            std::fs::read_dir(&foto)
-                .expect("lettura cartella")
+        let mut index: DirIndex = HashMap::new();
+        index.insert(
+            photos.clone(),
+            std::fs::read_dir(&photos)
+                .expect("lettura folder")
                 .flatten()
                 .filter_map(|e| e.file_name().to_str().map(str::to_string))
                 .collect(),
         );
 
         // `IMG_1268.JPG` must not lay claim to the files of `IMG_1268 2.JPG`.
-        let compagni = find_companions(&foto.join("IMG_1268.JPG"), &indice);
+        let compagni = find_companions(&photos.join("IMG_1268.JPG"), &index);
         assert_eq!(compagni.len(), 1);
         assert!(compagni[0].ends_with("IMG_1268.JPG.json"));
     }
 
     #[test]
-    fn rifiuta_una_destinazione_dentro_la_sorgente() {
+    fn refuses_a_destination_inside_the_source() {
         let temp = TempDir::new("drive-ricorsione");
         let drive = build_drive(temp.path());
 
-        let esito = clean(
+        let outcome = clean(
             &drive,
             &CleanOptions {
                 mode: CleanMode::Quarantine,
@@ -1641,11 +1645,11 @@ mod tests {
             &no_progress,
         );
 
-        assert!(esito.is_err(), "a nested destination has to be refused");
+        assert!(outcome.is_err(), "a nested destination has to be refused");
     }
 
     #[test]
-    fn riconosce_i_segnaposto_google() {
+    fn recognises_google_placeholders() {
         for ext in ["gdoc", "gsheet", "gslides", "gform"] {
             let path = PathBuf::from(format!("appunti.{ext}"));
             assert_eq!(

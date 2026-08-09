@@ -45,7 +45,9 @@ export type ErrorPayload =
   | { code: "task"; detail: string }
   | { code: "poisoned" }
   | { code: "destinationInsideSource" }
-  | { code: "destinationRequired" };
+  | { code: "destinationRequired" }
+  | { code: "unrecognisedSource"; path: string }
+  | { code: "configDirUnavailable"; detail: string };
 
 /** Why a sidecar stayed where it was. */
 export type SidecarKept =

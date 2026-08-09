@@ -440,7 +440,7 @@ mod tests {
     const SAMPLE: &str = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Mario Rossi\r\nN:Rossi;Mario;;;\r\nitem1.EMAIL;TYPE=INTERNET:mario@example.com\r\nTEL;TYPE=CELL:+39 320 1234567\r\nORG:Acme S.p.A.;Reparto\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:3.0\r\nFN:Giulia Bianchi\r\nEMAIL:giulia@example.com\r\nEND:VCARD\r\n";
 
     #[test]
-    fn legge_le_schede_di_base() {
+    fn reads_basic_cards() {
         let contacts = parse_vcard(SAMPLE);
         assert_eq!(contacts.len(), 2);
         assert_eq!(contacts[0].display_name.as_deref(), Some("Mario Rossi"));
@@ -451,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn ricompone_le_righe_spezzate() {
+    fn rejoins_folded_lines() {
         let folded = "BEGIN:VCARD\r\nNOTE:prima parte\r\n  e seconda parte\r\nEND:VCARD\r\n";
         let contacts = parse_vcard(folded);
         assert_eq!(contacts.len(), 0, "a card holding only NOTE stays empty");
@@ -463,13 +463,13 @@ mod tests {
     }
 
     #[test]
-    fn interpreta_lescaping() {
+    fn parses_the_escaping() {
         assert_eq!(unescape(r"Rossi\, Mario"), "Rossi, Mario");
         assert_eq!(unescape(r"riga1\nriga2"), "riga1\nriga2");
     }
 
     #[test]
-    fn normalizza_i_numeri_per_il_confronto() {
+    fn normalises_phone_numbers_for_comparison() {
         assert_eq!(
             normalize_phone("+39 320 1234567"),
             normalize_phone("00393201234567")
@@ -478,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn ignora_i_valori_quoted_printable() {
+    fn ignores_quoted_printable_values() {
         let card = "BEGIN:VCARD\r\nFN;ENCODING=QUOTED-PRINTABLE:Mario=20Rossi\r\nEMAIL:m@example.com\r\nEND:VCARD\r\n";
         let contacts = parse_vcard(card);
         assert_eq!(contacts.len(), 1);
