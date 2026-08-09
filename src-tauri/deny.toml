@@ -1,15 +1,15 @@
-# Configurazione cargo-deny.
+# cargo-deny configuration.
 #
-# Questo file è il motivo per cui la promessa "nessuna connessione di rete"
-# resta vera nel tempo. Un README invecchia al primo `cargo add`: la sezione
-# [bans] invece fa fallire la build.
+# This file is why the promise "no network connections" stays true over time. A
+# README ages badly at the first `cargo add`: the [bans] section fails the build
+# instead.
 #
 #   cargo deny --manifest-path src-tauri/Cargo.toml check
 
 [graph]
-# Controlliamo tutte le piattaforme su cui l'app viene distribuita, altrimenti
-# una dipendenza di rete introdotta solo per Windows passerebbe inosservata
-# durante lo sviluppo su macOS.
+# Every platform the application ships on gets checked: a network dependency
+# introduced for Windows alone would otherwise pass unnoticed while developing
+# on macOS.
 targets = [
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
@@ -22,42 +22,73 @@ all-features = false
 version = 2
 yanked = "deny"
 
-# Le vulnerabilità restano un errore bloccante (comportamento predefinito).
+# Vulnerabilities stay a blocking error, which is the default.
 #
-# Gli avvisi "unmaintained" invece valgono solo per le dipendenze dirette. Il
-# grosso di quelli transitivi arriva dalle binding GTK3, che Tauri usa
-# obbligatoriamente su Linux, e da crate interne di `tauri-utils`: sono 15
-# avvisi su cui non possiamo agire e che non descrivono falle sfruttabili.
-# Elencarli a mano significherebbe una lista che invecchia a ogni release di
-# Tauri e che, a forza di essere aggiornata senza pensarci, finirebbe per
-# coprire anche un avviso che conta davvero.
+# "unmaintained" advisories apply to direct dependencies only. The bulk of the
+# transitive ones come from the GTK3 bindings, which Tauri requires on Linux,
+# and from crates internal to `tauri-utils`: fifteen advisories nothing can be
+# done about, describing no exploitable flaw. Listing them by hand would mean a
+# list that ages at every Tauri release and that, updated out of habit, ends up
+# covering the one advisory that matters.
 unmaintained = "workspace"
 
+# "unsound" advisories are checked everywhere, direct and transitive alike.
+#
+# This is not the default, and turning it on was the result of finding out the
+# hard way. Dependabot reported RUSTSEC-2024-0429 against `glib` while this
+# check said "advisories ok": with `version = 2`, cargo-deny reports
+# vulnerabilities but stays silent on informational advisories unless asked.
+# Two tools disagreeing is useful; two tools that never disagree because one of
+# them is not looking is not.
+unsound = "all"
+
 ignore = [
-    # quick-xml 0.37.5, tirato dentro da little_exif. Due DoS: tempo quadratico
-    # su attributi duplicati e allocazione illimitata di dichiarazioni di
-    # namespace. Non esiste una 0.37.x corretta e little_exif non permette di
-    # disattivare l'XMP.
+    # quick-xml 0.37.5, pulled in by little_exif. Two denial of service issues:
+    # quadratic time on duplicate attributes, and unbounded allocation of
+    # namespace declarations. There is no fixed 0.37.x and little_exif exposes
+    # no way to disable XMP.
     #
-    # Perché è accettabile qui: in little_exif quick-xml è usato solo da
-    # `xmp.rs`, che a sua volta è raggiungibile solo dal percorso PNG. Questo
-    # progetto esclude PNG da `EXIF_WRITABLE_EXTENSIONS`, quindi quel codice non
-    # viene mai eseguito. L'esclusione è protetta dal test
-    # `png_resta_fuori_dalla_scrittura_exif`, che fallisce se qualcuno la
-    # rimuove senza accorgersi di riaprire questa superficie.
+    # Why it is acceptable here: inside little_exif, quick-xml is used only by
+    # `xmp.rs`, which in turn is reachable only from the PNG path. This project
+    # excludes PNG from `EXIF_WRITABLE_EXTENSIONS`, so that code never runs. The
+    # exclusion is guarded by the test `png_stays_out_of_exif_writing`, which
+    # fails if anyone removes it without noticing they are reopening this
+    # surface.
     #
-    # Da togliere quando little_exif passerà a quick-xml 0.41 o successive.
+    # Remove when little_exif moves to quick-xml 0.41 or later.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+
+    # glib 0.18.5, reached through gtk -> muda -> tauri. `VariantStrIter` passed
+    # an immutable reference where the C function writes an out-argument, and
+    # recent compilers discard those writes under optimisation, leaving a NULL
+    # pointer where a C string was expected.
+    #
+    # Why it is acceptable here, in the order that matters:
+    #
+    # - it is Linux only. `cargo tree -i glib` finds nothing on macOS or
+    #   Windows, because the GTK stack exists on Linux alone;
+    # - the affected functions are the `VariantStrIter` iterators. This project
+    #   never touches GVariant: the names appear nowhere in `src/`. Reaching
+    #   them requires GTK's own code to iterate a string variant;
+    # - the outcome is a NULL dereference, that is a crash. It exposes nothing
+    #   and executes nothing, which matters for an application whose promise is
+    #   about data staying put;
+    # - it cannot be fixed here. The first patched version is 0.20.0, and the
+    #   0.18.x line is what Tauri 2 requires. Dependabot said as much when it
+    #   reported that the latest installable version is 0.18.5.
+    #
+    # Remove when Tauri moves to gtk-rs 0.20.
+    "RUSTSEC-2024-0429",
 ]
 
 [licenses]
 version = 2
-# Il progetto è GPL-3.0-or-later: può assorbire dipendenze permissive, non il
-# contrario. Le copyleft forti di terzi vanno valutate caso per caso, quindi
-# non sono in lista e fanno fallire il controllo finché non le si esamina.
+# The project is GPL-3.0-or-later: it can absorb permissive dependencies, not
+# the other way round. Strong copyleft from third parties needs judging case by
+# case, so it is not on the list and fails the check until someone looks at it.
 allow = [
-    # Licenza del progetto stesso.
+    # The project's own licence.
     "GPL-3.0-or-later",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
@@ -70,10 +101,10 @@ allow = [
     "MIT-0",
     "MPL-2.0",
     "Unicode-3.0",
-    # Dati dei confini dei fusi orari, derivati da OpenStreetMap e distribuiti
-    # da `tzf-dist`. È una licenza per banche dati, non per codice: consente la
-    # ridistribuzione e obbliga all'attribuzione, che sta nella guida dell'app
-    # e nel README. Non contamina il codice del progetto.
+    # Time zone boundary data, derived from OpenStreetMap and distributed by
+    # `tzf-dist`. It is a database licence, not a code one: it permits
+    # redistribution and requires attribution, which is in the application guide
+    # and in ACKNOWLEDGEMENTS.md. It does not affect the project's own code.
     "ODbL-1.0",
     "Unlicense",
     "Zlib",
@@ -84,46 +115,46 @@ confidence-threshold = 0.9
 multiple-versions = "allow"
 wildcards = "deny"
 
-# Il cuore del vincolo architetturale: nessun client HTTP, nessun socket,
-# nessun canale verso l'esterno. Aggiungere una di queste crate rompe la CI,
-# e va fatto solo con una modifica cosciente di questo file.
+# The heart of the architectural constraint: no HTTP client, no socket, no
+# channel to the outside. Adding one of these crates breaks CI, and should only
+# happen through a deliberate change to this file.
 deny = [
-    # Client HTTP e stack di rete
-    { name = "reqwest", reason = "client HTTP: viola il vincolo local-first" },
-    { name = "hyper", reason = "stack HTTP" },
-    { name = "hyper-util", reason = "stack HTTP" },
+    # HTTP clients and networking stacks
+    { name = "reqwest", reason = "HTTP client: breaks the local-first constraint" },
+    { name = "hyper", reason = "HTTP stack" },
+    { name = "hyper-util", reason = "HTTP stack" },
     { name = "h2", reason = "HTTP/2" },
-    { name = "ureq", reason = "client HTTP" },
-    { name = "isahc", reason = "client HTTP" },
-    { name = "surf", reason = "client HTTP" },
-    { name = "attohttpc", reason = "client HTTP" },
-    { name = "curl", reason = "client HTTP" },
-    { name = "curl-sys", reason = "client HTTP" },
-    { name = "actix-web", reason = "server HTTP" },
-    { name = "axum", reason = "server HTTP" },
-    { name = "warp", reason = "server HTTP" },
-    { name = "tiny_http", reason = "server HTTP" },
+    { name = "ureq", reason = "HTTP client" },
+    { name = "isahc", reason = "HTTP client" },
+    { name = "surf", reason = "HTTP client" },
+    { name = "attohttpc", reason = "HTTP client" },
+    { name = "curl", reason = "HTTP client" },
+    { name = "curl-sys", reason = "HTTP client" },
+    { name = "actix-web", reason = "HTTP server" },
+    { name = "axum", reason = "HTTP server" },
+    { name = "warp", reason = "HTTP server" },
+    { name = "tiny_http", reason = "HTTP server" },
     { name = "tungstenite", reason = "WebSocket" },
     { name = "tokio-tungstenite", reason = "WebSocket" },
     { name = "quinn", reason = "QUIC" },
 
-    # TLS: non serve a un'app che non parla con nessuno
-    { name = "rustls", reason = "TLS: nessuna connessione da cifrare" },
+    # TLS: pointless in an application that talks to nobody
+    { name = "rustls", reason = "TLS: no connection to encrypt" },
     { name = "native-tls", reason = "TLS" },
     { name = "openssl", reason = "TLS" },
     { name = "openssl-sys", reason = "TLS" },
 
-    # Telemetria e crash reporting
-    { name = "sentry", reason = "crash reporting verso terzi" },
-    { name = "sentry-core", reason = "crash reporting verso terzi" },
-    { name = "opentelemetry", reason = "telemetria" },
-    { name = "tracing-opentelemetry", reason = "telemetria" },
+    # Telemetry and crash reporting
+    { name = "sentry", reason = "crash reporting to a third party" },
+    { name = "sentry-core", reason = "crash reporting to a third party" },
+    { name = "opentelemetry", reason = "telemetry" },
+    { name = "tracing-opentelemetry", reason = "telemetry" },
 
-    # Plugin Tauri che aprirebbero superfici verso l'esterno
-    { name = "tauri-plugin-http", reason = "espone HTTP al frontend" },
-    { name = "tauri-plugin-updater", reason = "aggiornamenti automatici" },
-    { name = "tauri-plugin-opener", reason = "apre URL nel browser di sistema" },
-    { name = "tauri-plugin-shell", reason = "esecuzione di comandi arbitrari" },
+    # Tauri plugins that would open surfaces to the outside
+    { name = "tauri-plugin-http", reason = "exposes HTTP to the frontend" },
+    { name = "tauri-plugin-updater", reason = "automatic updates" },
+    { name = "tauri-plugin-opener", reason = "opens URLs in the system browser" },
+    { name = "tauri-plugin-shell", reason = "runs arbitrary commands" },
 ]
 
 [sources]
