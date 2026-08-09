@@ -1,0 +1,42 @@
+# Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Dependabot proposes the upgrades, `cargo deny` decides whether they are
+# allowed in. That pairing is what makes this safe on a project whose promise
+# depends on the dependency graph: a proposal that dragged in an HTTP client,
+# a TLS stack or a telemetry crate fails the `Local-first constraint` job
+# before it can be merged. The guard is executable, so the automation does not
+# have to be trusted.
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      # One pull request for the routine bumps, so the ones worth reading are
+      # the ones left over.
+      minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies]
+
+  # The actions used by CI are dependencies too, and the ones with the most
+  # reach: they run with a token on every push. Pinning them by major version
+  # is not enough on its own, so they get watched like the rest.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: [dependencies]

@@ -1,0 +1,98 @@
+# Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# CI checks the advisories on every push, which covers changes to the code. It
+# does not cover the case that actually bites an unattended repository: a new
+# advisory published against dependencies nobody touched. Without something on
+# a timer, a vulnerability can sit here for months because no commit happened.
+#
+# There is already a concrete example waiting. Two denial of service advisories
+# against `quick-xml` are listed under `ignore` in deny.toml, on the verified
+# grounds that the vulnerable parser is only reachable from the PNG path this
+# project excludes. That exception is meant to be removed when `little_exif`
+# moves to `quick-xml` 0.41, and nobody will notice the day it does unless
+# something is looking.
+name: Audit
+
+on:
+  schedule:
+    # Monday morning: a finding lands at the start of a week rather than
+    # sitting unread over one.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  advisories:
+    name: Known vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+
+      # `--all-features` is deliberate: an advisory against a dependency behind
+      # a feature we do not enable is not urgent, but it should still be seen
+      # rather than hidden by the feature resolution.
+      - name: Rust advisories
+        id: cargo
+        working-directory: src-tauri
+        run: cargo deny check advisories 2>&1 | tee "$RUNNER_TEMP/cargo-deny.txt"
+
+      - uses: actions/setup-node@v4
+        if: always()
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Frontend advisories
+        if: always()
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high 2>&1 | tee "$RUNNER_TEMP/npm-audit.txt"
+
+      # A scheduled run that fails is a red mark on a page nobody visits. An
+      # issue arrives where the work already is. `gh` is preinstalled on the
+      # runners, so this needs no third-party action: on a repository whose
+      # whole point is a small dependency surface, that matters in CI too.
+      - name: Open an issue if something was found
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          titolo="Audit: a vulnerability was reported on $(date -u +%Y-%m-%d)"
+
+          # One open issue at a time: a weekly job would otherwise file the same
+          # finding every Monday until it is fixed.
+          esistente=$(gh issue list --state open --label security \
+            --search "Audit: a vulnerability" --json number --jq '.[0].number // empty')
+          if [ -n "$esistente" ]; then
+            echo "Issue #$esistente is already open, adding a comment instead."
+            gh issue comment "$esistente" --body "Still failing on $(date -u +%Y-%m-%d). See run ${{ github.run_id }}."
+            exit 0
+          fi
+
+          {
+            echo "The scheduled audit failed. Nothing changed in the code:"
+            echo "an advisory was published against a dependency."
+            echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo '```'
+            tail -40 "$RUNNER_TEMP/cargo-deny.txt" 2>/dev/null || true
+            tail -20 "$RUNNER_TEMP/npm-audit.txt" 2>/dev/null || true
+            echo '```'
+            echo
+            echo "If the finding does not apply, the exception goes in"
+            echo "\`src-tauri/deny.toml\` with the reason, as the existing ones do."
+          } > "$RUNNER_TEMP/body.md"
+
+          gh issue create --title "$titolo" --body-file "$RUNNER_TEMP/body.md" \
+            --label security || \
+          gh issue create --title "$titolo" --body-file "$RUNNER_TEMP/body.md"
