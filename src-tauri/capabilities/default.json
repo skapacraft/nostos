@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permessi minimi della finestra principale: eventi core e selettore file di sistema. Nessun accesso a rete, shell o filesystem arbitrario dal frontend.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save"
+  ]
+}

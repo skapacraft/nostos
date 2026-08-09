@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nostos",
+  "version": "0.1.0",
+  "identifier": "com.skapacraft.nostos",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Nostos",
+        "width": 1180,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 640,
+        "center": true,
+        "resizable": true,
+        "dragDropEnabled": true
+      }
+    ],
+    "withGlobalTauri": false,
+    "security": {
+      "freezePrototype": true,
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; worker-src 'self' blob:; base-uri 'self'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420; object-src 'none'; frame-src 'none'; worker-src 'self' blob:; base-uri 'self'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": false,
+    "category": "Utility",
+    "copyright": "Copyright (C) 2026 SkapaCraft",
+    "publisher": "SkapaCraft",
+    "homepage": "https://skapacraft.com",
+    "license": "GPL-3.0-or-later",
+    "shortDescription": "Elabora i tuoi Google Takeout senza uscire dal computer.",
+    "longDescription": "Nostos analizza archivi e cartelle di Google Takeout in locale: metadati delle foto, contatti vCard e contenuto di Drive. Nessuna connessione di rete, nessuna telemetria.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
