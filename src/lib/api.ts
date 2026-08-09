@@ -43,6 +43,14 @@ import type {
 /** Progress event emitted by the long-running commands. */
 const PROGRESS_EVENT = "takeout://progress";
 
+/** Event with which the "Report a problem" menu item asks for the report. */
+const SHOW_REPORT_EVENT = "takeout://mostra-segnalazione";
+
+/** Listens for the request to open the problem report from the menu. */
+export function onShowReport(handler: () => void): Promise<UnlistenFn> {
+  return listen(SHOW_REPORT_EVENT, () => handler());
+}
+
 /** Event with which the "Guide" menu item asks for the guide to be shown. */
 const SHOW_HELP_EVENT = "takeout://mostra-guida";
 
@@ -166,6 +174,28 @@ export const readPreferences = () => invoke<Preferences>("read_preferences");
 /** Saves the stored preferences. */
 export const writePreferences = (preferences: Preferences) =>
   invoke<void>("write_preferences", { preferences });
+
+/**
+ * Opens the system mail client on a pre-filled problem report.
+ *
+ * Nothing is sent from here: the address is compiled into the backend, the mail
+ * client opens with the text visible, and the user decides whether to press
+ * send. That is why this does not contradict the promise the whole application
+ * rests on.
+ */
+export const composeSupportEmail = (subject: string, body: string) =>
+  invoke<void>("compose_support_email", { subject, body });
+
+/** Operating system, architecture and version, for a problem report. */
+export const reportEnvironment = () => invoke<string>("report_environment");
+
+/** Writes text to a path the user chose in the save dialog. */
+export const saveTextFile = (path: string, content: string) =>
+  invoke<void>("save_text_file", { path, content });
+
+/** Replaces the user's home directory with `~` in the collected lines. */
+export const redactHome = (lines: string[]) =>
+  invoke<string[]>("redact_home", { lines });
 
 /**
  * Reveals a path in the system file manager.

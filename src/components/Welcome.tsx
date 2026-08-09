@@ -73,9 +73,12 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l1.8 2.4h9A1.5 1.5 0 0 1 21 9.9v8.6a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z" />
-            <path d="M12 11v6" />
-            <path d="m9.5 13.5 2.5-2.5 2.5 2.5" />
+            {/* The mark from the application icon: a photo that lost its date. */}
+            <rect x="2.5" y="4.5" width="14" height="11.5" rx="2" />
+            <path d="M2.5 12.5l3.5-3.5 4 4" />
+            <circle cx="12.5" cy="8.5" r="1.2" />
+            <circle cx="16" cy="16" r="5" fill="currentColor" fillOpacity="0" />
+            <path d="M16 13v3l2 1.5" />
           </svg>
           <div>
             <h2

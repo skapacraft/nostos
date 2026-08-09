@@ -1,17 +1,24 @@
+<!--
+  Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  The same mark as src-tauri/icons/app-icon.svg, redrawn for 32 pixels: at this
+  size the strokes have to be proportionally heavier and the clock loses its
+  hands, which would turn into a smudge. Kept in step with the application icon
+  on purpose, so the window and the dock show the same thing.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
   <rect width="32" height="32" rx="7" fill="#18181b" />
-  <path
-    d="M7 11.5A1.5 1.5 0 0 1 8.5 10h4l1.8 2.4h9.2a1.5 1.5 0 0 1 1.5 1.5v8.6a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 7 22.5z"
+  <g
     stroke="#34d399"
-    stroke-width="1.6"
-    stroke-linejoin="round"
-  />
-  <path d="M16 15v5.5" stroke="#34d399" stroke-width="1.6" stroke-linecap="round" />
-  <path
-    d="m13.5 18 2.5-2.5 2.5 2.5"
-    stroke="#34d399"
-    stroke-width="1.6"
+    stroke-width="1.7"
     stroke-linecap="round"
     stroke-linejoin="round"
-  />
+  >
+    <rect x="6" y="8" width="16" height="13.5" rx="2" />
+    <path d="M6 17.5l4-4 4.5 4.5" />
+    <circle cx="17.5" cy="12" r="1.4" />
+    <circle cx="21.5" cy="21.5" r="5" fill="#18181b" />
+    <path d="M21.5 18.7v2.9l1.9 1.4" />
+  </g>
 </svg>

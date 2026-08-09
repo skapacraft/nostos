@@ -1,0 +1,39 @@
+<!--
+  Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  Source of the application icons. Every size is generated from here:
+
+      npm run tauri icon src-tauri/icons/app-icon.svg
+
+  A photograph with a clock: the fault this application repairs. A Takeout
+  export arrives with the capture date sitting in a JSON file beside the photo
+  rather than inside it, so a gallery shows three thousand pictures all taken
+  on the day they were downloaded. Anyone who has seen that recognises this
+  without being told what the application does.
+
+  The first version was a folder with an arrow coming out of it, meaning "take
+  your data back". It was replaced because an upward arrow reads as "upload" in
+  every icon vocabulary there is, which is the opposite of what an application
+  promising that nothing leaves the machine should say. No arrows here, and
+  that is deliberate.
+
+  The corner radius of 22% approximates the rounded square macOS draws around
+  app icons, and stays reasonable on Windows and Linux, which do not mask.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <rect width="1024" height="1024" rx="228" fill="#18181b" />
+  <g
+    stroke="#34d399"
+    stroke-width="42"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <rect x="232" y="262" width="500" height="420" rx="48" />
+    <path d="M232 566l120-118 132 130" />
+    <circle cx="600" cy="392" r="42" />
+    <!-- Filled with the background so the clock reads as being in front. -->
+    <circle cx="700" cy="700" r="150" fill="#18181b" />
+    <path d="M700 616v88l58 44" />
+  </g>
+</svg>
