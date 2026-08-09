@@ -82,7 +82,7 @@ jobs:
       # installers. The raw binary already is one, so we publish it separately.
       - name: Windows portable executable
         if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: open-takeout-hub-portable-windows
           path: src-tauri/target/release/open-takeout-hub.exe
