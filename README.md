@@ -299,6 +299,11 @@ su cui gira:
 npm run tauri build
 ```
 
+Su macOS il passaggio finale, quello che impagina la finestra del `.dmg`, usa
+AppleScript per parlare con il Finder. Va lanciato da un terminale autorizzato a
+inviare Apple Events: da un processo che non lo è fallisce con l'errore -1743
+dopo aver comunque prodotto il `.app`, che resta utilizzabile.
+
 Per tutte le piattaforme c'è `.github/workflows/release.yml`, che su un tag
 `v*` costruisce macOS (universale), Linux (`.deb` e `.AppImage`) e Windows
 (`.msi`, `.nsis` e l'eseguibile portatile) sui rispettivi runner. Il runner
