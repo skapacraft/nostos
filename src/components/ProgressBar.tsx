@@ -17,11 +17,11 @@ interface ProgressBarProps {
 }
 
 /**
- * Barra di avanzamento alimentata dagli eventi del backend.
+ * Progress bar fed by backend events.
  *
- * L'animazione è affidata a una transizione CSS sulla larghezza: il compositor
- * la gestisce fuori dal thread principale, quindi la finestra resta fluida
- * anche mentre React ridisegna i contatori.
+ * The animation is left to a CSS transition on the width: the compositor
+ * handles it off the main thread, so the window stays fluid even while React
+ * redraws the counters.
  */
 export function ProgressBar({ progress, label }: ProgressBarProps) {
   const total = progress?.total ?? 0;

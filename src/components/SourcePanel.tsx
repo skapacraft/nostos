@@ -7,7 +7,7 @@ import { Stat } from "./Stat";
 import { Notices } from "./Notices";
 import { SECTION_LABELS } from "../lib/messages";
 
-/** Sezioni per cui esiste un analizzatore dedicato. */
+/** Sections for which a dedicated analyser exists. */
 const ANALYZABLE: TakeoutSection[] = [
   "googlePhotos",
   "contacts",

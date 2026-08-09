@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /**
- * Controparte TypeScript delle struct Rust serializzate da serde.
+ * TypeScript counterpart of the Rust structs serialised by serde.
  *
- * I nomi seguono `#[serde(rename_all = "camelCase")]`: se cambia un campo in
- * `src-tauri/src`, va aggiornato anche qui.
+ * The names follow `#[serde(rename_all = "camelCase")]`: if a field changes in
+ * `src-tauri/src`, it has to be updated here too.
  */
 
 export type SourceKind = "folder" | "archive";
 
-/** Esito della scrittura di un file esportato. */
+/** Outcome of writing an exported file. */
 export interface ExportReport {
   path: string;
   written: number;
@@ -18,10 +18,10 @@ export interface ExportReport {
 }
 
 /**
- * Avviso non bloccante emesso dal backend.
+ * Non-blocking notice emitted by the backend.
  *
- * Arriva come codice più i dati che servono a comporre la frase: il testo si
- * decide in `lib/messages.ts`, non nel motore.
+ * It arrives as a code plus the data needed to compose the sentence: the text
+ * is decided in `lib/messages.ts`, not in the engine.
  */
 export type Notice =
   | { code: "noSectionsFound" }
@@ -33,7 +33,7 @@ export type Notice =
   | { code: "photosSharedWithAlbums"; count: number }
   | { code: "readFailed"; path: string; detail: string };
 
-/** Errore che ha interrotto un'operazione, nella stessa forma degli avvisi. */
+/** Error that interrupted an operation, in the same shape as the notices. */
 export type ErrorPayload =
   | { code: "io"; path: string; detail: string }
   | { code: "archive"; detail: string }
@@ -45,9 +45,11 @@ export type ErrorPayload =
   | { code: "task"; detail: string }
   | { code: "poisoned" }
   | { code: "destinationInsideSource" }
-  | { code: "destinationRequired" };
+  | { code: "destinationRequired" }
+  | { code: "unrecognisedSource"; path: string }
+  | { code: "configDirUnavailable"; detail: string };
 
-/** Perché un sidecar è rimasto dov'era. */
+/** Why a sidecar stayed where it was. */
 export type SidecarKept =
   | "noExifContainer"
   | "unreadableExif"
@@ -74,9 +76,9 @@ export type TakeoutSection =
   | "other";
 
 export interface SectionSummary {
-  /** Categoria della sezione: il nome leggibile lo sceglie `SECTION_LABELS`. */
+  /** Category of the section: the readable name is chosen by `SECTION_LABELS`. */
   section: TakeoutSection;
-  /** Nome della cartella sul disco, che non va tradotto. */
+  /** Name of the folder on disk, which must not be translated. */
   dirName: string;
   path: string;
   fileCount: number;
@@ -93,10 +95,10 @@ export interface SourceSummary {
   warnings: Notice[];
 }
 
-/** Fase di un'operazione lunga. */
+/** Phase of a long-running operation. */
 export type Phase = "scanning" | "extracting" | "writing" | "done";
 
-/** Avanzamento emesso dal backend sull'evento `takeout://progress`. */
+/** Progress emitted by the backend on the `takeout://progress` event. */
 export interface Progress {
   phase: Phase;
   done: number;
@@ -106,37 +108,37 @@ export interface Progress {
 }
 
 /**
- * Le uniche preferenze conservate tra un avvio e l'altro.
+ * The only preferences kept between one run and the next.
  *
- * Ogni campo aggiunto qui è un dato che sopravvive alla sessione e va
- * dichiarato in PRIVACY_AUDIT.md.
+ * Every field added here is data outliving the session and has to be declared
+ * in PRIVACY_AUDIT.md.
  */
 export interface Preferences {
   hideWelcome: boolean;
 }
 
 /**
- * Conti sullo spazio, per scegliere la modalità prima di cominciare.
+ * Space arithmetic, to choose the mode before starting.
  *
- * Su una libreria grande la domanda non è se l'operazione funziona, ma se ci
- * sta: la copia duplica tutto, la riscrittura sul posto no.
+ * On a large library the question is not whether the operation works, but
+ * whether it fits: the copy duplicates everything, in-place does not.
  */
 export interface FolderSize {
   name: string;
   path: string;
   bytes: number;
   fileCount: number;
-  /** Vero se la copia di questa sola cartella ci sta. */
+  /** True if the copy of this folder alone fits. */
   fits: boolean;
-  /** Cartella per anno: sono queste le tranche da riparare. */
+  /** Year folder: these are the slices worth repairing. */
   isYear: boolean;
-  /** Album: in gran parte copie di foto già presenti nelle annate. */
+  /** Album: mostly copies of photos already present in the year folders. */
   isAlbum: boolean;
   /**
-   * Foto di questa cartella che non esistono in nessuna annata.
+   * Photos of this folder that exist in no year folder.
    *
-   * È l'unico numero che, se ignorato, fa perdere qualcosa: saltare un album
-   * per risparmiare spazio è sensato solo finché resta a zero.
+   * It is the one number that, ignored, loses something: skipping an album to
+   * save space makes sense only while it stays at zero.
    */
   uniqueHere: number;
 }
@@ -146,13 +148,13 @@ export interface SpaceEstimate {
   availableBytes: number;
   neededForCopy: number;
   copyFits: boolean;
-  /** Spazio extra della riscrittura sul posto: decine di megabyte, sempre. */
+  /** Extra space for in-place rewriting: tens of megabytes, always. */
   neededInPlace: number;
-  /** Tranche in cui dividere il lavoro quando l'intera libreria non entra. */
+  /** Slices to divide the work into when the whole library does not fit. */
   subfolders: FolderSize[];
 }
 
-/** Metadati dell'applicazione, letti da Cargo.toml a compilazione. */
+/** Application metadata, read from Cargo.toml at compile time. */
 export interface AppInfo {
   name: string;
   version: string;
@@ -162,7 +164,7 @@ export interface AppInfo {
   license: string;
 }
 
-/** Le garanzie dichiarate dal backend, una per punto verificabile. */
+/** The guarantees declared by the backend, one per verifiable point. */
 export type PrivacyNote =
   | "noHttpCrates"
   | "restrictiveCsp"
@@ -178,7 +180,7 @@ export interface PrivacyReport {
   notes: PrivacyNote[];
 }
 
-// --- Archivi -------------------------------------------------------------
+// --- Archives ------------------------------------------------------------
 
 export interface ArchiveEntry {
   name: string;
@@ -199,28 +201,28 @@ export interface ArchiveSummary {
 
 export interface ExtractReport {
   destination: string;
-  /** Archivi elaborati, in ordine di numerazione. */
+  /** Archives processed, in numbering order. */
   archives: string[];
   filesWritten: number;
   dirsCreated: number;
   bytesWritten: number;
   skipped: string[];
-  /** Percorsi presenti in più di un archivio della serie. */
+  /** Paths present in more than one archive of the series. */
   collisions: string[];
 }
 
-/** Serie di archivi che compongono un unico export. */
+/** The series of archives making up a single export. */
 export interface ArchiveSeries {
   prefix: string;
   archives: string[];
-  /** Numeri mancanti: indica un download incompleto. */
+  /** Missing numbers: they indicate an incomplete download. */
   missing: number[];
   totalCompressedBytes: number;
 }
 
-// --- Foto ----------------------------------------------------------------
+// --- Photos --------------------------------------------------------------
 
-/** In ordine di affidabilità decrescente. */
+/** In decreasing order of reliability. */
 export type MetadataSource = "exif" | "sidecar" | "fileName" | "missing";
 
 export interface GeoPoint {
@@ -266,30 +268,30 @@ export interface PhotoScanReport {
   withGeo: number;
   needsRepair: number;
   withoutExif: number;
-  /** Data dedotta dal nome del file, ultima risorsa. */
+  /** Date derived from the filename, the last resort. */
   dateFromFilename: number;
   totalBytes: number;
-  /** Conteggio completo dei file illeggibili. */
+  /** Complete count of the unreadable files. */
   unreadableCount: number;
-  /** Campione dei problemi, troncato per l'interfaccia. */
+  /** Sample of the problems, truncated for the interface. */
   unreadable: string[];
   sample: MediaRecord[];
 }
 
 /**
- * Come trattare gli originali.
+ * How to treat the originals.
  *
- * `dryRun` non tocca nulla, `copyToOutput` scrive in un albero separato ed è il
- * valore predefinito, `inPlace` riscrive gli originali e va scelto a mano.
+ * `dryRun` touches nothing, `copyToOutput` writes into a separate tree and is
+ * the default, `inPlace` rewrites the originals and has to be chosen by hand.
  */
 export type WriteMode = "dryRun" | "copyToOutput" | "inPlace";
 
 /**
- * Disposizione dell'albero di uscita. Vale solo con `copyToOutput`.
+ * Layout of the output tree. It applies only with `copyToOutput`.
  *
- * Conta meno di quanto sembri: una volta scritta la data nell'EXIF, i gestori
- * di foto ordinano su quella e ignorano le cartelle. Serve a chi tiene le
- * foto in cartelle semplici, senza un programma che le indicizzi.
+ * It matters less than it seems: once the date is written into the EXIF, photo
+ * managers sort on that and ignore the folders. It serves those who keep their
+ * photos in plain folders, without a program indexing them.
  */
 export type OutputLayout = "preserve" | "byYear" | "byYearMonth" | "flat";
 
@@ -309,12 +311,12 @@ export interface RepairReport {
   fileTimesWritten: number;
   skippedUnsupported: number;
   skippedTooLarge: number;
-  /** Sidecar conservati accanto ai file di cui non si è scritto l'EXIF. */
+  /** Sidecars kept beside the files whose EXIF was not written. */
   sidecarsCopied: number;
   failures: string[];
 }
 
-// --- Contatti ------------------------------------------------------------
+// --- Contacts ------------------------------------------------------------
 
 export interface Contact {
   displayName: string | null;
@@ -394,14 +396,14 @@ export interface DriveReport {
   warnings: Notice[];
 }
 
-// --- Calendario ----------------------------------------------------------
+// --- Calendar ------------------------------------------------------------
 
 export interface CalendarEvent {
   uid: string | null;
   summary: string | null;
   location: string | null;
   description: string | null;
-  /** Inizio nella forma grezza dell'iCalendar, es. `20200101T120000Z`. */
+  /** Start in the raw iCalendar form, e.g. `20200101T120000Z`. */
   start: string | null;
   end: string | null;
   isRecurring: boolean;
@@ -415,19 +417,19 @@ export interface CalendarReport {
   duplicates: number;
   recurring: number;
   allDay: number;
-  /** Proprietà proprietarie rimosse durante la pulizia. */
+  /** Proprietary properties removed during cleanup. */
   droppedProperties: number;
   warnings: Notice[];
   sample: CalendarEvent[];
 }
 
-// --- Pulizia Drive -------------------------------------------------------
+// --- Drive cleanup -------------------------------------------------------
 
 /**
- * Come trattare i file da rimuovere.
+ * How to treat the files being removed.
  *
- * Manca di proposito una modalità che cancelli: entrambe quelle operative
- * producono qualcosa che si può disfare.
+ * A deleting mode is missing on purpose: both working modes produce something
+ * that can be undone.
  */
 export type CleanMode = "dryRun" | "copyToOutput" | "quarantine";
 
@@ -438,11 +440,11 @@ export interface CleanOptions {
   destination: string | null;
   removeJunk: boolean;
   removeDuplicates: boolean;
-  /** Porta con sé i sidecar dei media rimossi. */
+  /** Takes along the sidecars of the media removed. */
   moveCompanions: boolean;
 }
 
-/** Gruppo di file con contenuto identico, verificato per hash. */
+/** Group of files with identical content, verified by hash. */
 export interface ContentDuplicateGroup {
   hash: string;
   sizeBytes: number;
@@ -457,7 +459,7 @@ export interface CleanPlan {
   duplicateCopies: number;
   junkFiles: number;
   companionFiles: number;
-  /** `duplicateGroups` è troncato per l'interfaccia: i conteggi sopra no. */
+  /** `duplicateGroups` is truncated for the interface: the counts above are not. */
   reclaimableBytes: number;
   hashedBytes: number;
   duplicateGroups: ContentDuplicateGroup[];
@@ -473,7 +475,7 @@ export interface CleanReport {
   junkHandled: number;
   companionsHandled: number;
   bytesReclaimed: number;
-  /** Registro della quarantena, l'unico modo per annullare l'operazione. */
+  /** Quarantine ledger, the only way to undo the operation. */
   manifest: string | null;
   failures: string[];
 }
@@ -488,28 +490,28 @@ export interface SidecarSweepReport {
   destination: string;
   moved: number;
   bytesMoved: number;
-  /** Sidecar lasciati dov'erano perché ancora unica copia di qualcosa. */
+  /** Sidecars left where they were because still the sole copy of something. */
   kept: number;
-  /** Motivo per cui sono rimasti, con quante volte ricorre. */
+  /** Why they stayed, with how many times each reason occurs. */
   keptReasons: KeptReason[];
   keptSample: string[];
-  /** Registro dello spostamento, l'unico modo per annullarlo. */
+  /** Ledger of the move, the only way to undo it. */
   manifest: string | null;
   failures: string[];
 }
 
-// --- Album di Google Foto -------------------------------------------------
+// --- Google Photos albums ------------------------------------------------
 
 export interface Album {
   name: string;
   path: string;
-  /** Quanti file contiene, conteggio completo. */
+  /** How many files it holds, complete count. */
   fileCount: number;
-  /** Campione dei nomi, troncato per l'interfaccia. */
+  /** Sample of the names, truncated for the interface. */
   files: string[];
 }
 
-/** Una foto presente sia in una cartella per anno sia in uno o più album. */
+/** A photo present both in a year folder and in one or more albums. */
 export interface AlbumMembership {
   fileName: string;
   canonical: string | null;
@@ -527,14 +529,14 @@ export interface AlbumIndex {
   yearFolders: string[];
   albums: Album[];
   specialFolders: string[];
-  /** Conteggio completo delle appartenenze. */
+  /** Complete count of the memberships. */
   membershipCount: number;
-  /** Campione delle appartenenze, troncato per l'interfaccia. */
+  /** Sample of the memberships, truncated for the interface. */
   memberships: AlbumMembership[];
-  /** Conteggio completo delle versioni modificate. */
+  /** Complete count of the edited versions. */
   editedCount: number;
   editedPairs: EditedPair[];
-  /** Foto presenti solo in un album: rimuoverle le farebbe sparire. */
+  /** Photos present only in an album: removing them would make them vanish. */
   albumOnly: number;
   warnings: Notice[];
 }

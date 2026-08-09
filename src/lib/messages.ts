@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /**
- * Testo di tutto ciò che il backend descrive come codice.
+ * The text of everything the backend describes as a code.
  *
- * Il motore non compone frasi: dichiara che cosa è successo e con quali numeri,
- * e la lingua si decide qui. È l'unico punto da tradurre per avvisi, errori,
- * etichette di sezione e di categoria: se un giorno una frase ricomparisse
- * dentro il Rust, tornerebbe fuori dalla portata di qualsiasi traduzione.
+ * The engine composes no sentences: it declares what happened and with which
+ * numbers, and the language is decided here. This is the single place to
+ * translate for notices, errors, section and category labels: were a sentence
+ * ever to reappear inside the Rust, it would move back out of the reach of any
+ * translation.
  *
- * Le mappe sono dichiarate come `Record` completi sull'unione dei codici, non
- * come oggetti liberi: aggiungendo una variante in Rust senza il testo
- * corrispondente, la compilazione qui fallisce invece di mostrare il codice
- * grezzo a schermo.
+ * The maps are declared as `Record`s over the complete union of codes rather
+ * than as free objects: adding a variant in Rust without the matching text
+ * fails the build here instead of showing a raw code on screen.
  */
 
 import { formatBytes, formatCount } from "./format";
@@ -25,7 +25,7 @@ import type {
   TakeoutSection,
 } from "../types";
 
-/** Nome leggibile di una sezione dell'export. */
+/** Readable name of an export section. */
 export const SECTION_LABELS: Record<TakeoutSection, string> = {
   googlePhotos: "Google Foto",
   contacts: "Contatti",
@@ -36,7 +36,7 @@ export const SECTION_LABELS: Record<TakeoutSection, string> = {
   other: "Altro",
 };
 
-/** Nome leggibile di una categoria merceologica. */
+/** Readable name of a file category. */
 export const CATEGORY_LABELS: Record<FileCategory, string> = {
   document: "Documenti",
   spreadsheet: "Fogli di calcolo",
@@ -51,7 +51,7 @@ export const CATEGORY_LABELS: Record<FileCategory, string> = {
   other: "Altro",
 };
 
-/** Perché un sidecar è rimasto dov'era invece di essere messo da parte. */
+/** Why a sidecar stayed where it was instead of being set aside. */
 export const SIDECAR_KEPT_LABELS: Record<SidecarKept, string> = {
   noExifContainer:
     "il formato non ha un blocco EXIF dove scrivere (PNG, GIF, video)",
@@ -65,7 +65,7 @@ export const SIDECAR_KEPT_LABELS: Record<SidecarKept, string> = {
   photoUrlHasNoTag: "l'indirizzo su Google Foto non ha un tag dove stare",
 };
 
-/** Le garanzie di privacy, come le mostra la guida. */
+/** The privacy guarantees, as the guide shows them. */
 export const PRIVACY_NOTES: Record<PrivacyNote, string> = {
   noHttpCrates: "Nessuna crate HTTP nel grafo delle dipendenze.",
   restrictiveCsp: "CSP restrittiva: connect-src limitato al canale IPC locale.",
@@ -75,7 +75,7 @@ export const PRIVACY_NOTES: Record<PrivacyNote, string> = {
     "I dati restano nei percorsi scelti dall'utente e in memoria.",
 };
 
-/** Testo di un avviso non bloccante. */
+/** Text of a non-blocking notice. */
 export function noticeText(notice: Notice): string {
   switch (notice.code) {
     case "noSectionsFound":
@@ -98,16 +98,16 @@ export function noticeText(notice: Notice): string {
 }
 
 /**
- * Dettaglio tecnico di un avviso, quando esiste.
+ * Technical detail of a notice, when there is one.
  *
- * Arriva dal sistema operativo o da una libreria, nella lingua che hanno scelto
- * loro: va mostrato come dettaglio accanto alla frase, non al posto suo.
+ * It comes from the operating system or a library, in the language they chose:
+ * it belongs beside the sentence as a detail, not in its place.
  */
 export function noticeDetail(notice: Notice): string | null {
   return notice.code === "readFailed" ? notice.detail : null;
 }
 
-/** Testo di un errore che ha interrotto un'operazione. */
+/** Text of an error that interrupted an operation. */
 export function errorText(payload: ErrorPayload): string {
   switch (payload.code) {
     case "io":
@@ -132,16 +132,21 @@ export function errorText(payload: ErrorPayload): string {
       return "La destinazione non può stare dentro la cartella di origine.";
     case "destinationRequired":
       return "Questa modalità richiede di scegliere una destinazione.";
+    case "unrecognisedSource":
+      return `${payload.path} non è una cartella Takeout né un archivio takeout-*.zip.`;
+    case "configDirUnavailable":
+      return "La cartella di configurazione del sistema non è raggiungibile.";
   }
 }
 
-/** Dettaglio tecnico di un errore, quando esiste. */
+/** Technical detail of an error, when there is one. */
 export function errorDetail(payload: ErrorPayload): string | null {
   switch (payload.code) {
     case "io":
     case "archive":
     case "metadata":
     case "task":
+    case "configDirUnavailable":
       return payload.detail;
     default:
       return null;

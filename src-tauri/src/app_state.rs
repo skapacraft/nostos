@@ -1,11 +1,11 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Stato applicativo condiviso e tipi comuni.
+//! Shared application state and common types.
 //!
-//! Tutto lo stato vive in memoria per la durata della sessione: nessuna
-//! persistenza implicita, nessun file di configurazione scritto di nascosto,
-//! nessun identificativo di installazione generato.
+//! All state lives in memory for the duration of the session: no implicit
+//! persistence, no configuration file written behind your back, no installation
+//! identifier generated.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -13,53 +13,59 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Errore unico propagato ai comandi Tauri.
+/// The single error propagated to the Tauri commands.
 #[derive(Debug, Error)]
 pub enum TakeoutError {
-    #[error("errore di I/O su {path}: {source}")]
+    #[error("I/O error on {path}: {source}")]
     Io {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
 
-    #[error("archivio non valido: {0}")]
+    #[error("invalid archive: {0}")]
     Archive(String),
 
-    #[error("voce di archivio non sicura (path traversal): {0}")]
+    #[error("unsafe archive entry (path traversal): {0}")]
     UnsafeEntry(String),
 
-    #[error("metadati non interpretabili: {0}")]
+    #[error("unreadable metadata: {0}")]
     Metadata(String),
 
-    #[error("percorso non trovato: {0}")]
+    #[error("path not found: {0}")]
     NotFound(PathBuf),
 
-    #[error("nessuna sorgente Takeout caricata")]
+    #[error("no Takeout source loaded")]
     NoSource,
 
     #[error(
-        "spazio insufficiente sulla destinazione: servono {} ma ne restano {}",
+        "not enough space on the destination: {} needed, {} left",
         crate::app_state::formatta_byte(*needed),
         crate::app_state::formatta_byte(*available)
     )]
     NotEnoughSpace { needed: u64, available: u64 },
 
-    #[error("elaborazione in background interrotta: {0}")]
+    #[error("background processing interrupted: {0}")]
     Task(String),
 
-    #[error("stato interno corrotto: lock avvelenato")]
+    #[error("internal state corrupted: poisoned lock")]
     Poisoned,
 
-    #[error("la destinazione non può stare dentro la cartella di origine")]
+    #[error("the destination cannot sit inside the source folder")]
     DestinationInsideSource,
 
-    #[error("questa modalità richiede una destinazione")]
+    #[error("this mode requires a destination")]
     DestinationRequired,
+
+    #[error("{0} is neither a Takeout folder nor a takeout-*.zip archive")]
+    UnrecognisedSource(PathBuf),
+
+    #[error("the system configuration folder is unavailable: {0}")]
+    ConfigDirUnavailable(String),
 }
 
 impl TakeoutError {
-    /// Costruisce un errore di I/O conservando il percorso che lo ha causato.
+    /// Builds an I/O error keeping the path that caused it.
     pub fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
         Self::Io {
             path: path.into(),
@@ -68,15 +74,15 @@ impl TakeoutError {
     }
 }
 
-/// Forma con cui un errore attraversa il canale IPC.
+/// The form in which an error crosses the IPC channel.
 ///
-/// Un errore che arriva all'interfaccia come frase già scritta è una frase che
-/// nessuna traduzione può più raggiungere. Viaggia quindi come codice più i
-/// dati che servono a comporre il messaggio dall'altra parte.
+/// An error reaching the interface as a finished sentence is a sentence no
+/// translation can ever get to. It therefore travels as a code plus the data
+/// needed to compose the message on the other side.
 ///
-/// `detail` porta il messaggio di chi ha rilevato il guasto, sistema operativo
-/// o libreria: non è nostro e non è tradotto, quindi va mostrato come dettaglio
-/// tecnico accanto alla frase, non al posto suo.
+/// `detail` carries the message of whoever detected the fault, operating system
+/// or library: it is not ours and it is not translated, so it belongs next to
+/// the sentence as a technical detail, not in its place.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
 pub enum ErrorPayload {
@@ -91,10 +97,12 @@ pub enum ErrorPayload {
     Poisoned,
     DestinationInsideSource,
     DestinationRequired,
+    UnrecognisedSource { path: String },
+    ConfigDirUnavailable { detail: String },
 }
 
 impl TakeoutError {
-    /// Traduce l'errore nella forma che attraversa il canale IPC.
+    /// Turns the error into the form that crosses the IPC channel.
     pub fn payload(&self) -> ErrorPayload {
         match self {
             Self::Io { path, source } => ErrorPayload::Io {
@@ -124,13 +132,19 @@ impl TakeoutError {
             Self::Poisoned => ErrorPayload::Poisoned,
             Self::DestinationInsideSource => ErrorPayload::DestinationInsideSource,
             Self::DestinationRequired => ErrorPayload::DestinationRequired,
+            Self::UnrecognisedSource(path) => ErrorPayload::UnrecognisedSource {
+                path: path.display().to_string(),
+            },
+            Self::ConfigDirUnavailable(detail) => ErrorPayload::ConfigDirUnavailable {
+                detail: detail.clone(),
+            },
         }
     }
 }
 
 impl Serialize for TakeoutError {
-    // `Result` in questo modulo è l'alias di crate, quindi qui serve la forma
-    // completa di quello standard.
+    // `Result` in this module is the crate alias, so the full form of the
+    // standard one is needed here.
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -141,40 +155,40 @@ impl Serialize for TakeoutError {
 
 pub type Result<T> = std::result::Result<T, TakeoutError>;
 
-/// Avviso non bloccante destinato all'utente.
+/// A non-blocking notice meant for the user.
 ///
-/// Il backend non compone la frase: dichiara che cosa è successo e con quali
-/// numeri, e chi mostra decide come dirlo. Senza questa separazione
-/// un'interfaccia tradotta resterebbe punteggiata di frasi scritte qui, e ogni
-/// lingua nuova costringerebbe a rimettere le mani nel motore.
+/// The backend does not compose the sentence: it declares what happened and
+/// with which numbers, and whoever displays it decides how to say it. Without
+/// that separation a translated interface would stay peppered with phrases
+/// written here, and every new language would mean going back into the engine.
 ///
-/// La sola eccezione è [`Notice::ReadFailed`]: il dettaglio arriva dal sistema
-/// operativo o da una libreria, nella lingua che hanno scelto loro. Tradurlo
-/// non è in nostro potere, quindi viaggia com'è e va mostrato come dettaglio
-/// tecnico, non come frase rivolta all'utente.
+/// The one exception is [`Notice::ReadFailed`]: the detail comes from the
+/// operating system or a library, in whatever language they chose. Translating
+/// it is not in our power, so it travels as-is and belongs on screen as a
+/// technical detail, not as a sentence addressed to the user.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
 pub enum Notice {
-    /// La cartella scelta non contiene sezioni Takeout riconoscibili.
+    /// The chosen folder holds no recognisable Takeout sections.
     NoSectionsFound,
-    /// Voci con percorso non sicuro, che l'estrazione ignorerà.
+    /// Entries with an unsafe path, which extraction will ignore.
     UnsafeArchiveEntries { count: usize },
-    /// Segnaposto Google: l'export ne porta il riferimento, non il contenuto.
+    /// Google placeholders: the export carries the reference, not the content.
     PlaceholdersWithoutContent { count: usize },
-    /// Foto presenti solo dentro un album e in nessuna cartella per anno.
+    /// Photos present only inside an album and in no year folder.
     PhotosOnlyInAlbums { count: usize },
-    /// Foto che compaiono sia in una cartella per anno sia in un album.
+    /// Photos appearing both in a year folder and in an album.
     PhotosSharedWithAlbums { count: usize },
-    /// Non si riesce a distinguere le annate dagli album con l'anno nel nome.
+    /// Years cannot be told apart from albums with a year in their name.
     AmbiguousYearFolders,
-    /// La sorgente è un archivio: va estratto prima di analizzarne le sezioni.
+    /// The source is an archive: extract it before analysing its sections.
     ArchiveNotExtracted,
-    /// Lettura fallita, con il messaggio originale di chi l'ha rilevata.
+    /// Read failure, with the original message of whoever detected it.
     ReadFailed { path: String, detail: String },
 }
 
 impl Notice {
-    /// Avviso di lettura fallita a partire da un errore qualsiasi.
+    /// A read-failure notice built from any error.
     pub fn read_failed(path: impl std::fmt::Display, detail: impl std::fmt::Display) -> Self {
         Self::ReadFailed {
             path: path.to_string(),
@@ -183,13 +197,12 @@ impl Notice {
     }
 }
 
-/// Diagnostica di sviluppo, stampata sul terminale di `tauri dev`.
+/// Development diagnostics, printed on the `tauri dev` terminal.
 ///
-/// Volutamente non è un logger su file: scrivere log su disco
-/// contraddirebbe la sezione 6 di `PRIVACY_AUDIT.md`, che promette di non
-/// lasciare traccia della sessione. Qui l'output va su stderr e l'intero blocco
-/// viene compilato via nelle build di release, quindi nel binario distribuito
-/// queste righe non esistono.
+/// Deliberately not a file logger: writing logs to disk would contradict
+/// section 6 of `PRIVACY_AUDIT.md`, which promises to leave no trace of the
+/// session. Here the output goes to stderr and the whole block is compiled out
+/// of release builds, so in the distributed binary these lines do not exist.
 macro_rules! trace_dev {
     ($($arg:tt)*) => {{
         #[cfg(debug_assertions)]
@@ -201,11 +214,11 @@ macro_rules! trace_dev {
 
 pub(crate) use trace_dev;
 
-/// Dati identificativi dell'applicazione, mostrati nella guida.
+/// Identifying data of the application, shown in the guide.
 ///
-/// I valori arrivano dalle variabili che Cargo espone a compilazione: sono le
-/// stesse di `Cargo.toml`, quindi non possono divergere dai metadati del
-/// pacchetto distribuito.
+/// The values come from the variables Cargo exposes at compile time: they are
+/// the same ones as `Cargo.toml`, so they cannot drift from the metadata of the
+/// distributed package.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
@@ -230,33 +243,33 @@ impl Default for AppInfo {
     }
 }
 
-/// Le uniche preferenze che l'applicazione conserva tra un avvio e l'altro.
+/// The only preferences the application keeps between runs.
 ///
-/// Il file contiene solo questo campo, ed è l'unica eccezione alla regola di
-/// non scrivere nulla di implicito. La struttura resta volutamente minima: ogni
-/// campo aggiunto qui è un dato in più che sopravvive alla sessione e va
-/// dichiarato in `PRIVACY_AUDIT.md`.
+/// The file holds this field alone, and it is the single exception to the rule
+/// of writing nothing implicitly. The struct stays deliberately minimal: every
+/// field added here is one more piece of data outliving the session, and has to
+/// be declared in `PRIVACY_AUDIT.md`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
-    /// L'utente ha chiesto di non rivedere la presentazione all'avvio.
+    /// The user asked not to see the first-run introduction again.
     pub hide_welcome: bool,
 }
 
-/// Esito della scrittura di un file esportato.
+/// Outcome of writing an exported file.
 ///
-/// Condiviso da contatti e calendario: entrambi producono un singolo file
-/// standard pronto per essere importato altrove.
+/// Shared by contacts and calendar: both produce a single standard file ready
+/// to be imported elsewhere.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportReport {
     pub path: PathBuf,
-    /// Elementi scritti nel file.
+    /// Items written to the file.
     pub written: usize,
     pub bytes: u64,
 }
 
-/// Fase di un'operazione lunga.
+/// Phase of a long-running operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Phase {
@@ -266,7 +279,7 @@ pub enum Phase {
     Done,
 }
 
-/// Avanzamento inviato alla UI durante un'operazione lunga.
+/// Progress sent to the UI during a long-running operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Progress {
@@ -274,7 +287,7 @@ pub struct Progress {
     pub done: usize,
     pub total: usize,
     pub errors: usize,
-    /// Nome del file in lavorazione, senza il percorso completo.
+    /// Name of the file being processed, without the full path.
     pub current: Option<String>,
 }
 
@@ -295,22 +308,23 @@ impl Progress {
     }
 }
 
-/// Canale di avanzamento passato ai moduli di dominio.
+/// The progress channel handed to the domain modules.
 ///
-/// I moduli non conoscono Tauri: ricevono una chiusura e non sanno se dietro ci
-/// sia un evento verso il webview, un contatore in un test o nulla. `Send` e
-/// `Sync` servono perché l'elaborazione delle foto gira su più thread.
+/// The modules know nothing of Tauri: they receive a closure and cannot tell
+/// whether an event towards the webview, a counter in a test or nothing at all
+/// sits behind it. `Send` and `Sync` are needed because photo processing runs
+/// on several threads.
 pub type ProgressSink<'a> = &'a (dyn Fn(Progress) + Send + Sync);
 
-/// Sink che scarta tutto, per i chiamanti che non mostrano avanzamento.
+/// A sink that discards everything, for callers that show no progress.
 pub fn no_progress(_: Progress) {}
 
-/// Utilità condivise dai test dei vari moduli.
+/// Helpers shared by the tests of the various modules.
 #[cfg(test)]
 pub(crate) mod testing {
     use std::path::{Path, PathBuf};
 
-    /// Cartella temporanea che si cancella da sola a fine test.
+    /// A temporary folder that deletes itself when the test ends.
     pub(crate) struct TempDir(PathBuf);
 
     impl TempDir {
@@ -321,7 +335,7 @@ pub(crate) mod testing {
                 std::thread::current().id()
             ));
             let _ = std::fs::remove_dir_all(&path);
-            std::fs::create_dir_all(&path).expect("creazione cartella temporanea");
+            std::fs::create_dir_all(&path).expect("creazione folder temporary");
             Self(path)
         }
 
@@ -336,37 +350,37 @@ pub(crate) mod testing {
         }
     }
 
-    /// Scrive un file creando le cartelle intermedie.
+    /// Writes a file, creating the intermediate folders.
     pub(crate) fn write_file(path: &Path, content: &str) {
         write_bytes(path, content.as_bytes());
     }
 
-    /// Variante binaria, per i fixture di immagini reali.
+    /// Binary variant, for the real image fixtures.
     pub(crate) fn write_bytes(path: &Path, content: &[u8]) {
-        std::fs::create_dir_all(path.parent().expect("percorso con genitore"))
+        std::fs::create_dir_all(path.parent().expect("path with a parent"))
             .expect("creazione cartelle");
         std::fs::write(path, content).expect("scrittura file");
     }
 
-    /// JPEG valido di 8x8 pixel, per esercitare la scrittura EXIF reale.
+    /// A valid 8x8 pixel JPEG, to exercise real EXIF writing.
     ///
-    /// Serve un contenitore autentico: `little_exif` rifiuta giustamente un
-    /// file con la firma sbagliata, quindi un finto JPEG di testo verificherebbe
-    /// solo la gestione dell'errore.
+    /// A genuine container is required: `little_exif` rightly refuses a file with
+    /// the wrong signature, so a fake text JPEG would only verify the error
+    /// handling.
     pub(crate) const MINIMAL_JPEG: &[u8] = include_bytes!("../fixtures/minimal.jpg");
 }
 
-/// Tipologia di sorgente selezionata dall'utente.
+/// The kind of source the user selected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SourceKind {
-    /// Cartella `Takeout/` già estratta.
+    /// An already extracted `Takeout/` folder.
     Folder,
-    /// Archivio `takeout-*.zip` non estratto.
+    /// An unextracted `takeout-*.zip` archive.
     Archive,
 }
 
-/// Sezione di Google Takeout riconosciuta all'interno della sorgente.
+/// A Google Takeout section recognised inside the source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TakeoutSection {
@@ -380,10 +394,10 @@ pub enum TakeoutSection {
 }
 
 impl TakeoutSection {
-    /// Deduce la sezione dal nome della cartella di primo livello dentro `Takeout/`.
+    /// Derives the section from the top-level folder name inside `Takeout/`.
     ///
-    /// I nomi sono localizzati nella lingua dell'account, quindi il match copre
-    /// le varianti italiane e inglesi più diffuse.
+    /// The names are localised into the account language, so the match covers the
+    /// most common Italian and English variants.
     pub fn from_dir_name(name: &str) -> Self {
         let lower = name.to_ascii_lowercase();
         match lower.as_str() {
@@ -398,21 +412,21 @@ impl TakeoutSection {
     }
 }
 
-/// Riepilogo di una singola sezione trovata nella sorgente.
+/// Summary of a single section found in the source.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SectionSummary {
-    /// La sezione come categoria, non come etichetta: il nome leggibile lo
-    /// sceglie chi mostra, nella lingua che sta usando.
+    /// The section as a category, not as a label: the readable name is chosen by
+    /// whoever displays it, in the language they are using.
     pub section: TakeoutSection,
-    /// Nome della cartella così com'è sul disco, che non va tradotto.
+    /// The folder name exactly as it is on disk, which must not be translated.
     pub dir_name: String,
     pub path: PathBuf,
     pub file_count: usize,
     pub total_bytes: u64,
 }
 
-/// Riepilogo della sorgente caricata, restituito al frontend.
+/// Summary of the loaded source, returned to the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceSummary {
@@ -422,28 +436,28 @@ pub struct SourceSummary {
     pub sections: Vec<SectionSummary>,
     pub file_count: usize,
     pub total_bytes: u64,
-    /// Avvisi non bloccanti emersi durante la scansione.
+    /// Non-blocking notices that surfaced during the scan.
     pub warnings: Vec<Notice>,
 }
 
-/// Le garanzie che l'applicazione dichiara, una per punto verificabile.
+/// The guarantees the application declares, one per verifiable point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PrivacyNote {
-    /// Nel grafo delle dipendenze non esiste una crate HTTP.
+    /// There is no HTTP crate in the dependency graph.
     NoHttpCrates,
-    /// La CSP limita `connect-src` al solo canale IPC locale.
+    /// The CSP limits `connect-src` to the local IPC channel alone.
     RestrictiveCsp,
-    /// Nessun updater automatico e nessun plugin per aprire URL.
+    /// No auto-updater and no plugin for opening URLs.
     NoUpdaterNoOpener,
-    /// I dati restano nei percorsi scelti dall'utente e in memoria.
+    /// Data stays in the paths chosen by the user, and in memory.
     DataStaysLocal,
 }
 
-/// Sorgente attualmente caricata in sessione.
+/// The source currently loaded in the session.
 ///
-/// `root` è ridondante rispetto a `summary.root` ma resta il campo autorevole
-/// per i comandi che lavorano sul percorso senza toccare il riepilogo.
+/// `root` is redundant with `summary.root` but remains the authoritative field
+/// for the commands that work on the path without touching the summary.
 #[derive(Debug, Clone)]
 pub struct LoadedSource {
     pub root: PathBuf,
@@ -455,7 +469,7 @@ struct StateInner {
     source: Option<LoadedSource>,
 }
 
-/// Stato condiviso registrato in `tauri::Builder::manage`.
+/// Shared state registered with `tauri::Builder::manage`.
 #[derive(Debug, Default)]
 pub struct AppState {
     inner: Mutex<StateInner>,
@@ -466,14 +480,14 @@ impl AppState {
         Self::default()
     }
 
-    /// Registra la sorgente caricata, sostituendo l'eventuale precedente.
+    /// Records the loaded source, replacing any previous one.
     pub fn set_source(&self, source: LoadedSource) -> Result<()> {
         let mut guard = self.inner.lock().map_err(|_| TakeoutError::Poisoned)?;
         guard.source = Some(source);
         Ok(())
     }
 
-    /// Restituisce il riepilogo della sorgente corrente.
+    /// Returns the summary of the current source.
     pub fn summary(&self) -> Result<SourceSummary> {
         let guard = self.inner.lock().map_err(|_| TakeoutError::Poisoned)?;
         guard
@@ -483,7 +497,7 @@ impl AppState {
             .ok_or(TakeoutError::NoSource)
     }
 
-    /// Radice della sorgente corrente.
+    /// Root of the current source.
     pub fn root(&self) -> Result<PathBuf> {
         let guard = self.inner.lock().map_err(|_| TakeoutError::Poisoned)?;
         guard
@@ -493,7 +507,7 @@ impl AppState {
             .ok_or(TakeoutError::NoSource)
     }
 
-    /// Svuota lo stato: usata dal comando "Chiudi sorgente".
+    /// Empties the state: used by the "Close source" command.
     pub fn clear(&self) -> Result<()> {
         let mut guard = self.inner.lock().map_err(|_| TakeoutError::Poisoned)?;
         guard.source = None;
@@ -501,15 +515,15 @@ impl AppState {
     }
 }
 
-/// Dichiarazione esplicita del profilo privacy, esposta alla UI.
+/// Explicit declaration of the privacy profile, exposed to the UI.
 ///
-/// I valori sono costanti compilate: se un giorno qualcuno introducesse una
-/// dipendenza di rete, questo blocco andrebbe aggiornato a mano e la modifica
-/// resterebbe visibile in diff.
+/// The values are compiled constants: were anyone to introduce a network
+/// dependency one day, this block would have to be updated by hand and the
+/// change would stay visible in the diff.
 ///
-/// Le note sono codici e non frasi, come tutto il resto di ciò che finisce a
-/// schermo: una garanzia scritta in una lingua sola sarebbe leggibile in una
-/// lingua sola.
+/// The notes are codes and not sentences, like everything else that ends up on
+/// screen: a guarantee written in one language would be readable in one
+/// language.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrivacyReport {
@@ -539,7 +553,7 @@ impl Default for PrivacyReport {
     }
 }
 
-/// Dimensione leggibile, per i messaggi di errore.
+/// Human-readable size, for the error messages.
 pub(crate) fn formatta_byte(bytes: u64) -> String {
     const UNITA: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
     let mut valore = bytes as f64;
@@ -555,10 +569,10 @@ pub(crate) fn formatta_byte(bytes: u64) -> String {
     }
 }
 
-/// Una sottocartella della sorgente, con il suo peso.
+/// A subfolder of the source, with its weight.
 ///
-/// Serve a lavorare a tranche quando la libreria intera non ci sta: si ripara
-/// una cartella per volta, si sposta il risultato altrove, si passa alla
+/// It exists to work in slices when the whole library does not fit: repair one
+/// folder at a time, move the result elsewhere, move on to the next.
 /// successiva.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -567,66 +581,65 @@ pub struct FolderSize {
     pub path: PathBuf,
     pub bytes: u64,
     pub file_count: usize,
-    /// Vero se la copia di questa sola cartella ci sta nello spazio rimasto.
+    /// True if the copy of this folder alone fits in the space left.
     pub fits: bool,
-    /// Vero se è una cartella per anno: sono queste le tranche da riparare,
-    /// perché contengono quasi tutto.
+    /// True if this is a year folder: those are the slices worth repairing,
+    /// because they hold nearly everything.
     pub is_year: bool,
-    /// Vero se è un album, cioè in gran parte copie di foto già presenti
-    /// altrove.
+    /// True if this is an album, that is mostly copies of photos already present
+    /// elsewhere.
     pub is_album: bool,
-    /// Quante foto di questa cartella non esistono in nessuna cartella per
-    /// anno.
+    /// How many photos of this folder exist in no year folder at all.
     ///
-    /// È l'unico numero che, se ignorato, fa perdere qualcosa: saltare un
-    /// album per risparmiare spazio è sensato solo finché questo resta a zero.
+    /// It is the one number that, ignored, loses something: skipping an album
+    /// to save space makes sense only while this stays at zero.
     pub unique_here: usize,
 }
 
-/// Conti sullo spazio, per decidere prima di cominciare.
+/// Space arithmetic, to decide before starting.
 ///
-/// Serve a rispondere alla domanda che si pone chiunque abbia una libreria
-/// grande: ci sta? E se non ci sta, che cosa posso fare?
+/// It answers the question anyone with a large library asks: does it fit? And
+/// if it does not, what can I do?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpaceEstimate {
-    /// Quanto pesa la libreria di origine.
+    /// How much the source library weighs.
     pub source_bytes: u64,
-    /// Quanto spazio resta sul volume di destinazione.
+    /// How much room is left on the destination volume.
     pub available_bytes: u64,
-    /// Quanto ne servirebbe per la copia, margine compreso.
+    /// How much the copy would need, safety margin included.
     pub needed_for_copy: u64,
-    /// Vero se la copia riparata ci sta.
+    /// True if the repaired copy fits.
     pub copy_fits: bool,
-    /// Spazio extra richiesto dalla riscrittura sul posto.
+    /// Extra space required by in-place rewriting.
     ///
-    /// È un temporaneo per thread, quindi resta nell'ordine delle decine di
-    /// megabyte qualunque sia la dimensione della libreria: è la via
-    /// praticabile quando la copia non ci sta.
+    /// It is one temporary file per thread, so it stays in the order of tens of
+    /// megabytes whatever the size of the library: it is the practicable route
+    /// when the copy does not fit.
     pub needed_in_place: u64,
-    /// Sottocartelle di primo livello, dalla più pesante alla più leggera.
+    /// Top-level subfolders, from the heaviest to the lightest.
     ///
-    /// Quando l'intera libreria non entra, sono le tranche in cui dividere il
-    /// lavoro.
+    /// When the whole library does not fit, these are the slices to divide the
+    /// work into.
     pub subfolders: Vec<FolderSize>,
 }
 
-/// Margine di sicurezza richiesto oltre ai byte da scrivere.
+/// Safety margin required on top of the bytes to write.
 ///
-/// Riempire un disco fino all'ultimo byte non è mai una buona idea: il sistema
-/// ha bisogno di spazio per i propri file temporanei, e su APFS le istantanee
-/// possono trattenere blocchi che sembrano liberi.
+/// Filling a disk to the last byte is never a good idea: the system needs room
+/// for its own temporary files, and on APFS snapshots can hold on to blocks
+/// that look free.
 const MARGINE_DISCO: f64 = 1.10;
 
-/// Rifiuta l'operazione se sulla destinazione non c'è spazio sufficiente.
+/// Refuses the operation when the destination has not enough room.
 ///
-/// Serve perché la copia riparata duplica l'intera libreria: su un export da
-/// sessanta gigabyte ne servono altrettanti. Senza questo controllo il disco si
-/// riempirebbe a metà lavoro, lasciando un albero di uscita che sembra
-/// completo e non lo è, e l'utente lo scoprirebbe solo contando i file.
+/// It exists because the repaired copy duplicates the entire library: a sixty
+/// gigabyte export needs another sixty. Without this check the disk would fill
+/// halfway through, leaving an output tree that looks complete and is not, and
+/// the user would find out only by counting files.
 pub fn require_free_space(destination: &Path, needed: u64) -> Result<()> {
-    // Lo spazio si misura sulla cartella esistente più vicina: la destinazione
-    // potrebbe non essere ancora stata creata.
+    // Space is measured on the nearest existing folder: the destination may not
+    // have been created yet.
     let mut probe = destination;
     while !probe.exists() {
         match probe.parent() {
@@ -637,8 +650,8 @@ pub fn require_free_space(destination: &Path, needed: u64) -> Result<()> {
 
     let available = match fs4::available_space(probe) {
         Ok(bytes) => bytes,
-        // Se il filesystem non sa rispondere non blocchiamo il lavoro: meglio
-        // provare e fallire sul singolo file che rifiutare senza motivo.
+        // If the filesystem cannot answer we do not block the work: better to try and
+        // fail on a single file than to refuse for no reason.
         Err(_) => return Ok(()),
     };
 
@@ -653,7 +666,7 @@ pub fn require_free_space(destination: &Path, needed: u64) -> Result<()> {
     })
 }
 
-/// Verifica che un percorso ricevuto dal frontend esista davvero.
+/// Checks that a path received from the frontend really exists.
 pub fn require_existing(path: &Path) -> Result<()> {
     if path.exists() {
         Ok(())
@@ -667,7 +680,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn riconosce_le_sezioni_localizzate() {
+    fn recognises_localised_sections() {
         assert_eq!(
             TakeoutSection::from_dir_name("Google Foto"),
             TakeoutSection::GooglePhotos
@@ -680,11 +693,11 @@ mod tests {
     }
 
     #[test]
-    fn lo_stato_parte_vuoto_e_si_svuota() {
+    fn the_state_starts_empty_and_empties_again() {
         let state = AppState::new();
         assert!(matches!(state.summary(), Err(TakeoutError::NoSource)));
         state
             .clear()
-            .expect("clear su stato vuoto non deve fallire");
+            .expect("clearing an empty state must not fail");
     }
 }

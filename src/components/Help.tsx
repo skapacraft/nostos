@@ -26,11 +26,11 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /**
- * Guida dell'applicazione.
+ * The application guide.
  *
- * Gli indirizzi sono resi come testo selezionabile e non come collegamenti:
- * l'app non ha un plugin per aprire URL, e un link che non fa nulla sarebbe
- * peggio di un indirizzo che si copia.
+ * Addresses are rendered as selectable text and not as links: the app has no
+ * plugin for opening URLs, and a link that does nothing would be worse than
+ * an address you can copy.
  */
 export function Help({ info, privacy, onClose }: HelpProps) {
   return (

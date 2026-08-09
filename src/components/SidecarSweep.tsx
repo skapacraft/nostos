@@ -12,22 +12,22 @@ import type { SidecarSweepReport } from "../types";
 import { RevealButton } from "./RevealButton";
 
 interface SidecarSweepProps {
-  /** Cartella riparata, dove si trovano i sidecar da valutare. */
+  /** The repaired folder, where the sidecars to assess are found. */
   path: string;
   onError: (message: string) => void;
 }
 
 /**
- * Sposta i sidecar JSON il cui contenuto è ormai dentro alle foto.
+ * Moves the JSON sidecars whose content is now inside the photos.
  *
- * Compare solo dopo una riscrittura degli originali, che è l'unico caso in cui
- * quei JSON siano davvero di troppo: nella copia riparata il sidecar viene
- * conservato apposta accanto ai formati in cui non scriviamo l'EXIF.
+ * It appears only after rewriting the originals, the one case where those
+ * JSONs really are surplus: in the repaired copy the sidecar is kept on
+ * purpose beside the formats where we write no EXIF.
  *
- * Non è un pulsante di pulizia e non va presentato come tale. Sposta, scrive un
- * registro e si annulla: cancellare avrebbe voluto dire buttare via i dati che
- * non hanno una sede nei tag EXIF, cioè fare al contrario proprio il danno che
- * questa applicazione ripara.
+ * It is not a cleanup button and must not be presented as one. It moves,
+ * writes a ledger and undoes: deleting would have meant throwing away the data
+ * that has no home in the EXIF tags, that is doing in reverse the very damage
+ * this application repairs.
  */
 export function SidecarSweep({ path, onError }: SidecarSweepProps) {
   const [destination, setDestination] = useState<string | null>(null);

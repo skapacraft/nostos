@@ -1,175 +1,203 @@
-# Diario delle modifiche
+# Changelog
 
-Il formato segue [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e la
-numerazione [Semantic Versioning](https://semver.org/lang/it/).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+the numbering follows [Semantic Versioning](https://semver.org/).
 
-## Non rilasciato
+## Unreleased
 
-Nulla è stato ancora pubblicato: la `0.1.0` qui sotto descrive lo stato del
-codice, non un binario distribuito. Manca la firma con un certificato Apple
-Developer ID, senza la quale Gatekeeper rifiuta il pacchetto macOS.
+Nothing has been published yet: the `0.1.0` below describes the state of the
+code, not a distributed binary. It still lacks signing with an Apple Developer
+ID certificate, without which Gatekeeper refuses the macOS package.
 
-## [0.1.0] non ancora pubblicata
+### Changed
 
-Prima versione completa dell'applicazione.
+- The backend no longer composes user-facing sentences. Warnings, errors,
+  section and category labels, sidecar retention reasons and privacy notes all
+  travel as codes plus the numbers needed to build the message, and the wording
+  is chosen in `src/lib/messages.ts`. Translating only the frontend would have
+  produced an English application emitting Italian phrases, and every new
+  language would have meant going back into the Rust.
+- Errors cross the IPC channel as an `ErrorPayload` object with a code and its
+  data, instead of being flattened to a string.
+- The maps in `messages.ts` are `Record`s over the full union of codes and the
+  switches have no default branch, so adding a variant in Rust without the
+  matching text fails the frontend build rather than showing a raw code on
+  screen.
+- Repository documentation, source comments and identifiers are in English.
+  Test names, local variables, the helper script and the environment variables
+  of the manual measurements were renamed: `FOTO` is now `PHOTOS`, `SERIE` is
+  `SERIES`, `USCITA` is `OUTPUT`, `CARTELLA` is `FOLDER`, and
+  `tools/genera_serie_takeout.py` is `tools/generate_takeout_series.py`.
+- The folder for files without a date is named `no-date/` instead of
+  `senza-data/`.
+- Two errors that carried their own prose inside `Metadata(String)` became
+  typed variants of their own: `UnrecognisedSource` and `ConfigDirUnavailable`.
+- Added `ACKNOWLEDGEMENTS.md`, recording what the project took from others: the
+  edited-suffix list from GooglePhotosTakeoutHelper (Apache-2.0) and the time
+  zone boundaries derived from OpenStreetMap (ODbL-1.0), plus the licences of
+  every direct dependency.
+- The `PRODID` of exported calendars declared `IT`; it now declares `EN`.
 
-### Sorgenti e archivi
+## [0.1.0] not yet released
 
-- Riconoscimento di una cartella `Takeout/` estratta o di un archivio
-  `takeout-*.zip`, con elenco delle sezioni, conteggi e dimensioni.
-- Ricostruzione dell'intera serie a partire da un archivio qualsiasi
-  (`takeout-...-001.zip`, `-002.zip`, ...) e unione in un solo albero, con
-  segnalazione dei numeri mancanti in un download incompleto.
-- Protezione zip-slip: i percorsi vengono normalizzati e le voci che tentano di
-  uscire dalla destinazione sono scartate invece di essere scritte.
+First complete version of the application.
 
-### Foto
+### Sources and archives
 
-- Lettura di EXIF e sidecar JSON, compresi gli schemi
-  `.supplemental-metadata.json`, i duplicati con contatore e i nomi che Google
-  accorcia a 46 caratteri: su un nome lungo il suffisso arriva mozzato
-  (`.supplemental-m.json`) o sparisce del tutto, lasciando troncato il nome del
-  media.
-- Deduzione della data dal nome generato dalla fotocamera quando EXIF e sidecar
-  mancano entrambi (`IMG_20200101_120000`, `PXL_...`, screenshot, Signal).
-- Riscrittura nei tag EXIF di JPEG, HEIC, TIFF e WebP, senza ricomprimere
-  l'immagine, di **tutto ciò che il sidecar contiene e che ha una sede nei
-  metadati**: data di scatto con il fuso, coordinate, descrizione
-  (`ImageDescription` e `XPComment`), volti riconosciuti (`XPKeywords`) e la
-  stella dei preferiti (`Rating` e `RatingPercent`). Restano fuori solo il
-  conteggio delle visualizzazioni e l'indirizzo su Google Foto, che nei metadati
-  non hanno dove stare: l'app li elenca invece di lasciarli scoprire.
-- **Ora locale del luogo invece dell'istante universale.** Quando la foto ha le
-  coordinate, il fuso viene ricavato in locale e scritto insieme al suo scarto,
-  tenendo conto dell'ora legale in vigore quel giorno. Scrivere l'istante UTC
-  così com'è avrebbe spostato ogni foto della differenza di fuso.
-- Disposizione dell'uscita a scelta: struttura originale, per anno, per anno e
-  mese, o cartella unica. I file senza data finiscono in `senza-data/` invece di
-  essere infilati in un mese inventato.
-- Tre modalità: simulazione, copia riparata in un albero separato (predefinita) e
-  riscrittura degli originali, che richiede una conferma esplicita.
+- Recognition of an extracted `Takeout/` folder or a `takeout-*.zip` archive,
+  with the list of sections, counts and sizes.
+- Reconstruction of the entire series from any single archive
+  (`takeout-...-001.zip`, `-002.zip`, ...) and merging into one tree, flagging
+  the numbers missing from an incomplete download.
+- Zip-slip protection: paths are normalised and entries trying to escape the
+  destination are discarded rather than written.
 
-### Album
+### Photos
 
-- Riconoscimento degli album di Google Foto, che l'export non registra come
-  informazione a parte ma come cartelle contenenti una seconda copia della foto.
-- Distinzione fra cartelle per anno e album veri in qualsiasi lingua
-  dell'account, ricavata dall'export stesso e non da un elenco di traduzioni:
-  il prefisso delle annate (`Photos from`, `Foto da`, `Fotos de`) è identico per
-  tutte le annate di uno stesso export, quindi si può dedurre invece di
-  indovinarlo. Quando due prefissi diversi compaiono lo stesso numero di volte
-  la distinzione non è possibile, e l'app lo dichiara invece di scegliere a
-  caso.
-- Manifest dell'appartenenza scrivibile su file. Finché non esiste, la deduplica
-  sulla cartella foto resta bloccata: dalla quarantena i file tornano indietro,
-  l'appartenenza a un album no.
-- Riconoscimento delle versioni modificate (`-edited`, `-modificato`,
-  `-modifié`, `-編集済み` e altre dodici lingue), che non vengono trattate come
-  duplicati.
+- Reading of EXIF and JSON sidecars, including the
+  `.supplemental-metadata.json` schemas, duplicates with a counter, and the
+  names Google shortens to 46 characters: on a long name the suffix arrives
+  truncated (`.supplemental-m.json`) or disappears entirely, leaving the media
+  name itself cut short.
+- The date is derived from the camera-generated filename when both EXIF and
+  sidecar are missing (`IMG_20200101_120000`, `PXL_...`, screenshots, Signal).
+- Rewriting into the EXIF tags of JPEG, HEIC, TIFF and WebP, without
+  recompressing the image, of **everything the sidecar holds that has a home in
+  the metadata**: capture date with its time zone, coordinates, description
+  (`ImageDescription` and `XPComment`), recognised faces (`XPKeywords`) and the
+  favourite star (`Rating` and `RatingPercent`). Only the view count and the
+  Google Photos URL are left out, because metadata has nowhere to put them: the
+  app lists them rather than letting the user find out.
+- **Local wall-clock time instead of the universal instant.** When a photo
+  carries coordinates, the time zone is derived locally and written together
+  with its offset, accounting for the daylight saving rules in force that day.
+  Writing the UTC instant as-is would have shifted every photo by the zone
+  offset.
+- Output layout of your choosing: original structure, by year, by year and
+  month, or a single folder. Files without a date end up in `no-date/`
+  rather than being filed under an invented month.
+- Three modes: dry run, repaired copy in a separate tree (the default), and
+  rewriting the originals, which requires an explicit confirmation.
 
-### Sidecar messi da parte
+### Albums
 
-- Dopo una riscrittura degli originali i file `.json` restano nella cartella, e
-  l'app propone di spostarli altrove. Sposta solo quelli che non sono più
-  l'unica copia di qualcosa, e non si fida di quanto ha riferito la riparazione:
-  rilegge ogni file per accertarsi che data, coordinate, descrizione, volti e
-  preferito ci siano davvero.
-- Restano dove sono i sidecar di PNG, GIF e video, formati in cui non scriviamo
-  EXIF e per i quali il JSON è quindi l'unica sede dei metadati; quelli delle
-  foto non ancora riparate; e quelli che portano dati senza corrispondente nei
-  tag. Il motivo di ogni permanenza viene contato e mostrato.
-- Non è una cancellazione: scrive lo stesso registro della quarantena, quindi il
-  ripristino rimette ogni JSON dov'era.
+- Recognition of Google Photos albums, which the export records not as separate
+  information but as folders containing a second copy of the photo.
+- Year folders are told apart from real albums in any account language, derived
+  from the export itself rather than from a table of translations: the year
+  prefix (`Photos from`, `Foto da`, `Fotos de`) is identical across all the
+  years of a given export, so it can be deduced instead of guessed. When two
+  different prefixes appear the same number of times the distinction cannot be
+  made, and the app says so instead of picking at random.
+- A membership manifest that can be written to file. Until it exists,
+  deduplication on the photo folder stays blocked: files come back from
+  quarantine, album membership does not.
+- Recognition of edited versions (`-edited`, `-modificato`, `-modifié`,
+  `-編集済み` and nine other languages), which are not treated as duplicates.
 
-### Contatti e calendario
+### Sidecars set aside
 
-- Parser vCard con line folding, prefissi di gruppo ed escaping, deduplica per
-  email o telefono normalizzato, export in vCard 3.0 standard.
-- Parser iCalendar che non confonde gli allarmi con gli eventi, deduplica per
-  UID e occorrenza, rimozione delle proprietà `X-GOOGLE-*`, export in un `.ics`
-  conforme.
+- After rewriting the originals the `.json` files remain in the folder, and the
+  app offers to move them elsewhere. It moves only those that are no longer the
+  sole copy of anything, and it does not take the repair's own word for it:
+  every file is read back to confirm that date, coordinates, description, faces
+  and favourite really are there.
+- The sidecars of PNG, GIF and video files stay where they are, since those
+  formats have no EXIF block and the JSON is therefore the only home for their
+  metadata; so do those of photos not yet repaired, and those carrying data with
+  no counterpart in the tags. Every reason for staying is counted and shown.
+- This is not a deletion: it writes the same ledger as quarantine, so the
+  restore puts every JSON back where it was.
 
-### Drive e pulizia
+### Contacts and calendar
 
-- Classificazione per categoria e rilevamento dei segnaposto `.gdoc`/`.gsheet`,
-  che non contengono i dati ma un rimando.
-- Deduplica **per contenuto**: due file con lo stesso nome e la stessa dimensione
-  ma contenuto diverso restano entrambi.
-- Nessuna modalità cancella: o si costruisce un albero pulito altrove, o si
-  sposta in quarantena scrivendo un registro che permette di rimettere tutto a
-  posto con un clic.
-- Quando un media viene rimosso il suo sidecar JSON lo segue, per non lasciare
-  file orfani.
-- Il motore di pulizia vale per qualsiasi sezione, non solo Drive.
+- A vCard parser handling line folding, group prefixes and escaping,
+  deduplicating by email or normalised phone number, exporting standard
+  vCard 3.0.
+- An iCalendar parser that does not mistake alarms for events, deduplicates by
+  UID and occurrence, strips `X-GOOGLE-*` properties, and exports a conformant
+  `.ics`.
 
-### Spazio su disco
+### Drive and cleanup
 
-- Conto dello spazio necessario prima di cominciare, con rifiuto dell'operazione
-  se non ce n'è abbastanza, invece di riempire il disco a metà lavoro e lasciare
-  un albero di uscita che sembra completo.
-- Quando lo spazio manca l'app non si limita a dirlo: propone la riscrittura sul
-  posto, che richiede poche decine di megabyte qualunque sia la libreria.
-- Elenco delle sottocartelle che entrano nello spazio rimasto, con un pulsante
-  per ripararne una per volta.
-- Nell'elenco delle tranche annate e album sono distinti, e le cartelle che
-  contengono file presenti solo lì vengono segnalate: non si possono rimandare
-  senza perderli di vista.
+- Classification by category and detection of the `.gdoc`/`.gsheet`
+  placeholders, which hold a reference rather than the data.
+- Deduplication **by content**: two files with the same name and the same size
+  but different content both survive.
+- No mode deletes: either a clean tree is built elsewhere, or files move to
+  quarantine with a ledger that puts everything back with one click.
+- When a media file is removed its JSON sidecar follows it, so no orphans are
+  left behind.
+- The cleanup engine works on any section, not just Drive.
 
-### Interfaccia
+### Disk space
 
-- Guida integrata, raggiungibile dal pulsante nell'intestazione e dal menu Aiuto.
-- Presentazione all'avvio con la casella "non mostrare più", unico dato che
-  sopravvive alla sessione.
-- Menu dell'applicazione con voci esplicite, perché in sviluppo macOS mostra
-  altrimenti il nome dell'eseguibile.
+- The space needed is computed before starting, and the operation is refused if
+  there is not enough, rather than filling the disk halfway through and leaving
+  an output tree that looks complete.
+- When space is short the app does more than say so: it offers in-place
+  rewriting, which needs a few dozen megabytes no matter how large the library.
+- A list of the subfolders that fit in the space left, with a button to repair
+  them one at a time.
+- In that list years and albums are distinguished, and folders containing files
+  that exist nowhere else are flagged: those cannot be postponed without losing
+  track of them.
+
+### Interface
+
+- A built-in guide, reachable from the header button and the Help menu.
+- A first-run introduction with a "do not show again" checkbox, the only piece
+  of state that outlives the session.
+- An application menu with explicit labels, because in development macOS
+  otherwise shows the executable name.
 
 ### Privacy
 
-- `deny.toml` che vieta le crate di rete, telemetria e updater, verificato in CI:
-  aggiungere un client HTTP fa fallire la compilazione.
-- CSP con `connect-src` limitato al canale IPC locale.
-- Capability della finestra ridotta a `core:default` e ai due selettori di
-  sistema. Il frontend non ha accesso diretto al filesystem.
-- Nessun collegamento cliccabile in tutta l'interfaccia: gli indirizzi, compresi
-  quelli dei segnaposto di Drive, sono testo selezionabile.
-- `PRIVACY_AUDIT.md` con la verifica sul bundle di release.
+- A `deny.toml` that bans network, telemetry and updater crates, verified in CI:
+  adding an HTTP client fails the build.
+- A CSP with `connect-src` limited to the local IPC channel.
+- The window capability reduced to `core:default` and the two system pickers.
+  The frontend has no direct filesystem access.
+- No clickable links anywhere in the interface: addresses, including those in
+  Drive placeholders, are selectable text.
+- `PRIVACY_AUDIT.md`, with the verification performed on the release bundle.
 
-### Verifiche
+### Verification
 
-- 71 test, compresi end-to-end su Takeout sintetici. La riparazione EXIF viene
-  verificata rileggendo i tag da un JPEG reale e confrontando le coordinate dopo
-  il round trip attraverso gradi, primi e secondi. La quarantena viene verificata
-  prendendo un'istantanea di percorsi e contenuti prima dell'operazione e
-  pretendendo che il ripristino la riproduca identica.
-- Cinque misure escluse dalla CI, da lanciare a mano: libreria da centomila
-  foto, percorso dei byte veri, rubrica e calendario di grandi dimensioni,
-  estrazione di una serie multi-archivio presa dal disco, e riparazione con
-  successivo spostamento dei sidecar su una cartella vera.
-- `tools/genera_serie_takeout.py` costruisce il materiale per quest'ultima:
-  quindici gigabyte divisi in otto archivi, con le stranezze note dell'export.
-  Serve perché un test che genera i propri dati verifica anche le proprie
-  assunzioni, e se un'assunzione è sbagliata resta verde lo stesso.
-- `cargo clippy -- -D warnings`, `cargo deny check` e `npm run build` in CI.
+- 71 tests, including end-to-end runs on synthetic Takeouts. EXIF repair is
+  verified by reading back the tags from a real JPEG and comparing the
+  coordinates after a round trip through degrees, minutes and seconds.
+  Quarantine is verified by taking a snapshot of paths and contents before the
+  operation and demanding that the restore reproduce it exactly.
+- Five measurements excluded from CI, to be run by hand: a hundred thousand
+  photo library, the real-bytes path, a large address book and calendar,
+  extraction of a multi-archive series taken from disk, and repair followed by
+  setting aside the sidecars on a real folder.
+- `tools/generate_takeout_series.py` builds the material for the last two: fifteen
+  gigabytes across eight archives, with the known quirks of the export. It
+  exists because a test that generates its own data also validates its own
+  assumptions, and if an assumption is wrong the test stays green anyway.
+- `cargo clippy -- -D warnings`, `cargo deny check` and `npm run build` in CI.
 
-### Correzioni durante lo sviluppo
+### Fixes made during development
 
-- Le versioni modificate con nome in forma decomposta (NFD, come li scrive
-  macOS) venivano troncate nel punto sbagliato, producendo nomi come
-  `IMG_1-.jpg`. Il punto di taglio ora si cerca sulla stringa originale.
-- I nomi Pixel con i millisecondi (`PXL_20200101_120000123`) venivano rifiutati
-  dal riconoscimento della data.
-- La ricerca dei file affiancati era quadratica sul numero di file: su centomila
-  foto passava da 411 secondi a 0,7.
-- I file in formato non supportato dalla riscrittura EXIF smettevano di essere
-  copiati nell'albero riparato.
-- I sidecar con il nome accorciato da Google non venivano riconosciuti, e la
-  foto finiva per prendere la data dal proprio nome: una risorsa peggiore, che
-  non porta le coordinate. Su una serie di prova da quindici gigabyte erano 87
-  foto su 3237.
-- Un album chiamato `Natale 2024` veniva scambiato per una cartella per anno, e
-  la sua appartenenza non finiva nel manifest, cioè si perdeva proprio il dato
-  che il manifest esiste per salvare.
+- Edited versions whose names are in decomposed form (NFD, the way macOS writes
+  them) were truncated at the wrong point, producing names like `IMG_1-.jpg`.
+  The cut point is now searched on the original string.
+- Pixel names carrying milliseconds (`PXL_20200101_120000123`) were rejected by
+  the date recognition.
+- The search for companion files was quadratic in the number of files: on a
+  hundred thousand photos it went from 411 seconds to 0.7.
+- Files in a format unsupported by EXIF rewriting had stopped being copied into
+  the repaired tree.
+- Sidecars whose names Google had shortened were not recognised, so the photo
+  ended up taking its date from its own filename: a poorer source, and one that
+  carries no coordinates. On a fifteen gigabyte test series that was 87 photos
+  out of 3237.
+- An album called `Christmas 2024` was mistaken for a year folder, so its
+  membership never reached the manifest, losing precisely the information the
+  manifest exists to save.
 
-Gli ultimi due sono emersi dalla misura su una serie multi-archivio presa dal
-disco, e non dai test sintetici: quelli generavano il materiale con le stesse
-assunzioni che stavano verificando.
+The last two surfaced from the measurement on a multi-archive series taken from
+disk, not from the synthetic tests: those were generating the material with the
+same assumptions they were verifying.

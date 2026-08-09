@@ -19,15 +19,15 @@ import { RevealButton } from "./RevealButton";
 import { SidecarSweep } from "./SidecarSweep";
 
 interface PhotoFixerProps {
-  /** Cartella dei media da riparare. */
+  /** Folder of the media to repair. */
   path: string;
-  /** Quanti file hanno la data solo nel sidecar. */
+  /** How many files have their date only in the sidecar. */
   repairable: number;
   /**
-   * Cartella di lavoro condivisa con gli altri pannelli.
+   * Working folder shared with the other panels.
    *
-   * Vive in `App` e non qui: sceglierla due volte, una per riparare e una per
-   * pulire, è attrito inutile visto che nella pratica è sempre la stessa.
+   * It lives in `App` and not here: choosing it twice, once to repair and once
+   * to clean, is pointless friction given it is always the same in practice.
    */
   outputRoot: string | null;
   onOutputRoot: (path: string) => void;
@@ -49,11 +49,11 @@ const MODE_LABELS: Record<WriteMode, string> = {
 };
 
 /**
- * Riparazione dei metadati delle foto.
+ * Repair of photo metadata.
  *
- * La modalità predefinita produce copie in una cartella separata: riscrivere
- * migliaia di file originali è irreversibile, e non deve essere il gesto che
- * capita per primo sotto al dito.
+ * The default mode produces copies in a separate folder: rewriting thousands
+ * of original files is irreversible, and must not be the gesture that falls
+ * under the finger first.
  */
 export function PhotoFixer({
   path,
@@ -71,9 +71,9 @@ export function PhotoFixer({
   const [report, setReport] = useState<RepairReport | null>(null);
   const [running, setRunning] = useState(false);
 
-  // Il listener resta attivo per tutta la vita del componente: registrarlo a
-  // ogni avvio esporrebbe alla finestra in cui l'evento arriva prima che la
-  // registrazione sia completata.
+  // The listener stays active for the whole life of the component:
+  // registering it on every start would expose the window in which the event
+  // arrives before the registration is complete.
   const runningRef = useRef(false);
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -107,9 +107,9 @@ export function PhotoFixer({
       });
       if (typeof selected === "string") {
         onOutputRoot(selected);
-        // I conti si fanno subito: su una libreria grande la scelta della
-        // modalità dipende da quanto spazio resta, e scoprirlo a metà lavoro
-        // sarebbe la scoperta peggiore possibile.
+        // The arithmetic is done straight away: on a large library the choice of
+        // mode depends on how much room is left, and finding out halfway through
+        // would be the worst possible discovery.
         setSpazio(null);
         api
           .estimateSpace(path, selected)
@@ -155,7 +155,7 @@ export function PhotoFixer({
 
   const inPlaceBlocked = mode === "inPlace" && !confirmedInPlace;
   const missingOutput = mode === "copyToOutput" && !outputRoot;
-  // Inutile far partire un'operazione che il backend rifiuterebbe comunque.
+  // No point starting an operation the backend would refuse anyway.
   const noSpace = mode === "copyToOutput" && spazio !== null && !spazio.copyFits;
 
   return (
@@ -376,7 +376,7 @@ function RepairSummary({
 }: {
   report: RepairReport;
   onError: (message: string) => void;
-  /** Cartella riparata, dove restano i sidecar dopo una riscrittura. */
+  /** The repaired folder, where the sidecars remain after a rewrite. */
   sourcePath: string;
 }) {
   const isDryRun = report.mode === "dryRun";

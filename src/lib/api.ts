@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /**
- * Unico punto di contatto tra frontend e backend.
+ * The only point of contact between frontend and backend.
  *
- * Tutto passa dal canale IPC locale di Tauri: non esiste un client HTTP nel
- * frontend e non deve essercene uno. Qualsiasi `fetch` aggiunto qui sarebbe
- * comunque bloccato dalla CSP (`connect-src` limitato a `ipc:`).
+ * Everything goes through Tauri's local IPC channel: there is no HTTP client in
+ * the frontend and there must not be one. Any `fetch` added here would be
+ * blocked by the CSP anyway (`connect-src` limited to `ipc:`).
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -40,22 +40,22 @@ import type {
   WriteOptions,
 } from "../types";
 
-/** Evento di avanzamento emesso dai comandi lunghi. */
+/** Progress event emitted by the long-running commands. */
 const PROGRESS_EVENT = "takeout://progress";
 
-/** Evento con cui la voce di menu "Guida" chiede di mostrare la guida. */
+/** Event with which the "Guide" menu item asks for the guide to be shown. */
 const SHOW_HELP_EVENT = "takeout://mostra-guida";
 
-/** Si mette in ascolto della richiesta di apertura guida dal menu. */
+/** Listens for the request to open the guide from the menu. */
 export function onShowHelp(handler: () => void): Promise<UnlistenFn> {
   return listen(SHOW_HELP_EVENT, () => handler());
 }
 
 /**
- * Si mette in ascolto dell'avanzamento.
+ * Listens for progress.
  *
- * Il backend limita già la frequenza a un evento ogni 80 ms, quindi il
- * gestore può aggiornare lo stato React direttamente senza altre difese.
+ * The backend already caps the rate at one event every 80 ms, so the handler
+ * can update React state directly with no further defences.
  */
 export function onProgress(
   handler: (progress: Progress) => void,
@@ -63,127 +63,127 @@ export function onProgress(
   return listen<Progress>(PROGRESS_EVENT, (event) => handler(event.payload));
 }
 
-/** Carica una cartella Takeout o un archivio `takeout-*.zip`. */
+/** Loads a Takeout folder or a `takeout-*.zip` archive. */
 export const loadSource = (path: string) =>
   invoke<SourceSummary>("load_source", { path });
 
-/** Riepilogo della sorgente già caricata in sessione. */
+/** Summary of the source already loaded in the session. */
 export const currentSource = () => invoke<SourceSummary>("current_source");
 
-/** Dimentica la sorgente corrente. */
+/** Forgets the current source. */
 export const closeSource = () => invoke<void>("close_source");
 
-/** Ispeziona un archivio senza estrarlo. */
+/** Inspects an archive without extracting it. */
 export const inspectArchive = (path: string) =>
   invoke<ArchiveSummary>("inspect_archive", { path });
 
-/** Prime voci di un archivio, per l'anteprima. */
+/** First entries of an archive, for the preview. */
 export const listArchiveEntries = (path: string, limit?: number) =>
   invoke<ArchiveEntry[]>("list_archive_entries", { path, limit });
 
-/** Estrae un archivio nella cartella scelta dall'utente. */
+/** Extracts an archive into the folder chosen by the user. */
 export const extractArchive = (path: string, destination: string) =>
   invoke<ExtractReport>("extract_archive", { path, destination });
 
-/** Individua tutti gli archivi che compongono lo stesso export. */
+/** Finds every archive making up the same export. */
 export const discoverArchiveSeries = (path: string) =>
   invoke<ArchiveSeries>("discover_archive_series", { path });
 
-/** Estrae l'intera serie di archivi in un unico albero, con avanzamento. */
+/** Extracts the whole series of archives into one tree, with progress. */
 export const extractTakeout = (path: string, destination: string) =>
   invoke<ExtractReport>("extract_takeout", { path, destination });
 
-/** Analizza i media di Google Foto. Senza `path` usa l'intera sorgente. */
+/** Analyses the Google Photos media. Without `path` it uses the whole source. */
 export const scanPhotos = (path?: string) =>
   invoke<PhotoScanReport>("scan_photos", { path });
 
-/** Ripara data e coordinate dei media secondo le opzioni indicate. */
+/** Repairs date and coordinates of the media per the options given. */
 export const repairPhotos = (path: string, options: WriteOptions) =>
   invoke<RepairReport>("repair_photos", { path, options });
 
-/** Analizza l'export Contatti. */
+/** Analyses the Contacts export. */
 export const scanContacts = (path?: string) =>
   invoke<ContactsReport>("scan_contacts", { path });
 
-/** Ricostruisce album, cartelle per anno e versioni modificate. */
+/** Reconstructs albums, year folders and edited versions. */
 export const scanAlbums = (path: string) =>
   invoke<AlbumIndex>("scan_albums", { path });
 
-/** Scrive il manifest degli album, da fare prima di deduplicare. */
+/** Writes the album manifest, to be done before deduplicating. */
 export const exportAlbumManifest = (path: string, destination: string) =>
   invoke<ExportReport>("export_album_manifest", { path, destination });
 
-/** Analizza l'export Calendario. */
+/** Analyses the Calendar export. */
 export const scanCalendar = (path?: string) =>
   invoke<CalendarReport>("scan_calendar", { path });
 
-/** Scrive un vCard 3.0 pulito e deduplicato. */
+/** Writes a clean, deduplicated vCard 3.0. */
 export const exportContacts = (path: string, destination: string) =>
   invoke<ExportReport>("export_contacts", { path, destination });
 
-/** Scrive un iCalendar 2.0 pulito e deduplicato. */
+/** Writes a clean, deduplicated iCalendar 2.0. */
 export const exportCalendar = (path: string, destination: string) =>
   invoke<ExportReport>("export_calendar", { path, destination });
 
-/** Analizza l'export Drive. */
+/** Analyses the Drive export. */
 export const scanDrive = (path?: string) =>
   invoke<DriveReport>("scan_drive", { path });
 
-/** Calcola il piano di pulizia senza toccare nulla. */
+/** Computes the cleanup plan without touching anything. */
 export const planDriveClean = (path: string, options: CleanOptions) =>
   invoke<CleanPlan>("plan_drive_clean", { path, options });
 
-/** Esegue la pulizia: albero pulito altrove, oppure quarantena reversibile. */
+/** Performs the cleanup: a clean tree elsewhere, or reversible quarantine. */
 export const cleanDrive = (path: string, options: CleanOptions) =>
   invoke<CleanReport>("clean_drive", { path, options });
 
 /**
- * Sposta i sidecar il cui contenuto è ormai dentro ai file.
+ * Moves the sidecars whose content is now inside the files.
  *
- * Non cancella: scrive lo stesso registro della quarantena, quindi
- * `restoreQuarantine` rimette ogni JSON dov'era.
+ * It does not delete: it writes the same ledger as quarantine, so
+ * `restoreQuarantine` puts every JSON back where it was.
  */
 export const sweepSidecars = (path: string, destination: string) =>
   invoke<SidecarSweepReport>("sweep_sidecars", { path, destination });
 
-/** Rimette al loro posto i file spostati in quarantena. */
+/** Puts the files moved to quarantine back where they were. */
 export const restoreQuarantine = (manifest: string) =>
   invoke<RestoreReport>("restore_quarantine", { manifest });
 
-/** Profilo privacy dichiarato dal backend. */
+/** Privacy profile declared by the backend. */
 export const privacyReport = () => invoke<PrivacyReport>("privacy_report");
 
-/** Conti sullo spazio tra una sorgente e una destinazione. */
+/** Space arithmetic between a source and a destination. */
 export const estimateSpace = (source: string, destination: string) =>
   invoke<SpaceEstimate>("estimate_space", { source, destination });
 
-/** Metadati dell'applicazione, per la guida. */
+/** Application metadata, for the guide. */
 export const appInfo = () => invoke<AppInfo>("app_info");
 
-/** Legge le preferenze conservate. */
+/** Reads the stored preferences. */
 export const readPreferences = () => invoke<Preferences>("read_preferences");
 
-/** Salva le preferenze conservate. */
+/** Saves the stored preferences. */
 export const writePreferences = (preferences: Preferences) =>
   invoke<void>("write_preferences", { preferences });
 
 /**
- * Mostra un percorso nel gestore file del sistema.
+ * Reveals a path in the system file manager.
  *
- * Non apre il file: lo rivela nella sua cartella. Il comando invocato dal
- * backend è fisso e accetta solo un percorso esistente.
+ * It does not open the file: it reveals it in its folder. The program the
+ * backend invokes is fixed and accepts only an existing path.
  */
 export const revealInFileManager = (path: string) =>
   invoke<void>("reveal_in_file_manager", { path });
 
 /**
- * Rende leggibile ciò con cui un comando ha rifiutato.
+ * Renders what a command rejected with into something readable.
  *
- * Il backend rifiuta con un [`ErrorPayload`], cioè un codice più i dati che
- * servono a comporre la frase: il testo si decide in `lib/messages.ts`. Restano
- * gestiti anche i due casi che non passano da lì, cioè un guasto del canale IPC
- * stesso e qualunque valore inatteso, perché un errore che non si sa dire non
- * deve diventare una schermata vuota.
+ * The backend rejects with an [`ErrorPayload`], that is a code plus the data
+ * needed to compose the sentence: the text is decided in `lib/messages.ts`. The
+ * two cases that do not come from there are still handled, namely a fault in
+ * the IPC channel itself and any unexpected value, because an error that
+ * cannot be stated must not turn into a blank screen.
  */
 export function toMessage(error: unknown): string {
   if (isErrorPayload(error)) {

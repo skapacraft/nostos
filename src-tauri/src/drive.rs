@@ -1,19 +1,19 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Analisi dell'export Google Drive.
+//! Analysis of the Google Drive export.
 //!
-//! Due cose sorprendono chi apre un Takeout di Drive per la prima volta:
+//! Two things surprise anyone opening a Drive Takeout for the first time:
 //!
-//! 1. I documenti nativi (Documenti, Fogli, Presentazioni) vengono convertiti
-//!    in `.docx` / `.xlsx` / `.pptx` o `.pdf`, non esportati nel formato
-//!    originale.
-//! 2. I file solo condivisi con l'utente e le scorciatoie compaiono come
-//!    segnaposto `.gdoc` / `.gsheet` / `.gslides`: sono JSON di poche centinaia
-//!    di byte contenenti un URL. Il contenuto non è nell'archivio.
+//! 1. Native documents (Docs, Sheets, Slides) are converted into `.docx` /
+//!    `.xlsx` / `.pptx` or `.pdf`, not exported in their original format.
 //!
-//! Il secondo punto è la fonte più comune di "backup" incompleti, quindi il
-//! modulo lo rileva e lo riporta esplicitamente.
+//! 2. Files merely shared with the user, and shortcuts, appear as `.gdoc` /
+//!    `.gsheet` / `.gslides` placeholders: a few hundred bytes of JSON holding
+//!    a URL. The content is not in the archive.
+//!
+//! The second point is the most common source of incomplete "backups", so the
+//! module detects it and reports it explicitly.
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
@@ -26,13 +26,13 @@ use walkdir::WalkDir;
 
 use crate::app_state::{trace_dev, Notice, Phase, Progress, ProgressSink, Result, TakeoutError};
 
-/// Estensioni dei segnaposto Google: file senza contenuto reale.
+/// Google placeholder extensions: files with no real content.
 const STUB_EXTENSIONS: &[&str] = &[
     "gdoc", "gsheet", "gslides", "gdraw", "gform", "gsite", "gmap", "gjam", "gtable", "gscript",
     "glink", "gnote",
 ];
 
-/// File di servizio dei sistemi operativi, senza valore per l'utente.
+/// Operating system service files, of no value to the user.
 const JUNK_NAMES: &[&str] = &[
     ".DS_Store",
     "desktop.ini",
@@ -42,10 +42,10 @@ const JUNK_NAMES: &[&str] = &[
     "Icon\r",
 ];
 
-/// Prefissi dei file di servizio: `._nome` è la parte AppleDouble di un file.
+/// Service file prefixes: `._name` is the AppleDouble half of a file.
 const JUNK_PREFIXES: &[&str] = &["._"];
 
-/// Cartelle di servizio: tutto ciò che sta dentro è spazzatura.
+/// Service folders: everything inside them is junk.
 const JUNK_DIRS: &[&str] = &[
     "__MACOSX",
     ".Spotlight-V100",
@@ -54,16 +54,16 @@ const JUNK_DIRS: &[&str] = &[
     ".TemporaryItems",
 ];
 
-/// Nome del registro scritto nella quarantena.
+/// Name of the ledger written into the quarantine.
 const MANIFEST_NAME: &str = "oth-quarantena.json";
 
-/// Dimensione del buffer di lettura durante l'hashing.
+/// Size of the read buffer used while hashing.
 ///
-/// L'hash è calcolato in streaming: un file da 10 GB occupa comunque solo
-/// questo buffer, non entra mai in memoria per intero.
+/// The hash is computed as a stream: a 10 GB file still occupies only this
+/// buffer, and never enters memory whole.
 const HASH_BUFFER: usize = 64 * 1024;
 
-/// Categoria merceologica di un file.
+/// The kind of thing a file is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FileCategory {
@@ -76,13 +76,13 @@ pub enum FileCategory {
     Audio,
     Archive,
     Code,
-    /// Segnaposto Google privo di contenuto.
+    /// A Google placeholder with no content.
     Placeholder,
     Other,
 }
 
 impl FileCategory {
-    /// Deduce la categoria dall'estensione.
+    /// Derives the category from the extension.
     pub fn from_path(path: &Path) -> Self {
         let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
             return Self::Other;
@@ -112,7 +112,7 @@ impl FileCategory {
     }
 }
 
-/// Aggregato per categoria.
+/// Aggregate per category.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryStats {
@@ -121,18 +121,18 @@ pub struct CategoryStats {
     pub total_bytes: u64,
 }
 
-/// Segnaposto rilevato, con il riferimento che punta al contenuto online.
+/// A placeholder found, with the reference pointing at the online content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaceholderFile {
     pub path: PathBuf,
     pub file_name: String,
     pub kind: String,
-    /// URL contenuto nel segnaposto, mostrato come testo e mai aperto dall'app.
+    /// URL held in the placeholder, shown as text and never opened by the app.
     pub target_url: Option<String>,
 }
 
-/// Gruppo di file con stesso nome e stessa dimensione.
+/// A group of files sharing a name and a size.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DuplicateGroup {
@@ -141,7 +141,7 @@ pub struct DuplicateGroup {
     pub paths: Vec<PathBuf>,
 }
 
-/// File più pesanti trovati nell'export.
+/// The heaviest files found in the export.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LargeFile {
@@ -150,7 +150,7 @@ pub struct LargeFile {
     pub size_bytes: u64,
 }
 
-/// Esito dell'analisi di una cartella Drive.
+/// Outcome of analysing a Drive folder.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DriveReport {
@@ -162,16 +162,16 @@ pub struct DriveReport {
     pub placeholders: Vec<PlaceholderFile>,
     pub placeholder_count: usize,
     pub duplicate_groups: Vec<DuplicateGroup>,
-    /// Byte recuperabili eliminando i duplicati.
+    /// Bytes reclaimable by removing the duplicates.
     pub duplicate_bytes: u64,
     pub largest_files: Vec<LargeFile>,
     pub warnings: Vec<Notice>,
 }
 
-/// Legge l'URL contenuto in un segnaposto Google.
+/// Reads the URL held in a Google placeholder.
 ///
-/// Il file è un piccolo JSON: se non è interpretabile restituiamo `None`
-/// invece di far fallire l'intera scansione.
+/// The file is a small JSON: if it cannot be parsed we return `None` rather
+/// than failing the whole scan.
 fn read_placeholder_url(path: &Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&content).ok()?;
@@ -181,10 +181,10 @@ fn read_placeholder_url(path: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Percorre la cartella Drive e produce il report.
+/// Walks the Drive folder and produces the report.
 ///
-/// `max_items` limita la lunghezza degli elenchi restituiti alla UI: i
-/// conteggi restano completi.
+/// `max_items` caps the length of the lists returned to the UI: the counts stay
+/// complete.
 pub fn scan_directory(root: &Path, max_items: usize) -> Result<DriveReport> {
     crate::app_state::require_existing(root)?;
 
@@ -256,8 +256,8 @@ pub fn scan_directory(root: &Path, max_items: usize) -> Result<DriveReport> {
             }
         }
 
-        // I duplicati a dimensione zero sono rumore: cartelle vuote esportate,
-        // file segnaposto, artefatti di sincronizzazione.
+        // Zero-length duplicates are noise: exported empty folders, placeholder
+        // files, synchronisation artefacts.
         if size > 0 {
             by_signature
                 .entry((file_name.clone(), size))
@@ -288,7 +288,7 @@ pub fn scan_directory(root: &Path, max_items: usize) -> Result<DriveReport> {
         .into_iter()
         .filter(|(_, paths)| paths.len() > 1)
         .map(|((file_name, size_bytes), paths)| {
-            // Ogni copia oltre la prima è spazio recuperabile.
+            // Every copy past the first is reclaimable space.
             report.duplicate_bytes += size_bytes * (paths.len() as u64 - 1);
             DuplicateGroup {
                 file_name,
@@ -319,53 +319,52 @@ pub fn scan_directory(root: &Path, max_items: usize) -> Result<DriveReport> {
 }
 
 // ---------------------------------------------------------------------------
-// Pulizia
+// Cleanup
 // ---------------------------------------------------------------------------
 
-/// Come trattare i file da rimuovere.
+/// How to treat the files being removed.
 ///
-/// Manca di proposito una modalità che cancelli: un export è spesso l'unica
-/// copia rimasta di quei dati, e una deduplica sbagliata su una cancellazione
-/// non si annulla. Le due modalità operative producono entrambe qualcosa che si
-/// può disfare.
+/// A deleting mode is missing on purpose: an export is often the only copy left
+/// of that data, and a botched deduplication carried out as a deletion cannot be
+/// undone. Both working modes produce something that can be taken back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CleanMode {
-    /// Calcola il piano senza toccare nulla.
+    /// Computes the plan without touching anything.
     DryRun,
-    /// Costruisce altrove un albero pulito, lasciando intatta l'origine.
+    /// Builds a clean tree elsewhere, leaving the source untouched.
     CopyToOutput,
-    /// Sposta spazzatura e copie in eccesso in una cartella di quarantena,
-    /// scrivendo un registro che permette di rimettere tutto a posto.
+    /// Moves junk and surplus copies into a quarantine folder, writing a ledger
+    /// that allows putting everything back.
     Quarantine,
 }
 
-/// Motivo per cui un file è stato spostato in quarantena.
+/// Why a file was moved to quarantine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum QuarantineReason {
     Junk,
     Duplicate,
-    /// File affiancato che segue il media rimosso.
+    /// A companion file following the media that was removed.
     Companion,
-    /// Sidecar il cui contenuto è ormai dentro al media, che resta al suo posto.
+    /// A sidecar whose content is now inside the media, which stays where it is.
     AppliedSidecar,
 }
 
-/// Parametri della pulizia.
+/// Cleanup parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CleanOptions {
     pub mode: CleanMode,
-    /// Albero di uscita oppure radice della quarantena, secondo la modalità.
+    /// Output tree, or quarantine root, depending on the mode.
     pub destination: Option<PathBuf>,
     pub remove_junk: bool,
     pub remove_duplicates: bool,
-    /// Porta con sé i file affiancati quando si rimuove un media.
+    /// Take companion files along when a media file is removed.
     ///
-    /// Serve su Google Foto: togliere `IMG_1268 2.JPG` e lasciare indietro
-    /// `IMG_1268 2.JPG.supplemental-metadata.json` produce un sidecar orfano
-    /// che non descrive più nulla.
+    /// Needed on Google Photos: removing `IMG_1268 2.JPG` and leaving
+    /// `IMG_1268 2.JPG.supplemental-metadata.json` behind produces an orphan
+    /// sidecar that no longer describes anything.
     pub move_companions: bool,
 }
 
@@ -381,40 +380,40 @@ impl Default for CleanOptions {
     }
 }
 
-/// Gruppo di file con contenuto identico, verificato per hash.
+/// A group of files with identical content, verified by hash.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentDuplicateGroup {
-    /// Hash BLAKE3 del contenuto, abbreviato.
+    /// BLAKE3 hash of the content, shortened.
     pub hash: String,
     pub size_bytes: u64,
-    /// La copia che viene conservata.
+    /// The copy that gets kept.
     pub kept: PathBuf,
-    /// Le copie in eccesso.
+    /// The surplus copies.
     pub copies: Vec<PathBuf>,
 }
 
-/// Piano di pulizia: che cosa succederebbe, senza che sia successo.
+/// The cleanup plan: what would happen, without it having happened.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CleanPlan {
     pub root: PathBuf,
     pub files_scanned: usize,
-    /// File che resterebbero al loro posto.
+    /// Files that would stay where they are.
     pub files_kept: usize,
     pub duplicate_copies: usize,
     pub junk_files: usize,
-    /// Sidecar e simili che seguiranno i media rimossi.
+    /// Sidecars and the like that will follow the media removed.
     pub companion_files: usize,
     pub reclaimable_bytes: u64,
-    /// Byte effettivamente letti per calcolare gli hash.
+    /// Bytes actually read in order to compute the hashes.
     pub hashed_bytes: u64,
     pub duplicate_groups: Vec<ContentDuplicateGroup>,
     pub junk_sample: Vec<PathBuf>,
     pub warnings: Vec<Notice>,
 }
 
-/// Voce del registro di quarantena.
+/// One entry of the quarantine ledger.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuarantineEntry {
@@ -424,7 +423,7 @@ pub struct QuarantineEntry {
     pub size_bytes: u64,
 }
 
-/// Registro scritto nella quarantena, che rende reversibile l'operazione.
+/// The ledger written into the quarantine, which makes the operation reversible.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuarantineManifest {
@@ -433,7 +432,7 @@ pub struct QuarantineManifest {
     pub entries: Vec<QuarantineEntry>,
 }
 
-/// Esito di una pulizia eseguita.
+/// Outcome of a cleanup that was carried out.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CleanReport {
@@ -442,15 +441,15 @@ pub struct CleanReport {
     pub files_kept: usize,
     pub duplicates_handled: usize,
     pub junk_handled: usize,
-    /// Sidecar spostati insieme ai media a cui appartenevano.
+    /// Sidecars moved along with the media they belonged to.
     pub companions_handled: usize,
     pub bytes_reclaimed: u64,
-    /// Percorso del registro, presente solo in quarantena.
+    /// Path of the ledger, present only in quarantine mode.
     pub manifest: Option<PathBuf>,
     pub failures: Vec<String>,
 }
 
-/// Esito di un ripristino dalla quarantena.
+/// Outcome of a restore from quarantine.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreReport {
@@ -459,9 +458,9 @@ pub struct RestoreReport {
     pub failures: Vec<String>,
 }
 
-/// Vero se il file è un artefatto del sistema operativo.
+/// True if the file is an operating system artefact.
 pub fn is_junk(path: &Path) -> bool {
-    // Una cartella di servizio contamina tutto il suo contenuto.
+    // A service folder contaminates everything it contains.
     if path
         .components()
         .filter_map(|c| c.as_os_str().to_str())
@@ -480,16 +479,16 @@ pub fn is_junk(path: &Path) -> bool {
         || JUNK_PREFIXES.iter().any(|prefix| name.starts_with(prefix))
 }
 
-/// Nomi dei file contenuti in ogni cartella, raccolti durante la scansione.
+/// Names of the files inside each folder, collected during the scan.
 ///
-/// Serve a cercare i file affiancati senza rileggere la cartella ogni volta.
+/// It exists so companion files can be found without rereading the folder.
 type DirIndex = HashMap<PathBuf, Vec<String>>;
 
-/// Vero se il file è affiancato a un altro presente nella stessa cartella,
-/// cioè se il suo nome è il nome completo di quel file più un suffisso.
+/// True if the file sits beside another one in the same folder, that is if its
+/// name is that file's complete name plus a suffix.
 ///
-/// È il rovescio di [`find_companions`]: serve a escludere i sidecar dalla
-/// deduplica, perché non sono file autonomi.
+/// It is the reverse of [`find_companions`]: it exists to exclude sidecars from
+/// deduplication, because they are not files in their own right.
 fn is_companion(path: &Path, index: &DirIndex) -> bool {
     let (Some(name), Some(parent)) = (path.file_name().and_then(|n| n.to_str()), path.parent())
     else {
@@ -506,19 +505,19 @@ fn is_companion(path: &Path, index: &DirIndex) -> bool {
     })
 }
 
-/// Trova i file affiancati a un media, cioè quelli il cui nome è il nome
-/// completo del media seguito da un suffisso.
+/// Finds the files sitting beside a media file, that is those whose name is the
+/// media's complete name followed by a suffix.
 ///
-/// È la convenzione dei sidecar di Google Foto: `IMG_1268 2.JPG` è accompagnato
-/// da `IMG_1268 2.JPG.supplemental-metadata.json`. La regola è volutamente
-/// stretta, sul nome completo con estensione, così `IMG_1268.JPG` non cattura
-/// per errore i file di `IMG_1268 2.JPG`.
+/// That is the Google Photos sidecar convention: `IMG_1268 2.JPG` is accompanied
+/// by `IMG_1268 2.JPG.supplemental-metadata.json`. The rule is deliberately
+/// strict, matching the complete name including extension, so `IMG_1268.JPG`
+/// does not accidentally capture the files of `IMG_1268 2.JPG`.
 ///
-/// La ricerca avviene sull'indice già in memoria e non sul filesystem: la
-/// versione che rileggeva la cartella a ogni chiamata costava il prodotto tra
-/// il numero di duplicati e il numero di file nella loro cartella, e su una
-/// libreria di ventimila foto portava il piano di pulizia da un secondo a
-/// quasi sette minuti.
+/// The search runs on the in-memory index rather than the filesystem: the
+/// version that reread the folder on every call cost the product of the number
+/// of duplicates and the number of files in their folder, and on a library of
+/// twenty thousand photos it took the cleanup plan from one second to nearly
+/// seven minutes.
 fn find_companions(media: &Path, index: &DirIndex) -> Vec<PathBuf> {
     let Some(name) = media.file_name().and_then(|n| n.to_str()) else {
         return Vec::new();
@@ -538,7 +537,7 @@ fn find_companions(media: &Path, index: &DirIndex) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Calcola l'hash BLAKE3 del contenuto, leggendo a blocchi.
+/// Computes the BLAKE3 hash of the content, reading in blocks.
 fn hash_file(path: &Path) -> Result<(String, u64)> {
     let mut file = std::fs::File::open(path).map_err(|e| TakeoutError::io(path, e))?;
     let mut hasher = blake3::Hasher::new();
@@ -559,12 +558,12 @@ fn hash_file(path: &Path) -> Result<(String, u64)> {
     Ok((hasher.finalize().to_hex()[..16].to_string(), read_total))
 }
 
-/// Sceglie quale copia conservare in un gruppo di duplicati.
+/// Chooses which copy to keep in a group of duplicates.
 ///
-/// Vince il percorso più corto, a parità il primo in ordine alfabetico. Non è
-/// arbitrario: le copie generate dai sistemi operativi e da Google aggiungono
-/// suffissi (`IMG_1268 2.JPG`, `documento (1).pdf`), quindi il nome più corto è
-/// quasi sempre l'originale.
+/// The shortest path wins, ties broken alphabetically. That is not arbitrary:
+/// the copies generated by operating systems and by Google add suffixes
+/// (`IMG_1268 2.JPG`, `document (1).pdf`), so the shortest name is almost always
+/// the original.
 fn choose_kept(paths: &mut Vec<PathBuf>) -> PathBuf {
     paths.sort_by(|a, b| {
         let a_str = a.to_string_lossy();
@@ -577,12 +576,12 @@ fn choose_kept(paths: &mut Vec<PathBuf>) -> PathBuf {
     paths.remove(0)
 }
 
-/// Costruisce il piano di pulizia senza modificare nulla.
+/// Builds the cleanup plan without modifying anything.
 ///
-/// La deduplica avviene in due fasi: prima si raggruppa per dimensione, che è
-/// gratis, poi si calcola l'hash solo dei gruppi con più di un file. Su un
-/// export dove quasi tutti i file sono unici questo evita di leggere l'intero
-/// contenuto del disco.
+/// Deduplication happens in two phases: first files are grouped by size, which
+/// is free, then the hash is computed only for groups holding more than one
+/// file. On an export where nearly every file is unique, that avoids reading
+/// the entire content of the disk.
 pub fn plan_clean(
     root: &Path,
     options: &CleanOptions,
@@ -600,9 +599,9 @@ pub fn plan_clean(
     let mut junk: Vec<PathBuf> = Vec::new();
     let mut dir_index: DirIndex = HashMap::new();
 
-    // L'indice va completo prima di decidere che cosa è deduplicabile: per
-    // riconoscere un sidecar serve sapere se esiste il media a cui appartiene,
-    // e quel media può comparire dopo di lui nell'ordine di scansione.
+    // The index has to be complete before deciding what can be deduplicated: to
+    // recognise a sidecar you need to know whether the media it belongs to exists,
+    // and that media may come after it in scan order.
     for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
         if !entry.file_type().is_file() {
             continue;
@@ -634,8 +633,8 @@ pub fn plan_clean(
         plan.files_scanned += 1;
         let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
 
-        // L'indice si riempie qui, sfruttando una passata che stiamo già
-        // facendo, invece di rileggere le cartelle più avanti.
+        // The index is filled here, taking advantage of a pass we are making
+        // anyway, rather than rereading the folders later on.
         if let (Some(parent), Some(name)) =
             (path.parent(), path.file_name().and_then(|n| n.to_str()))
         {
@@ -651,18 +650,18 @@ pub fn plan_clean(
             continue;
         }
 
-        // Un file affiancato non ha vita propria: appartiene al suo media e lo
-        // segue quando viene spostato. Trattarlo come candidato indipendente
-        // permetterebbe di rimuoverne uno perché il sidecar di un'altra foto
-        // ha per caso lo stesso contenuto, lasciando quella foto senza i suoi
-        // metadati. È un errore che non si recupera guardando i file rimasti.
+        // A companion file has no life of its own: it belongs to its media and
+        // follows it when that is moved. Treating it as an independent candidate
+        // would allow removing one because another photo's sidecar happens to have
+        // the same content, leaving that photo without its metadata. It is a
+        // mistake you cannot recover from by looking at the files left behind.
         if options.move_companions && is_companion(path, &dir_index) {
             plan.files_kept += 1;
             continue;
         }
 
-        // I file vuoti hanno tutti lo stesso hash: raggrupparli produrrebbe un
-        // gruppo enorme di "duplicati" che non lo sono in alcun senso utile.
+        // Empty files all share the same hash: grouping them would produce one
+        // enormous group of "duplicates" that are not duplicates in any useful sense.
         if options.remove_duplicates && size > 0 {
             by_size.entry(size).or_default().push(path.to_path_buf());
         } else {
@@ -673,7 +672,7 @@ pub fn plan_clean(
     plan.junk_files = junk.len();
     plan.junk_sample = junk.into_iter().take(50).collect();
 
-    // Solo i gruppi con più di un file per dimensione meritano un hash.
+    // Only groups holding more than one file per size deserve a hash.
     let candidates: Vec<(u64, Vec<PathBuf>)> = by_size
         .into_iter()
         .filter(|(_, paths)| {
@@ -688,7 +687,7 @@ pub fn plan_clean(
 
     let to_hash: usize = candidates.iter().map(|(_, p)| p.len()).sum();
     trace_dev!(
-        "pulizia: {} file esaminati, {} da verificare per contenuto",
+        "cleanup: {} files examined, {} to verify by content",
         plan.files_scanned,
         to_hash
     );
@@ -756,16 +755,16 @@ pub fn plan_clean(
     plan.duplicate_groups
         .sort_by_key(|g| std::cmp::Reverse(g.size_bytes * g.copies.len() as u64));
 
-    // I conteggi restano completi, l'elenco no: è quello che attraversa il
-    // canale IPC verso l'interfaccia, e su una libreria vera diventerebbe
-    // qualche megabyte di JSON a ogni scansione.
+    // The counts stay complete, the list does not: the list is what crosses
+    // the IPC channel towards the interface, and on a real library it would
+    // become a few megabytes of JSON on every scan.
     plan.duplicate_groups.truncate(max_items);
 
     progress(Progress::new(Phase::Done, to_hash, to_hash, 0));
     Ok(plan)
 }
 
-/// Verifica che la destinazione non stia dentro la sorgente.
+/// Checks that the destination does not sit inside the source.
 fn check_destination(root: &Path, destination: &Path) -> Result<()> {
     if destination.starts_with(root) {
         return Err(TakeoutError::DestinationInsideSource);
@@ -773,13 +772,13 @@ fn check_destination(root: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Esegue la pulizia secondo le opzioni indicate.
+/// Performs the cleanup according to the options given.
 pub fn clean(
     root: &Path,
     options: &CleanOptions,
     progress: ProgressSink<'_>,
 ) -> Result<CleanReport> {
-    // Qui l'elenco dei duplicati serve intero, non troncato per la UI.
+    // Here the list of duplicates is needed whole, not truncated for the UI.
     let plan = plan_clean(root, options, usize::MAX, progress)?;
 
     let mut report = CleanReport {
@@ -799,13 +798,13 @@ pub fn clean(
         .ok_or(TakeoutError::DestinationRequired)?;
     check_destination(root, destination)?;
 
-    // In quarantena i file si spostano, quindi lo spazio serve solo se la
-    // destinazione sta su un altro volume; costruendo un albero pulito invece
-    // si duplica quasi tutto, e conviene saperlo prima di cominciare.
+    // In quarantine mode files are moved, so space is needed only when the
+    // destination is on another volume; building a clean tree instead duplicates
+    // nearly everything, and it is better to know that before starting.
     if options.mode == CleanMode::CopyToOutput {
-        // L'albero pulito contiene tutto tranne ciò che viene scartato, quindi
-        // lo spazio necessario è il totale meno il recuperabile.
-        let totale: u64 = WalkDir::new(root)
+        // The clean tree holds everything except what gets discarded, so the space
+        // needed is the total minus the reclaimable part.
+        let total: u64 = WalkDir::new(root)
             .follow_links(false)
             .into_iter()
             .flatten()
@@ -813,13 +812,13 @@ pub fn clean(
             .filter_map(|e| e.metadata().ok())
             .map(|m| m.len())
             .sum();
-        let da_scrivere = totale.saturating_sub(plan.reclaimable_bytes);
+        let da_scrivere = total.saturating_sub(plan.reclaimable_bytes);
         crate::app_state::require_free_space(destination, da_scrivere)?;
     }
 
     std::fs::create_dir_all(destination).map_err(|e| TakeoutError::io(destination, e))?;
 
-    // L'insieme dei file da rimuovere: le copie in eccesso e la spazzatura.
+    // The set of files to remove: the surplus copies and the junk.
     let mut dir_index: DirIndex = HashMap::new();
     for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
         if !entry.file_type().is_file() {
@@ -850,7 +849,7 @@ pub fn clean(
     for junk in &plan.junk_sample {
         removable.push((junk.clone(), QuarantineReason::Junk));
     }
-    // `junk_sample` è troncato per la UI: qui serve l'elenco completo.
+    // `junk_sample` is truncated for the UI: here the complete list is needed.
     if plan.junk_files > plan.junk_sample.len() {
         for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
             if entry.file_type().is_file()
@@ -915,8 +914,8 @@ pub fn clean(
                 }
 
                 let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-                // `rename` fallisce tra volumi diversi: in quel caso si copia e
-                // si rimuove, che è l'unico modo di spostare tra filesystem.
+                // `rename` fails across volumes: in that case we copy and remove, which
+                // is the only way to move between filesystems.
                 let moved = std::fs::rename(path, &target).or_else(|_| {
                     std::fs::copy(path, &target).and_then(|_| std::fs::remove_file(path))
                 });
@@ -928,9 +927,9 @@ pub fn clean(
                             QuarantineReason::Duplicate => report.duplicates_handled += 1,
                             QuarantineReason::Junk => report.junk_handled += 1,
                             QuarantineReason::Companion => report.companions_handled += 1,
-                            // La pulizia non produce mai questo motivo: nasce
-                            // solo da `sweep_applied_sidecars`, che scrive il
-                            // proprio registro.
+                            // Cleanup never produces this reason: it comes only from
+                            // `sweep_applied_sidecars`, which writes its own
+                            // ledger.
                             QuarantineReason::AppliedSidecar => {}
                         }
                         manifest.entries.push(QuarantineEntry {
@@ -944,8 +943,8 @@ pub fn clean(
                 }
             }
 
-            // Il registro va scritto anche se qualche spostamento è fallito:
-            // senza, ciò che è stato spostato non si recupera più.
+            // The ledger has to be written even if some moves failed: without it,
+            // what has already been moved cannot be recovered.
             let manifest_path = destination.join(MANIFEST_NAME);
             let json = serde_json::to_string_pretty(&manifest)
                 .map_err(|e| TakeoutError::Metadata(e.to_string()))?;
@@ -958,7 +957,7 @@ pub fn clean(
     }
 
     trace_dev!(
-        "pulizia conclusa: {} duplicati, {} spazzatura, {} byte, {} errori",
+        "cleanup finished: {} duplicates, {} junk, {} bytes, {} errors",
         report.duplicates_handled,
         report.junk_handled,
         report.bytes_reclaimed,
@@ -968,7 +967,7 @@ pub fn clean(
     Ok(report)
 }
 
-/// Quante volte ricorre un motivo di permanenza.
+/// How many times a retention reason occurs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeptReason {
@@ -976,41 +975,41 @@ pub struct KeptReason {
     pub count: usize,
 }
 
-/// Esito dello spostamento dei sidecar il cui contenuto è ormai nei file.
+/// Outcome of setting aside the sidecars whose content is now in the files.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SidecarSweepReport {
     pub destination: PathBuf,
     pub moved: usize,
     pub bytes_moved: u64,
-    /// Sidecar lasciati dov'erano perché ancora unica copia di qualcosa.
+    /// Sidecars left where they were because still the sole copy of something.
     pub kept: usize,
-    /// Motivi per cui sono stati lasciati, con quante volte ricorrono.
+    /// Why they were left, with how many times each reason occurs.
     pub kept_reasons: Vec<KeptReason>,
-    /// Campione dei file rimasti, per poterli guardare.
+    /// Sample of the files left behind, so they can be looked at.
     pub kept_sample: Vec<PathBuf>,
     pub manifest: Option<PathBuf>,
     pub failures: Vec<String>,
 }
 
-/// Sposta i sidecar il cui contenuto è ormai dentro al media a cui appartengono.
+/// Moves the sidecars whose content is now inside the media they belong to.
 ///
-/// Non è una pulizia: è l'ultimo passo di una riparazione riuscita. Un JSON
-/// accanto a una foto che ormai porta gli stessi dati non aggiunge nulla, ma
-/// finché non si è verificato che quei dati ci siano davvero il JSON è l'unica
-/// copia di qualcosa, e va lasciato stare.
+/// This is not a cleanup: it is the last step of a successful repair. A JSON
+/// beside a photo that now carries the same data adds nothing, but until it has
+/// been verified that the data really is there, the JSON is the only copy of
+/// something and must be left alone.
 ///
-/// Per questo la decisione non si basa su quanto ha riferito la riparazione ma
-/// su cosa c'è scritto nel file adesso, letto uno per uno. Restano indietro:
+/// That is why the decision is not based on what the repair reported but on what
+/// is written in the file right now, read one by one. Left behind are:
 ///
-/// - i sidecar di PNG, GIF e video, formati in cui non scriviamo EXIF e per i
-///   quali il JSON è quindi l'unica sede di data e coordinate;
-/// - quelli il cui media non risulta ancora riparato;
-/// - quelli che portano dati senza una sede nei metadati, come il conteggio
-///   delle visualizzazioni di Google Foto.
+/// - the sidecars of PNG, GIF and video files, formats where we write no EXIF
+///   and for which the JSON is therefore the only home of date and coordinates;
+/// - those whose media does not appear to be repaired yet;
+/// - those carrying data with no home in the metadata, such as the Google Photos
+///   view count.
 ///
-/// Lo spostamento è reversibile: scrive lo stesso registro della quarantena, e
-/// [`restore_quarantine`] rimette ogni file al suo posto.
+/// The move is reversible: it writes the same ledger as quarantine, and
+/// [`restore_quarantine`] puts every file back in its place.
 pub fn sweep_applied_sidecars(
     root: &Path,
     destination: &Path,
@@ -1025,8 +1024,8 @@ pub fn sweep_applied_sidecars(
         .canonicalize()
         .map_err(|e| crate::app_state::TakeoutError::io(root, e))?;
 
-    // Indice dei percorsi esistenti: senza, ogni candidato sidecar costerebbe
-    // un accesso al filesystem dentro cartelle da decine di migliaia di voci.
+    // Index of the existing paths: without it every sidecar candidate would cost
+    // a filesystem access inside folders holding tens of thousands of entries.
     let mut index = exif_parser::FileIndex::new();
     let mut media: Vec<PathBuf> = Vec::new();
     for entry in WalkDir::new(&root)
@@ -1042,8 +1041,8 @@ pub fn sweep_applied_sidecars(
         index.insert(path);
     }
 
-    let totale = media.len();
-    progress(Progress::new(Phase::Scanning, 0, totale, 0));
+    let total = media.len();
+    progress(Progress::new(Phase::Scanning, 0, total, 0));
 
     let mut report = SidecarSweepReport {
         destination: destination.to_path_buf(),
@@ -1054,25 +1053,25 @@ pub fn sweep_applied_sidecars(
         source_root: root.clone(),
         entries: Vec::new(),
     };
-    // Ordinato per avere un elenco stabile fra un'esecuzione e l'altra.
-    let mut conteggi: BTreeMap<exif_parser::SidecarKept, usize> = BTreeMap::new();
+    // Sorted, so the list stays stable between one run and the next.
+    let mut counts: BTreeMap<exif_parser::SidecarKept, usize> = BTreeMap::new();
 
     for (fatti, file) in media.iter().enumerate() {
-        progress(Progress::new(Phase::Writing, fatti, totale, 0));
+        progress(Progress::new(Phase::Writing, fatti, total, 0));
 
         let Ok(Some(sidecar)) = exif_parser::read_sidecar(file, Some(&index)) else {
             continue;
         };
 
-        let mut motivi = exif_parser::sidecar_residual(file, &sidecar)?;
-        // Ciò che non ha una sede nei metadati resta un motivo valido per non
-        // toccare il JSON, anche se nessuna riparazione potrà mai risolverlo.
-        motivi.extend(sidecar.unwritable());
+        let mut reasons = exif_parser::sidecar_residual(file, &sidecar)?;
+        // What has no home in the metadata remains a valid reason not to touch the
+        // JSON, even though no repair will ever be able to resolve it.
+        reasons.extend(sidecar.unwritable());
 
-        if !motivi.is_empty() {
+        if !reasons.is_empty() {
             report.kept += 1;
-            for motivo in motivi {
-                *conteggi.entry(motivo).or_insert(0) += 1;
+            for motivo in reasons {
+                *counts.entry(motivo).or_insert(0) += 1;
             }
             if report.kept_sample.len() < max_items {
                 report.kept_sample.push(sidecar.path.clone());
@@ -1092,7 +1091,7 @@ pub fn sweep_applied_sidecars(
         let size = std::fs::metadata(&sidecar.path)
             .map(|m| m.len())
             .unwrap_or(0);
-        // `rename` fallisce tra volumi diversi: allora si copia e si rimuove.
+        // `rename` fails across volumes: then we copy and remove.
         let moved = std::fs::rename(&sidecar.path, &target).or_else(|_| {
             std::fs::copy(&sidecar.path, &target).and_then(|_| std::fs::remove_file(&sidecar.path))
         });
@@ -1114,13 +1113,13 @@ pub fn sweep_applied_sidecars(
         }
     }
 
-    report.kept_reasons = conteggi
+    report.kept_reasons = counts
         .into_iter()
         .map(|(reason, count)| KeptReason { reason, count })
         .collect();
 
-    // Il registro va scritto anche se qualche spostamento è fallito: senza,
-    // ciò che è stato spostato non si recupera più.
+    // The ledger has to be written even if some moves failed: without it, what
+    // has already been moved cannot be recovered.
     if !manifest.entries.is_empty() {
         let manifest_path = destination.join(MANIFEST_NAME);
         let json = serde_json::to_string_pretty(&manifest)
@@ -1130,9 +1129,9 @@ pub fn sweep_applied_sidecars(
         report.manifest = Some(manifest_path);
     }
 
-    progress(Progress::new(Phase::Done, totale, totale, 0));
+    progress(Progress::new(Phase::Done, total, total, 0));
     trace_dev!(
-        "sidecar: {} spostati, {} lasciati, {} errori",
+        "sidecars: {} moved, {} kept, {} errors",
         report.moved,
         report.kept,
         report.failures.len()
@@ -1141,10 +1140,10 @@ pub fn sweep_applied_sidecars(
     Ok(report)
 }
 
-/// Rimette al loro posto i file spostati in quarantena.
+/// Puts the files moved to quarantine back where they were.
 ///
-/// È la funzione che rende vera la parola "reversibile": senza, la quarantena
-/// sarebbe solo una cancellazione con un nome più gentile.
+/// It is the function that makes the word "reversible" true: without it,
+/// quarantine would be a deletion with a friendlier name.
 pub fn restore_quarantine(manifest_path: &Path) -> Result<RestoreReport> {
     let content =
         std::fs::read_to_string(manifest_path).map_err(|e| TakeoutError::io(manifest_path, e))?;
@@ -1154,8 +1153,8 @@ pub fn restore_quarantine(manifest_path: &Path) -> Result<RestoreReport> {
     let mut report = RestoreReport::default();
 
     for entry in &manifest.entries {
-        // Se nel frattempo qualcosa è ricomparso all'origine, non lo si
-        // sovrascrive: meglio lasciare il file in quarantena e dirlo.
+        // If something has reappeared at the origin meanwhile, we do not overwrite
+        // it: better to leave the file in quarantine and say so.
         if entry.original.exists() {
             report.skipped_existing += 1;
             continue;
@@ -1181,7 +1180,7 @@ pub fn restore_quarantine(manifest_path: &Path) -> Result<RestoreReport> {
     }
 
     trace_dev!(
-        "ripristino: {} rimessi a posto, {} saltati, {} errori",
+        "restore: {} put back, {} skipped, {} errors",
         report.restored,
         report.skipped_existing,
         report.failures.len()
@@ -1194,114 +1193,115 @@ pub fn restore_quarantine(manifest_path: &Path) -> Result<RestoreReport> {
 mod tests {
     use super::*;
 
-    /// Lo spostamento dei sidecar deve essere selettivo e annullabile.
+    /// Setting sidecars aside has to be selective and undoable.
     ///
-    /// Selettivo perché un JSON accanto a un file che non porta ancora quei
-    /// dati è l'unica copia di qualcosa: spostarlo sarebbe una perdita
-    /// mascherata da pulizia. Annullabile perché "non cancella niente" vale
-    /// poco se poi il file non si può rimettere dov'era.
+    /// Selective because a JSON beside a file that does not yet carry that data
+    /// is the only copy of something: moving it would be a loss dressed up as
+    /// a cleanup. Undoable because "nothing is ever deleted" is worth little
+    /// if the file then cannot be put back where it was.
     #[test]
-    fn sposta_solo_i_sidecar_il_cui_contenuto_e_gia_nel_file() {
+    fn moves_only_sidecars_whose_content_is_already_in_the_file() {
         use crate::app_state::testing::{write_bytes, write_file, TempDir, MINIMAL_JPEG};
         use crate::exif_parser::{apply_metadata, WriteMode, WriteOptions};
 
         let temp = TempDir::new("sidecar-spostati");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
 
-        let sidecar = |nome: &str| {
+        let sidecar = |name: &str| {
             format!(
-                r#"{{"title": "{nome}",
+                r#"{{"title": "{name}",
                      "photoTakenTime": {{ "timestamp": "1577880000" }},
                      "geoData": {{ "latitude": 45.4642, "longitude": 9.19, "altitude": 0.0 }} }}"#
             )
         };
 
-        // Riparabile: dopo la riscrittura il JSON non serve più.
-        write_bytes(&foto.join("IMG_0001.JPG"), MINIMAL_JPEG);
-        write_file(&foto.join("IMG_0001.JPG.json"), &sidecar("IMG_0001.JPG"));
+        // Repairable: once rewritten, the JSON is no longer needed.
+        write_bytes(&photos.join("IMG_0001.JPG"), MINIMAL_JPEG);
+        write_file(&photos.join("IMG_0001.JPG.json"), &sidecar("IMG_0001.JPG"));
 
-        // Video: non scriviamo EXIF, quindi il JSON resta l'unica sede.
-        write_file(&foto.join("VID_0002.mp4"), "non un video vero");
-        write_file(&foto.join("VID_0002.mp4.json"), &sidecar("VID_0002.mp4"));
+        // Video: we write no EXIF, so the JSON stays the only home.
+        write_file(&photos.join("VID_0002.mp4"), "not a real video");
+        write_file(&photos.join("VID_0002.mp4.json"), &sidecar("VID_0002.mp4"));
 
-        // Mai riparato: la data sta solo nel JSON.
-        write_bytes(&foto.join("IMG_0003.JPG"), MINIMAL_JPEG);
-        write_file(&foto.join("IMG_0003.JPG.json"), &sidecar("IMG_0003.JPG"));
+        // Never repaired: the date lives only in the JSON.
+        write_bytes(&photos.join("IMG_0003.JPG"), MINIMAL_JPEG);
+        write_file(&photos.join("IMG_0003.JPG.json"), &sidecar("IMG_0003.JPG"));
 
-        // Con un contatore di Google, che non ha una sede nei metadati.
-        write_bytes(&foto.join("IMG_0004.JPG"), MINIMAL_JPEG);
+        // With a Google counter, which has no home in the metadata.
+        write_bytes(&photos.join("IMG_0004.JPG"), MINIMAL_JPEG);
         write_file(
-            &foto.join("IMG_0004.JPG.json"),
+            &photos.join("IMG_0004.JPG.json"),
             r#"{"title": "IMG_0004.JPG",
                 "photoTakenTime": { "timestamp": "1577880000" },
                 "imageViews": "128"}"#,
         );
 
-        // Ripara solo le prime due foto, lasciando indietro IMG_0003.
+        // Repair only the first two photos, leaving IMG_0003 behind.
         let da_riparare = temp.path().join("solo-alcune");
-        for nome in ["IMG_0001.JPG", "IMG_0004.JPG"] {
-            write_bytes(&da_riparare.join(nome), MINIMAL_JPEG);
+        for name in ["IMG_0001.JPG", "IMG_0004.JPG"] {
+            write_bytes(&da_riparare.join(name), MINIMAL_JPEG);
             std::fs::copy(
-                foto.join(format!("{nome}.json")),
-                da_riparare.join(format!("{nome}.json")),
+                photos.join(format!("{name}.json")),
+                da_riparare.join(format!("{name}.json")),
             )
-            .expect("copia sidecar");
+            .expect("copy sidecar");
         }
         apply_metadata(
-            &foto,
+            &photos,
             &WriteOptions {
                 mode: WriteMode::InPlace,
                 ..WriteOptions::default()
             },
             &crate::app_state::no_progress,
         )
-        .expect("riparazione");
-        // Rimette IMG_0003 allo stato di partenza: riparato non lo vogliamo.
-        write_bytes(&foto.join("IMG_0003.JPG"), MINIMAL_JPEG);
+        .expect("repair");
+        // Put IMG_0003 back to its starting state: repaired is not what we want.
+        write_bytes(&photos.join("IMG_0003.JPG"), MINIMAL_JPEG);
 
         let quarantena = temp.path().join("sidecar-applicati");
-        let report = sweep_applied_sidecars(&foto, &quarantena, 10, &crate::app_state::no_progress)
-            .expect("spostamento");
+        let report =
+            sweep_applied_sidecars(&photos, &quarantena, 10, &crate::app_state::no_progress)
+                .expect("sweep");
 
         assert_eq!(report.moved, 1, "solo IMG_0001 è pienamente riparata");
-        assert_eq!(report.kept, 3, "gli altri tre restano: {report:?}");
+        assert_eq!(report.kept, 3, "the other three stay: {report:?}");
         assert!(
-            !foto.join("IMG_0001.JPG.json").exists(),
-            "il sidecar applicato va spostato"
+            !photos.join("IMG_0001.JPG.json").exists(),
+            "the applied sidecar has to be moved"
         );
         assert!(
-            foto.join("VID_0002.mp4.json").exists(),
-            "senza EXIF il JSON è l'unica sede: non si tocca"
+            photos.join("VID_0002.mp4.json").exists(),
+            "with no EXIF the JSON is the only home: leave it alone"
         );
         assert!(
-            foto.join("IMG_0003.JPG.json").exists(),
-            "un file non riparato non perde il suo sidecar"
+            photos.join("IMG_0003.JPG.json").exists(),
+            "an unrepaired file does not lose its sidecar"
         );
         assert!(
-            foto.join("IMG_0004.JPG.json").exists(),
-            "un dato senza sede nei metadati tiene fermo il sidecar"
+            photos.join("IMG_0004.JPG.json").exists(),
+            "data with no home in the metadata holds the sidecar back"
         );
         assert!(
             report
                 .kept_reasons
                 .iter()
                 .any(|m| m.reason == crate::exif_parser::SidecarKept::ViewCountHasNoTag),
-            "il motivo va detto: {:?}",
+            "the reason has to be stated: {:?}",
             report.kept_reasons
         );
 
-        // E si deve poter tornare indietro.
+        // And it must be possible to go back.
         let manifest = report.manifest.expect("registro scritto");
-        let ripristino = restore_quarantine(&manifest).expect("ripristino");
-        assert_eq!(ripristino.restored, 1);
+        let restored = restore_quarantine(&manifest).expect("restored");
+        assert_eq!(restored.restored, 1);
         assert!(
-            foto.join("IMG_0001.JPG.json").exists(),
-            "il ripristino rimette il sidecar dov'era"
+            photos.join("IMG_0001.JPG.json").exists(),
+            "the restore puts the sidecar back where it was"
         );
     }
 
     #[test]
-    fn classifica_per_estensione() {
+    fn classifies_by_extension() {
         assert_eq!(
             FileCategory::from_path(Path::new("relazione.docx")),
             FileCategory::Document
@@ -1311,7 +1311,7 @@ mod tests {
             FileCategory::Spreadsheet
         );
         assert_eq!(
-            FileCategory::from_path(Path::new("foto.HEIC")),
+            FileCategory::from_path(Path::new("photos.HEIC")),
             FileCategory::Image
         );
         assert_eq!(
@@ -1323,20 +1323,20 @@ mod tests {
     use crate::app_state::no_progress;
     use crate::app_state::testing::{write_file, TempDir};
 
-    /// Albero di prova con duplicati veri, sosia per dimensione e spazzatura.
+    /// Test tree with real duplicates, size lookalikes and junk.
     fn build_drive(root: &Path) -> PathBuf {
         let drive = root.join("Drive");
 
-        // Stesso contenuto, nomi e cartelle diversi: duplicati autentici.
+        // Same content, different names and folders: genuine duplicates.
         write_file(&drive.join("relazione.docx"), "contenuto A");
-        write_file(&drive.join("copia").join("relazione.docx"), "contenuto A");
+        write_file(&drive.join("copy").join("relazione.docx"), "contenuto A");
 
-        // Stessa dimensione dei precedenti ma contenuto diverso: la deduplica
-        // per nome e dimensione li sbaglierebbe, quella per contenuto no.
+        // Same size as the previous ones but different content: deduplication by
+        // name and size would get these wrong, deduplication by content does not.
         write_file(&drive.join("altro.txt"), "contenuto B");
         write_file(&drive.join("terzo.txt"), "contenuto C");
 
-        // Spazzatura di sistema.
+        // System junk.
         write_file(&drive.join(".DS_Store"), "spazzatura");
         write_file(&drive.join("sub").join("._nascosto"), "appledouble");
         write_file(&drive.join("__MACOSX").join("roba.txt"), "spazzatura");
@@ -1345,58 +1345,61 @@ mod tests {
     }
 
     #[test]
-    fn riconosce_la_spazzatura_di_sistema() {
+    fn recognises_system_junk() {
         assert!(is_junk(Path::new("/x/.DS_Store")));
         assert!(is_junk(Path::new("/x/desktop.ini")));
         assert!(is_junk(Path::new("/x/Thumbs.db")));
         assert!(is_junk(Path::new("/x/._foto.jpg")));
         assert!(is_junk(Path::new("/x/__MACOSX/qualsiasi.txt")));
-        // I file veri non devono essere toccati.
+        // The real files must not be touched.
         assert!(!is_junk(Path::new("/x/relazione.docx")));
         assert!(!is_junk(Path::new("/x/.gitignore")));
     }
 
     #[test]
-    fn conserva_la_copia_dal_nome_piu_corto() {
+    fn keeps_the_copy_with_the_shortest_name() {
         let mut paths = vec![
-            PathBuf::from("/foto/IMG_1268 2.JPG"),
-            PathBuf::from("/foto/IMG_1268.JPG"),
+            PathBuf::from("/photos/IMG_1268 2.JPG"),
+            PathBuf::from("/photos/IMG_1268.JPG"),
         ];
-        // Il suffisso " 2" identifica la copia, non l'originale.
-        assert_eq!(choose_kept(&mut paths), PathBuf::from("/foto/IMG_1268.JPG"));
+        // The " 2" suffix marks the copy, not the original.
+        assert_eq!(
+            choose_kept(&mut paths),
+            PathBuf::from("/photos/IMG_1268.JPG")
+        );
         assert_eq!(paths.len(), 1);
     }
 
     #[test]
-    fn distingue_i_duplicati_veri_dai_sosia_per_dimensione() {
-        let temp = TempDir::new("drive-piano");
+    fn tells_real_duplicates_from_size_lookalikes() {
+        let temp = TempDir::new("drive-plan");
         let drive = build_drive(temp.path());
 
         let plan =
-            plan_clean(&drive, &CleanOptions::default(), usize::MAX, &no_progress).expect("piano");
+            plan_clean(&drive, &CleanOptions::default(), usize::MAX, &no_progress).expect("plan");
 
         assert_eq!(plan.files_scanned, 7);
         assert_eq!(plan.junk_files, 3, "DS_Store, AppleDouble e __MACOSX");
         assert_eq!(
             plan.duplicate_groups.len(),
             1,
-            "solo relazione.docx è duplicato davvero"
+            "only relazione.docx is a genuine duplicate"
         );
         assert_eq!(plan.duplicate_copies, 1);
 
-        // I due file di uguale dimensione ma contenuto diverso restano.
+        // The two files of equal size but different content both stay.
         let gruppo = &plan.duplicate_groups[0];
         assert!(gruppo.kept.ends_with("relazione.docx"));
         assert_eq!(gruppo.copies.len(), 1);
-        assert!(gruppo.copies[0].ends_with("copia/relazione.docx"));
+        assert!(gruppo.copies[0].ends_with("copy/relazione.docx"));
 
-        // Il piano non ha toccato nulla.
-        assert!(drive.join("copia").join("relazione.docx").is_file());
+        // The plan touched nothing.
+        assert!(drive.join("copy").join("relazione.docx").is_file());
         assert!(drive.join(".DS_Store").is_file());
     }
 
     #[test]
-    fn la_simulazione_non_scrive_nulla() {
+    fn the_dry_run_writes_nothing() {
         let temp = TempDir::new("drive-simulazione");
         let drive = build_drive(temp.path());
         let prima: Vec<PathBuf> = WalkDir::new(&drive)
@@ -1412,17 +1415,17 @@ mod tests {
             .flatten()
             .map(|e| e.into_path())
             .collect();
-        assert_eq!(prima, dopo, "la simulazione deve lasciare l'albero intatto");
+        assert_eq!(prima, dopo, "the dry run has to leave the tree untouched");
     }
 
     #[test]
-    fn la_quarantena_si_annulla_completamente() {
+    fn quarantine_undoes_completely() {
         let temp = TempDir::new("drive-quarantena");
         let drive = build_drive(temp.path());
         let quarantena = temp.path().join("quarantena");
 
-        /// Istantanea di percorsi e contenuti, per confrontare prima e dopo.
-        fn istantanea(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        /// Snapshot of paths and contents, to compare before and after.
+        fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
             let mut out: Vec<(PathBuf, Vec<u8>)> = WalkDir::new(root)
                 .into_iter()
                 .flatten()
@@ -1436,7 +1439,7 @@ mod tests {
             out
         }
 
-        let prima = istantanea(&drive);
+        let prima = snapshot(&drive);
         assert_eq!(prima.len(), 7);
 
         let report = clean(
@@ -1454,38 +1457,38 @@ mod tests {
         assert_eq!(report.duplicates_handled, 1);
         assert_eq!(report.junk_handled, 3);
 
-        // I file sono stati spostati, non cancellati.
-        assert!(!drive.join("copia").join("relazione.docx").exists());
+        // The files were moved, not deleted.
+        assert!(!drive.join("copy").join("relazione.docx").exists());
         assert!(!drive.join(".DS_Store").exists());
-        assert_eq!(istantanea(&drive).len(), 3, "restano i tre file unici");
-        assert!(quarantena.join("copia").join("relazione.docx").is_file());
+        assert_eq!(snapshot(&drive).len(), 3, "the three unique files remain");
+        assert!(quarantena.join("copy").join("relazione.docx").is_file());
 
-        // Il registro esiste ed è leggibile.
+        // The ledger exists and can be read.
         let manifest = report.manifest.expect("registro scritto");
         assert!(manifest.is_file());
 
-        // E ora la parte che conta: si torna esattamente al punto di partenza.
-        let restore = restore_quarantine(&manifest).expect("ripristino");
+        // And now the part that counts: back to exactly where we started.
+        let restore = restore_quarantine(&manifest).expect("restored");
         assert_eq!(restore.restored, 4);
         assert!(restore.failures.is_empty(), "{:?}", restore.failures);
         assert_eq!(
-            istantanea(&drive),
+            snapshot(&drive),
             prima,
-            "dopo il ripristino l'albero deve essere identico all'originale"
+            "after the restore the tree has to be identical to the original"
         );
     }
 
     #[test]
-    fn lalbero_pulito_esclude_duplicati_e_spazzatura() {
-        let temp = TempDir::new("drive-copia");
+    fn the_clean_tree_excludes_duplicates_and_junk() {
+        let temp = TempDir::new("drive-copy");
         let drive = build_drive(temp.path());
-        let uscita = temp.path().join("pulito");
+        let output = temp.path().join("pulito");
 
         let report = clean(
             &drive,
             &CleanOptions {
                 mode: CleanMode::CopyToOutput,
-                destination: Some(uscita.clone()),
+                destination: Some(output.clone()),
                 ..Default::default()
             },
             &no_progress,
@@ -1494,56 +1497,52 @@ mod tests {
 
         assert!(report.failures.is_empty(), "{:?}", report.failures);
 
-        let prodotti: Vec<String> = WalkDir::new(&uscita)
+        let produced: Vec<String> = WalkDir::new(&output)
             .into_iter()
             .flatten()
             .filter(|e| e.file_type().is_file())
             .map(|e| {
                 e.path()
-                    .strip_prefix(&uscita)
+                    .strip_prefix(&output)
                     .unwrap_or(e.path())
                     .to_string_lossy()
                     .into_owned()
             })
             .collect();
 
-        assert_eq!(
-            prodotti.len(),
-            3,
-            "un solo esemplare per contenuto: {prodotti:?}"
-        );
-        assert!(prodotti.iter().any(|p| p == "relazione.docx"));
-        assert!(prodotti.iter().any(|p| p == "altro.txt"));
-        assert!(prodotti.iter().any(|p| p == "terzo.txt"));
-        assert!(!prodotti.iter().any(|p| p.contains("DS_Store")));
-        assert!(!prodotti.iter().any(|p| p.contains("__MACOSX")));
+        assert_eq!(produced.len(), 3, "one specimen per content: {produced:?}");
+        assert!(produced.iter().any(|p| p == "relazione.docx"));
+        assert!(produced.iter().any(|p| p == "altro.txt"));
+        assert!(produced.iter().any(|p| p == "terzo.txt"));
+        assert!(!produced.iter().any(|p| p.contains("DS_Store")));
+        assert!(!produced.iter().any(|p| p.contains("__MACOSX")));
 
-        // L'origine non è stata toccata.
-        assert!(drive.join("copia").join("relazione.docx").is_file());
+        // The source was not touched.
+        assert!(drive.join("copy").join("relazione.docx").is_file());
         assert!(drive.join(".DS_Store").is_file());
     }
 
     #[test]
-    fn il_sidecar_segue_il_media_rimosso() {
+    fn the_sidecar_follows_the_removed_media() {
         let temp = TempDir::new("drive-sidecar");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
 
-        // Due scatti identici come contenuto, come li produce Google quando la
-        // stessa foto sta in più album, ognuno con il proprio sidecar.
-        write_file(&foto.join("IMG_1268.JPG"), "pixel identici");
+        // Two shots with identical content, the way Google produces them when the
+        // same photo sits in several albums, each with its own sidecar.
+        write_file(&photos.join("IMG_1268.JPG"), "pixel identici");
         write_file(
-            &foto.join("IMG_1268.JPG.supplemental-metadata.json"),
+            &photos.join("IMG_1268.JPG.supplemental-metadata.json"),
             r#"{"title": "IMG_1268.JPG"}"#,
         );
-        write_file(&foto.join("IMG_1268 2.JPG"), "pixel identici");
+        write_file(&photos.join("IMG_1268 2.JPG"), "pixel identici");
         write_file(
-            &foto.join("IMG_1268 2.JPG.supplemental-metadata.json"),
+            &photos.join("IMG_1268 2.JPG.supplemental-metadata.json"),
             r#"{"title": "IMG_1268 2.JPG"}"#,
         );
 
         let quarantena = temp.path().join("quarantena");
         let report = clean(
-            &foto,
+            &photos,
             &CleanOptions {
                 mode: CleanMode::Quarantine,
                 destination: Some(quarantena.clone()),
@@ -1555,88 +1554,88 @@ mod tests {
 
         assert!(report.failures.is_empty(), "{:?}", report.failures);
         assert_eq!(report.duplicates_handled, 1);
-        assert_eq!(report.companions_handled, 1, "il sidecar deve seguire");
+        assert_eq!(report.companions_handled, 1, "the sidecar has to follow");
 
-        // Sopravvive l'originale, con il suo sidecar.
-        assert!(foto.join("IMG_1268.JPG").is_file());
-        assert!(foto
+        // The original survives, with its sidecar.
+        assert!(photos.join("IMG_1268.JPG").is_file());
+        assert!(photos
             .join("IMG_1268.JPG.supplemental-metadata.json")
             .is_file());
 
-        // La copia se n'è andata insieme al proprio sidecar: niente orfani.
-        assert!(!foto.join("IMG_1268 2.JPG").exists());
-        assert!(!foto
+        // The copy left along with its own sidecar: no orphans.
+        assert!(!photos.join("IMG_1268 2.JPG").exists());
+        assert!(!photos
             .join("IMG_1268 2.JPG.supplemental-metadata.json")
             .exists());
 
-        // E si torna indietro completamente.
+        // And we go all the way back.
         let manifest = report.manifest.expect("registro");
-        let restore = restore_quarantine(&manifest).expect("ripristino");
+        let restore = restore_quarantine(&manifest).expect("restored");
         assert_eq!(restore.restored, 2);
-        assert!(foto.join("IMG_1268 2.JPG").is_file());
-        assert!(foto
+        assert!(photos.join("IMG_1268 2.JPG").is_file());
+        assert!(photos
             .join("IMG_1268 2.JPG.supplemental-metadata.json")
             .is_file());
     }
 
-    /// Due sidecar possono avere contenuto identico anche appartenendo a foto
-    /// diverse. Trattarli come duplicati indipendenti ne rimuoverebbe uno, e la
-    /// foto rimasta senza perderebbe data e coordinate: un danno che, guardando
-    /// i file superstiti, non si vede nemmeno.
+    /// Two sidecars can have identical content while belonging to different
+    /// photos. Treating them as independent duplicates would remove one, and the
+    /// photo left without would lose date and coordinates: damage that, looking
+    /// at the surviving files, is not even visible.
     #[test]
-    fn i_sidecar_non_vengono_deduplicati_tra_loro() {
+    fn sidecars_are_not_deduplicated_against_each_other() {
         let temp = TempDir::new("sidecar-dedup");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
 
-        // Due foto diverse, con sidecar dal contenuto identico.
-        write_file(&foto.join("IMG_1.JPG"), "pixel della prima");
-        write_file(&foto.join("IMG_2.JPG"), "pixel della second");
-        write_file(&foto.join("IMG_1.JPG.json"), r#"{"t": "1577880000"}"#);
-        write_file(&foto.join("IMG_2.JPG.json"), r#"{"t": "1577880000"}"#);
+        // Two different photos, with sidecars of identical content.
+        write_file(&photos.join("IMG_1.JPG"), "pixel della prima");
+        write_file(&photos.join("IMG_2.JPG"), "pixel della second");
+        write_file(&photos.join("IMG_1.JPG.json"), r#"{"t": "1577880000"}"#);
+        write_file(&photos.join("IMG_2.JPG.json"), r#"{"t": "1577880000"}"#);
 
         let plan =
-            plan_clean(&foto, &CleanOptions::default(), usize::MAX, &no_progress).expect("piano");
+            plan_clean(&photos, &CleanOptions::default(), usize::MAX, &no_progress).expect("plan");
 
         assert_eq!(
             plan.duplicate_copies, 0,
-            "i sidecar identici non sono duplicati da rimuovere"
+            "identical sidecars are not duplicates to remove"
         );
         assert_eq!(plan.files_scanned, 4);
-        assert_eq!(plan.files_kept, 4, "resta tutto");
+        assert_eq!(plan.files_kept, 4, "everything stays");
     }
 
     #[test]
-    fn il_prefisso_dei_companion_non_confonde_nomi_simili() {
-        let temp = TempDir::new("drive-prefisso");
-        let foto = temp.path().join("f");
-        write_file(&foto.join("IMG_1268.JPG"), "a");
-        write_file(&foto.join("IMG_1268.JPG.json"), "sidecar del primo");
-        write_file(&foto.join("IMG_1268 2.JPG"), "b");
-        write_file(&foto.join("IMG_1268 2.JPG.json"), "sidecar del secondo");
+    fn the_companion_prefix_does_not_confuse_similar_names() {
+        let temp = TempDir::new("drive-prefix");
+        let photos = temp.path().join("f");
+        write_file(&photos.join("IMG_1268.JPG"), "a");
+        write_file(&photos.join("IMG_1268.JPG.json"), "sidecar del first");
+        write_file(&photos.join("IMG_1268 2.JPG"), "b");
+        write_file(&photos.join("IMG_1268 2.JPG.json"), "sidecar del secondo");
 
-        // L'indice è quello che `plan_clean` costruisce durante la scansione.
-        let mut indice: DirIndex = HashMap::new();
-        indice.insert(
-            foto.clone(),
-            std::fs::read_dir(&foto)
-                .expect("lettura cartella")
+        // The index is the one `plan_clean` builds during the scan.
+        let mut index: DirIndex = HashMap::new();
+        index.insert(
+            photos.clone(),
+            std::fs::read_dir(&photos)
+                .expect("lettura folder")
                 .flatten()
                 .filter_map(|e| e.file_name().to_str().map(str::to_string))
                 .collect(),
         );
 
-        // `IMG_1268.JPG` non deve rivendicare i file di `IMG_1268 2.JPG`.
-        let compagni = find_companions(&foto.join("IMG_1268.JPG"), &indice);
+        // `IMG_1268.JPG` must not lay claim to the files of `IMG_1268 2.JPG`.
+        let compagni = find_companions(&photos.join("IMG_1268.JPG"), &index);
         assert_eq!(compagni.len(), 1);
         assert!(compagni[0].ends_with("IMG_1268.JPG.json"));
     }
 
     #[test]
-    fn rifiuta_una_destinazione_dentro_la_sorgente() {
+    fn refuses_a_destination_inside_the_source() {
         let temp = TempDir::new("drive-ricorsione");
         let drive = build_drive(temp.path());
 
-        let esito = clean(
+        let outcome = clean(
             &drive,
             &CleanOptions {
                 mode: CleanMode::Quarantine,
@@ -1646,17 +1645,17 @@ mod tests {
             &no_progress,
         );
 
-        assert!(esito.is_err(), "una destinazione annidata va rifiutata");
+        assert!(outcome.is_err(), "a nested destination has to be refused");
     }
 
     #[test]
-    fn riconosce_i_segnaposto_google() {
+    fn recognises_google_placeholders() {
         for ext in ["gdoc", "gsheet", "gslides", "gform"] {
             let path = PathBuf::from(format!("appunti.{ext}"));
             assert_eq!(
                 FileCategory::from_path(&path),
                 FileCategory::Placeholder,
-                "{ext} deve essere un segnaposto"
+                "{ext} has to be a placeholder"
             );
         }
     }

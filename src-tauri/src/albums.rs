@@ -1,21 +1,21 @@
 // Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Struttura delle cartelle di un export Google Foto.
+//! The folder structure of a Google Photos export.
 //!
-//! Google non esporta gli album come metadato: li esporta come **cartelle che
-//! contengono una seconda copia della foto**. La stessa immagine finisce in
-//! `Photos from 2020/` e in `Vacanze in Sicilia/`, byte per byte identica.
+//! Google does not export albums as metadata: it exports them as **folders
+//! containing a second copy of the photo**. The same image ends up in
+//! `Photos from 2020/` and in `Holidays in Sicily/`, identical byte for byte.
 //!
-//! Questo ha una conseguenza che rende il modulo necessario: una deduplica per
-//! contenuto, presa da sola, rimuove le copie negli album e con esse
-//! l'unica traccia rimasta dell'appartenenza. I file si recuperano dalla
-//! quarantena, l'informazione no. Qui l'appartenenza viene letta e scritta in
-//! un manifest prima che qualcuno tocchi i file.
+//! That has a consequence which makes this module necessary: deduplication by
+//! content, taken on its own, removes the copies inside albums and with them the
+//! only remaining trace of membership. The files can be recovered from
+//! quarantine, the information cannot. Here membership is read and written to a
+//! manifest before anyone touches the files.
 //!
-//! Il modulo riconosce anche le versioni modificate (`IMG_1234-edited.jpg`),
-//! che Google affianca all'originale e che non sono duplicati: hanno pixel
-//! diversi e vanno tenute entrambe.
+//! The module also recognises edited versions (`IMG_1234-edited.jpg`), which
+//! Google places beside the original and which are not duplicates: they have
+//! different pixels and both are worth keeping.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -27,11 +27,11 @@ use walkdir::WalkDir;
 
 use crate::app_state::{ExportReport, Notice, Result, TakeoutError};
 
-/// Suffissi che Google aggiunge alle versioni modificate di una foto.
+/// Suffixes Google appends to the edited version of a photo.
 ///
-/// L'elenco è per lingua dell'account, non per lingua del sistema, e non è
-/// documentato da nessuna parte: è materiale raccolto dall'uso reale. Va
-/// confrontato sempre in minuscolo e in forma normalizzata NFC.
+/// The list follows the account language, not the system language, and is
+/// documented nowhere: it is material gathered from real use. It must always be
+/// compared in lowercase and in NFC normalised form.
 const EDITED_SUFFIXES: &[&str] = &[
     "-edited",
     "-effects",
@@ -47,7 +47,7 @@ const EDITED_SUFFIXES: &[&str] = &[
     "-編集済み",
 ];
 
-/// Nomi di cartelle speciali, che non sono album dell'utente.
+/// Names of special folders, which are not user albums.
 const SPECIAL_FOLDERS: &[&str] = &[
     "archive",
     "archivio",
@@ -62,15 +62,15 @@ const SPECIAL_FOLDERS: &[&str] = &[
     "video non riusciti",
 ];
 
-/// Natura di una cartella dentro l'export di Google Foto.
+/// What a folder inside a Google Photos export actually is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind", content = "value")]
 pub enum FolderKind {
-    /// Cartella per anno: `Photos from 2020`, `Foto da 2026`.
+    /// Year folder: `Photos from 2020`, `Foto da 2026`.
     Year(i32),
-    /// Album creato dall'utente.
+    /// Album created by the user.
     Album,
-    /// Archivio, cestino e simili.
+    /// Archive, trash and the like.
     Special,
 }
 
@@ -80,41 +80,41 @@ impl FolderKind {
     }
 }
 
-/// Un album, con i file che vi appartengono.
+/// An album, with the files belonging to it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Album {
     pub name: String,
     pub path: PathBuf,
-    /// Quanti file contiene, sempre completo.
+    /// How many files it holds, always the complete count.
     pub file_count: usize,
-    /// Campione dei nomi contenuti, troncato per la UI.
+    /// Sample of the names inside, truncated for the UI.
     pub files: Vec<String>,
 }
 
-/// Una foto presente sia in una cartella per anno sia in uno o più album.
+/// A photo present both in a year folder and in one or more albums.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumMembership {
     pub file_name: String,
-    /// Copia nella cartella per anno, quella da conservare.
+    /// The copy in the year folder, the one to keep.
     pub canonical: Option<PathBuf>,
-    /// Album in cui la stessa foto compare.
+    /// Albums in which the same photo appears.
     pub albums: Vec<String>,
 }
 
-/// Versione modificata affiancata al suo originale.
+/// An edited version sitting beside its original.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditedPair {
     pub edited: PathBuf,
-    /// Originale corrispondente, se presente nella stessa cartella.
+    /// The matching original, if present in the same folder.
     pub original: Option<PathBuf>,
-    /// Suffisso riconosciuto, utile per capire la lingua dell'account.
+    /// The suffix recognised, useful for telling the account language.
     pub suffix: String,
 }
 
-/// Fotografia della struttura di un export Google Foto.
+/// A snapshot of the structure of a Google Photos export.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumIndex {
@@ -122,19 +122,19 @@ pub struct AlbumIndex {
     pub year_folders: Vec<String>,
     pub albums: Vec<Album>,
     pub special_folders: Vec<String>,
-    /// Quante foto compaiono anche in almeno un album, conteggio completo.
+    /// How many photos also appear in at least one album, complete count.
     pub membership_count: usize,
-    /// Campione delle appartenenze, troncato per la UI.
+    /// Sample of the memberships, truncated for the UI.
     pub memberships: Vec<AlbumMembership>,
-    /// Quante versioni modificate esistono, conteggio completo.
+    /// How many edited versions exist, complete count.
     pub edited_count: usize,
     pub edited_pairs: Vec<EditedPair>,
-    /// Foto presenti solo in un album e in nessuna cartella per anno.
+    /// Photos present only in an album and in no year folder.
     pub album_only: usize,
     pub warnings: Vec<Notice>,
 }
 
-/// Manifest scritto su disco prima di deduplicare.
+/// The manifest written to disk before deduplicating.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumManifest {
@@ -145,21 +145,21 @@ pub struct AlbumManifest {
     pub memberships: Vec<AlbumMembership>,
 }
 
-/// Riduce una stringa a una forma confrontabile.
+/// Reduces a string to a comparable form.
 ///
-/// Su macOS i nomi dei file sono in NFD, quindi `-modifié` arriva come `e` più
-/// un accento combinante e non corrisponde alla costante scritta in NFC. Senza
-/// questa normalizzazione il riconoscimento funzionerebbe in inglese e
-/// fallirebbe in francese e giapponese.
+/// On macOS filenames are in NFD, so `-modifié` arrives as `e` plus a combining
+/// accent and does not match the constant written in NFC. Without this
+/// normalisation the recognition would work in English and fail in French and
+/// Japanese.
 fn normalize(value: &str) -> String {
     value.nfc().collect::<String>().to_lowercase()
 }
 
-/// Riconosce la natura di una cartella dal suo nome.
+/// Recognises what a folder is from its name.
 ///
-/// Le cartelle per anno sono localizzate nella lingua dell'account
-/// (`Photos from 2020`, `Foto da 2026`), quindi non si possono elencare: si
-/// riconoscono dal fatto che terminano con un anno plausibile.
+/// Year folders are localised into the account language (`Photos from 2020`,
+/// `Foto da 2026`), so they cannot be listed: they are recognised by the fact
+/// that they end with a plausible year.
 pub fn classify_folder(name: &str) -> FolderKind {
     let normalized = normalize(name.trim());
 
@@ -174,13 +174,13 @@ pub fn classify_folder(name: &str) -> FolderKind {
     FolderKind::Album
 }
 
-/// Come `classify_folder`, ma sapendo come questo export chiama le annate.
+/// Like `classify_folder`, but knowing what this export calls its years.
 ///
-/// Terminare con un anno non basta a distinguere `Foto da 2024` da un album
-/// che si chiama `Natale 2024`, e sbagliare non è innocuo: un album scambiato
-/// per annata non finisce nel manifest, cioè si perde proprio il dato che il
-/// manifest esiste per salvare. Con il prefisso dell'export in mano la
-/// distinzione diventa netta.
+/// Ending with a year is not enough to tell `Foto da 2024` from an album called
+/// `Christmas 2024`, and getting it wrong is not harmless: an album mistaken for
+/// a year never reaches the manifest, which loses precisely the information the
+/// manifest exists to save. With the export's own prefix in hand the distinction
+/// becomes clear-cut.
 pub fn classify_folder_in(name: &str, year_prefix: Option<&str>) -> FolderKind {
     let normalized = normalize(name.trim());
 
@@ -198,32 +198,32 @@ pub fn classify_folder_in(name: &str, year_prefix: Option<&str>) -> FolderKind {
     }
 }
 
-/// Ricava il prefisso con cui questo export nomina le cartelle per anno.
+/// Derives the prefix this export uses to name its year folders.
 ///
-/// Google le chiama `Photos from 2020`, `Foto da 2026`, `Fotos de 2019`: il
-/// prefisso cambia con la lingua dell'account, ma dentro lo stesso export è
-/// identico per tutte le annate. Un album con l'anno nel nome ha invece un
-/// prefisso suo, e resta in minoranza.
+/// Google calls them `Photos from 2020`, `Foto da 2026`, `Fotos de 2019`: the
+/// prefix changes with the account language, but inside a single export it is
+/// identical across every year. An album with a year in its name has a prefix of
+/// its own, and stays in the minority.
 ///
-/// Restituisce `None` quando non c'è un vincitore netto, cioè quando due
-/// prefissi diversi compaiono lo stesso numero di volte: in quel caso nessuna
-/// scelta sarebbe meglio di un sorteggio, e conviene dirlo invece di decidere.
+/// Returns `None` when there is no clear winner, that is when two different
+/// prefixes appear the same number of times: no choice would then be better than
+/// a coin toss, and saying so beats deciding.
 fn year_prefix(names: &[String]) -> Option<String> {
-    let mut conteggi: BTreeMap<String, usize> = BTreeMap::new();
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     for name in names {
         let normalized = normalize(name.trim());
         if trailing_year(&normalized).is_some() {
-            *conteggi.entry(folder_prefix(&normalized)).or_default() += 1;
+            *counts.entry(folder_prefix(&normalized)).or_default() += 1;
         }
     }
 
-    let massimo = *conteggi.values().max()?;
-    let mut vincitori = conteggi.iter().filter(|(_, n)| **n == massimo);
-    let (prefisso, _) = vincitori.next()?;
-    vincitori.next().is_none().then(|| prefisso.clone())
+    let massimo = *counts.values().max()?;
+    let mut vincitori = counts.iter().filter(|(_, n)| **n == massimo);
+    let (prefix, _) = vincitori.next()?;
+    vincitori.next().is_none().then(|| prefix.clone())
 }
 
-/// La parte di nome che precede l'anno finale, senza spazi ai bordi.
+/// The part of the name preceding the trailing year, trimmed.
 fn folder_prefix(normalized: &str) -> String {
     normalized
         .trim_end_matches(|c: char| c.is_ascii_digit())
@@ -231,7 +231,7 @@ fn folder_prefix(normalized: &str) -> String {
         .to_string()
 }
 
-/// Estrae l'anno finale di un nome di cartella, se plausibile.
+/// Extracts the trailing year of a folder name, if plausible.
 fn trailing_year(name: &str) -> Option<i32> {
     let digits: String = name
         .chars()
@@ -246,14 +246,14 @@ fn trailing_year(name: &str) -> Option<i32> {
         return None;
     }
     let year: i32 = digits.parse().ok()?;
-    // Fuori da questo intervallo è un numero nel nome di un album, non un anno.
+    // Outside this range it is a number in an album name, not a year.
     (1900..=2100).contains(&year).then_some(year)
 }
 
-/// Se il nome è una versione modificata, restituisce il nome dell'originale e
-/// il suffisso riconosciuto.
+/// If the name is an edited version, returns the name of the original and the
+/// suffix recognised.
 ///
-/// `IMG_1234-edited.jpg` diventa `("IMG_1234.jpg", "-edited")`.
+/// `IMG_1234-edited.jpg` becomes `("IMG_1234.jpg", "-edited")`.
 pub fn strip_edited_suffix(file_name: &str) -> Option<(String, String)> {
     let path = Path::new(file_name);
     let stem = path.file_stem()?.to_str()?;
@@ -268,12 +268,12 @@ pub fn strip_edited_suffix(file_name: &str) -> Option<(String, String)> {
             continue;
         }
 
-        // Il punto di taglio va cercato sulla stringa originale, non dedotto
-        // dalla lunghezza di quella normalizzata: in NFD `é` occupa due
-        // caratteri invece di uno, quindi contare sulla forma NFC taglierebbe
-        // troppo poco e lascerebbe pezzi di suffisso attaccati al nome.
-        // La coda non può essere molto più lunga del suffisso in NFC, così il
-        // confronto resta limitato agli ultimi caratteri.
+        // The cut point has to be searched on the original string, not derived from
+        // the length of the normalised one: in NFD `é` takes two characters
+        // instead of one, so counting on the NFC form would cut too little and
+        // leave pieces of the suffix stuck to the name.
+        // The tail cannot be much longer than the suffix in NFC, which keeps the
+        // comparison limited to the last few characters.
         let max_tail = normalized_suffix.chars().count() * 4;
         let lower = stem_chars.len().saturating_sub(max_tail);
 
@@ -297,7 +297,7 @@ pub fn strip_edited_suffix(file_name: &str) -> Option<(String, String)> {
     None
 }
 
-/// Percorre un export Google Foto e ne ricostruisce la struttura.
+/// Walks a Google Photos export and reconstructs its structure.
 pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
     crate::app_state::require_existing(root)?;
 
@@ -306,14 +306,14 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
         ..Default::default()
     };
 
-    // Nome file -> cartelle per anno in cui compare.
+    // File name -> year folders in which it appears.
     let mut in_years: HashMap<String, PathBuf> = HashMap::new();
-    // Nome file -> album in cui compare.
+    // File name -> albums in which it appears.
     let mut in_albums: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
-    // Prima passata sui soli nomi: serve a capire come questo export chiama le
-    // annate, prima di decidere cosa sia annata e cosa album.
-    let mut nomi: Vec<String> = Vec::new();
+    // First pass over the names alone: it tells us what this export calls its
+    // years, before deciding what is a year and what is an album.
+    let mut names: Vec<String> = Vec::new();
     for entry in std::fs::read_dir(root)
         .map_err(|e| TakeoutError::io(root, e))?
         .flatten()
@@ -323,19 +323,25 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
         }
         let name = entry.file_name().to_string_lossy().into_owned();
         if !name.starts_with('.') {
-            nomi.push(name);
+            names.push(name);
         }
     }
-    nomi.sort();
+    names.sort();
 
-    let prefisso = year_prefix(&nomi);
-    if prefisso.is_none() && nomi.iter().filter(|n| classify_folder(n).is_year()).count() > 1 {
+    let prefix = year_prefix(&names);
+    if prefix.is_none()
+        && names
+            .iter()
+            .filter(|n| classify_folder(n).is_year())
+            .count()
+            > 1
+    {
         index.warnings.push(Notice::AmbiguousYearFolders);
     }
 
-    for name in nomi {
+    for name in names {
         let dir = root.join(&name);
-        let kind = classify_folder_in(&name, prefisso.as_deref());
+        let kind = classify_folder_in(&name, prefix.as_deref());
         let media: Vec<String> = WalkDir::new(&dir)
             .follow_links(false)
             .into_iter()
@@ -391,7 +397,7 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
     index.special_folders.sort();
     index.albums.sort_by(|a, b| a.name.cmp(&b.name));
 
-    // Le versioni modificate si cercano ovunque: stanno accanto all'originale.
+    // Edited versions are looked for everywhere: they sit beside the original.
     for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
         if !entry.file_type().is_file() || !crate::exif_parser::is_media_file(entry.path()) {
             continue;
@@ -409,14 +415,14 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
         }
     }
 
-    // I conteggi restano completi, gli elenchi no: attraversano il canale IPC
-    // a ogni scansione, e su una libreria vera l'elenco delle appartenenze da
-    // solo vale qualche megabyte di JSON. Il manifest completo si ottiene
-    // esportandolo, che è l'operazione fatta apposta.
+    // The counts stay complete, the lists do not: they cross the IPC channel
+    // on every scan, and on a real library the membership list alone is worth
+    // a few megabytes of JSON. The complete manifest is obtained by exporting
+    // it, which is the operation made for the purpose.
     //
-    // Il taglio va in fondo, dopo che ogni elenco è stato riempito: messo
-    // prima, lasciava passare intatte le versioni modificate, che vengono
-    // raccolte più avanti.
+    // The truncation goes at the end, after every list has been filled: put
+    // earlier, it let the edited versions through untouched, since those are
+    // collected further down.
     index.membership_count = index.memberships.len();
     index.edited_count = index.edited_pairs.len();
     index.memberships.truncate(max_items);
@@ -440,17 +446,17 @@ pub fn build_index(root: &Path, max_items: usize) -> Result<AlbumIndex> {
     Ok(index)
 }
 
-/// Scrive il manifest degli album.
+/// Writes the album manifest.
 pub fn export_manifest(root: &Path, destination: &Path) -> Result<ExportReport> {
-    // Il manifest deve essere completo: è il documento che conserva il dato,
-    // non l'anteprima mostrata nell'interfaccia.
+    // The manifest has to be complete: it is the document that preserves the
+    // data, not the preview shown in the interface.
     let index = build_index(root, usize::MAX)?;
 
     let manifest = AlbumManifest {
         created_at: Utc::now(),
         source_root: index.root.clone(),
-        note: "Google Foto esporta gli album come cartelle contenenti una copia \
-               della foto. Questo file conserva l'appartenenza agli album prima \
+        note: "Google Foto esporta gli album come cartelle contenenti una copy \
+               della photos. Questo file conserva l'appartenenza agli album prima \
                che le copie vengano deduplicate."
             .to_string(),
         albums: index.albums,
@@ -478,18 +484,18 @@ mod tests {
     use crate::app_state::testing::{write_bytes, write_file, TempDir, MINIMAL_JPEG};
 
     #[test]
-    fn riconosce_le_cartelle_per_anno_in_piu_lingue() {
+    fn recognises_year_folders_in_several_languages() {
         assert_eq!(classify_folder("Photos from 2020"), FolderKind::Year(2020));
         assert_eq!(classify_folder("Foto da 2026"), FolderKind::Year(2026));
         assert_eq!(classify_folder("2019"), FolderKind::Year(2019));
-        // Un numero che non è un anno non deve ingannare.
+        // A number that is not a year must not fool us.
         assert_eq!(classify_folder("Corsa dei 1000"), FolderKind::Album);
         assert_eq!(classify_folder("Vacanze in Sicilia"), FolderKind::Album);
     }
 
     #[test]
-    fn distingue_un_album_con_l_anno_nel_nome_dalle_annate() {
-        let nomi: Vec<String> = [
+    fn tells_an_album_named_after_a_year_from_the_years() {
+        let names: Vec<String> = [
             "Foto da 2019",
             "Foto da 2020",
             "Foto da 2021",
@@ -500,66 +506,66 @@ mod tests {
         .map(|s| s.to_string())
         .collect();
 
-        let prefisso = year_prefix(&nomi);
-        assert_eq!(prefisso.as_deref(), Some("foto da"));
+        let prefix = year_prefix(&names);
+        assert_eq!(prefix.as_deref(), Some("foto da"));
 
-        // Senza il prefisso dell'export "Natale 2024" passerebbe per annata, e
-        // la sua appartenenza non finirebbe nel manifest.
+        // Without the export prefix "Christmas 2024" would pass for a year, and
+        // its membership would never reach the manifest.
         assert_eq!(classify_folder("Natale 2024"), FolderKind::Year(2024));
         assert_eq!(
-            classify_folder_in("Natale 2024", prefisso.as_deref()),
+            classify_folder_in("Natale 2024", prefix.as_deref()),
             FolderKind::Album
         );
         assert_eq!(
-            classify_folder_in("Foto da 2020", prefisso.as_deref()),
+            classify_folder_in("Foto da 2020", prefix.as_deref()),
             FolderKind::Year(2020)
         );
         assert_eq!(
-            classify_folder_in("Vacanze in Sicilia", prefisso.as_deref()),
+            classify_folder_in("Vacanze in Sicilia", prefix.as_deref()),
             FolderKind::Album
         );
 
-        // Un pari non permette di dire quale prefisso sia quello dell'export:
-        // meglio nessuna risposta che una tirata a sorte.
+        // A tie makes it impossible to say which prefix belongs to the export:
+        // better no answer than one drawn by lot.
         let pari: Vec<String> = ["Foto da 2026", "Natale 2024"]
             .iter()
             .map(|s| s.to_string())
             .collect();
         assert_eq!(year_prefix(&pari), None);
 
-        // Una sola cartella che finisce per anno resta un'annata: un export di
-        // Google Foto ne ha sempre almeno una.
+        // A single folder ending with a year stays a year: a Google Photos export
+        // always has at least one.
         let sola = vec!["Foto da 2026".to_string(), "Matrimonio".to_string()];
         assert_eq!(year_prefix(&sola).as_deref(), Some("foto da"));
     }
 
     #[test]
-    fn segnala_quando_non_riesce_a_distinguere_annate_e_album() {
+    fn flags_when_years_and_albums_cannot_be_told_apart() {
         let temp = TempDir::new("annate-ambigue");
         let root = temp.path().join("Google Foto");
-        // Due prefissi diversi, una cartella ciascuno: nessun vincitore.
-        for cartella in ["Foto da 2026", "Natale 2024"] {
-            write_bytes(&root.join(cartella).join("IMG_0001.JPG"), MINIMAL_JPEG);
+        // Two different prefixes, one folder each: no winner.
+        for folder in ["Foto da 2026", "Natale 2024"] {
+            write_bytes(&root.join(folder).join("IMG_0001.JPG"), MINIMAL_JPEG);
         }
 
-        let index = build_index(&root, 100).expect("indice");
-        assert_eq!(index.year_folders.len(), 2, "in dubbio restano annate");
+        let index = build_index(&root, 100).expect("index");
+        assert_eq!(index.year_folders.len(), 2, "when in doubt they stay years");
         assert!(
             index.warnings.contains(&Notice::AmbiguousYearFolders),
-            "l'ambiguità va detta, non nascosta: {:?}",
+            "the ambiguity has to be stated, not hidden: {:?}",
             index.warnings
         );
     }
 
     #[test]
-    fn riconosce_le_cartelle_speciali() {
+    fn recognises_special_folders() {
         assert_eq!(classify_folder("Archive"), FolderKind::Special);
         assert_eq!(classify_folder("Cestino"), FolderKind::Special);
         assert_eq!(classify_folder("TRASH"), FolderKind::Special);
     }
 
     #[test]
-    fn riconosce_le_versioni_modificate() {
+    fn recognises_edited_versions() {
         assert_eq!(
             strip_edited_suffix("IMG_1234-edited.jpg"),
             Some(("IMG_1234.jpg".to_string(), "-edited".to_string()))
@@ -569,20 +575,17 @@ mod tests {
             Some(("foto.HEIC".to_string(), "-modificato".to_string()))
         );
         assert_eq!(strip_edited_suffix("IMG_1234.jpg"), None);
-        // Un file composto solo dal suffisso non ha un originale sensato.
+        // A file made only of the suffix has no sensible original.
         assert_eq!(strip_edited_suffix("-edited.jpg"), None);
     }
 
-    /// macOS conserva i nomi in NFD: senza normalizzazione il confronto con la
-    /// costante scritta in NFC fallirebbe, e il riconoscimento funzionerebbe
-    /// in inglese ma non in francese.
+    /// macOS keeps names in NFD: without normalisation the comparison with the
+    /// constant written in NFC would fail, and recognition would work in English
+    /// but not in French.
     #[test]
-    fn riconosce_i_suffissi_accentati_anche_in_forma_nfd() {
+    fn recognises_accented_suffixes_in_nfd_form_too() {
         let nfd: String = "IMG_1-modifie\u{0301}.jpg".to_string();
-        assert_ne!(
-            nfd, "IMG_1-modifié.jpg",
-            "le due forme differiscono in byte"
-        );
+        assert_ne!(nfd, "IMG_1-modifié.jpg", "the two forms differ in bytes");
         assert_eq!(
             strip_edited_suffix(&nfd).map(|(base, _)| base),
             Some("IMG_1.jpg".to_string())
@@ -593,35 +596,35 @@ mod tests {
         );
     }
 
-    /// Il caso che rende necessario questo modulo: la stessa foto in una
-    /// cartella per anno e in un album.
+    /// The case that makes this module necessary: the same photo in a year
+    /// folder and in an album.
     #[test]
-    fn registra_lappartenenza_agli_album() {
+    fn records_album_membership() {
         let temp = TempDir::new("album-index");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
 
         crate::app_state::testing::write_bytes(
-            &foto.join("Foto da 2026").join("IMG_1.JPG"),
+            &photos.join("Foto da 2026").join("IMG_1.JPG"),
             MINIMAL_JPEG,
         );
         crate::app_state::testing::write_bytes(
-            &foto.join("Vacanze in Sicilia").join("IMG_1.JPG"),
+            &photos.join("Vacanze in Sicilia").join("IMG_1.JPG"),
             MINIMAL_JPEG,
         );
         crate::app_state::testing::write_bytes(
-            &foto.join("Vacanze in Sicilia").join("IMG_2.JPG"),
+            &photos.join("Vacanze in Sicilia").join("IMG_2.JPG"),
             MINIMAL_JPEG,
         );
-        write_file(&foto.join("Cestino").join("nota.txt"), "x");
+        write_file(&photos.join("Cestino").join("nota.txt"), "x");
 
-        let index = build_index(&foto, usize::MAX).expect("indice");
+        let index = build_index(&photos, usize::MAX).expect("index");
 
         assert_eq!(index.year_folders, vec!["Foto da 2026"]);
         assert_eq!(index.albums.len(), 1);
         assert_eq!(index.albums[0].name, "Vacanze in Sicilia");
         assert_eq!(index.special_folders, vec!["Cestino"]);
 
-        // IMG_1 sta in entrambe: l'appartenenza va registrata.
+        // IMG_1 is in both: the membership has to be recorded.
         let membership = index
             .memberships
             .iter()
@@ -630,7 +633,7 @@ mod tests {
         assert_eq!(membership.albums, vec!["Vacanze in Sicilia"]);
         assert!(membership.canonical.is_some());
 
-        // IMG_2 sta solo nell'album: toglierla la farebbe sparire.
+        // IMG_2 is only in the album: removing it would make it disappear.
         let solo = index
             .memberships
             .iter()
@@ -642,20 +645,20 @@ mod tests {
     }
 
     #[test]
-    fn il_manifest_e_rileggibile() {
+    fn the_manifest_can_be_read_back() {
         let temp = TempDir::new("album-manifest");
-        let foto = temp.path().join("Google Foto");
+        let photos = temp.path().join("Google Foto");
         crate::app_state::testing::write_bytes(
-            &foto.join("Photos from 2020").join("IMG_1.JPG"),
+            &photos.join("Photos from 2020").join("IMG_1.JPG"),
             MINIMAL_JPEG,
         );
         crate::app_state::testing::write_bytes(
-            &foto.join("Compleanno").join("IMG_1.JPG"),
+            &photos.join("Compleanno").join("IMG_1.JPG"),
             MINIMAL_JPEG,
         );
 
-        let destination = temp.path().join("uscita").join("album.json");
-        let report = export_manifest(&foto, &destination).expect("manifest");
+        let destination = temp.path().join("output").join("album.json");
+        let report = export_manifest(&photos, &destination).expect("manifest");
         assert_eq!(report.written, 1);
 
         let content = std::fs::read_to_string(&destination).expect("lettura");

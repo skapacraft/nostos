@@ -13,11 +13,11 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  # Il controllo che tiene in piedi la promessa del progetto. Gira per primo e
-  # da solo: se qualcuno introduce una crate di rete, deve essere la prima cosa
-  # che si vede fallire, non una riga persa in fondo a un log di build.
+  # The check that holds up the project's promise. It runs first and on its own:
+  # if anyone introduces a network crate, that has to be the first thing seen
+  # failing, not a line lost at the bottom of a build log.
   privacy:
-    name: Vincolo local-first
+    name: Local-first constraint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,19 +28,19 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Installa cargo-deny
+      - name: Install cargo-deny
         uses: taiki-e/install-action@cargo-deny
 
-      - name: Nessuna crate di rete, telemetria o updater
+      - name: No network, telemetry or updater crates
         working-directory: src-tauri
         run: cargo deny check
 
-      - name: Nessuna fetch o XMLHttpRequest nel frontend
+      - name: No fetch or XMLHttpRequest in the frontend
         run: |
-          # La CSP le bloccherebbe comunque a runtime, ma un errore in console
-          # è una diagnosi peggiore di una build che fallisce.
+          # The CSP would block them at runtime anyway, but a console error is
+          # a worse diagnosis than a failing build.
           if grep -rnE '\b(fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(' src/; then
-            echo "::error::Trovata una primitiva di rete nel frontend."
+            echo "::error::Found a networking primitive in the frontend."
             exit 1
           fi
           echo "Nessuna primitiva di rete nel frontend."
@@ -59,7 +59,7 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Dipendenze di sistema Tauri
+      - name: Tauri system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -69,7 +69,7 @@ jobs:
             libgtk-3-dev \
             patchelf
 
-      - name: Formattazione
+      - name: Formatting
         working-directory: src-tauri
         run: cargo fmt --all --check
 
@@ -77,16 +77,16 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Test
+      - name: Tests
         working-directory: src-tauri
         run: cargo test --all-targets
 
-  # Il job Rust gira su Linux e quindi compila i rami `#[cfg(...)]` di Linux,
-  # ma lascerebbe scoperto il codice specifico per Windows: il menu senza
-  # sottomenu applicazione e l'invocazione di `explorer /select,`. Senza questo
-  # job un errore lì si scoprirebbe solo al momento della release.
+  # The Rust job runs on Linux and therefore compiles the Linux `#[cfg(...)]`
+  # branches, but would leave the Windows-specific code uncovered: the menu
+  # without an application submenu, and the `explorer /select,` invocation.
+  # Without this job an error there would surface only at release time.
   windows:
-    name: Rust su Windows
+    name: Rust on Windows
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +103,7 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Test
+      - name: Tests
         working-directory: src-tauri
         run: cargo test --all-targets
 
@@ -120,5 +120,5 @@ jobs:
 
       - run: npm ci
 
-      - name: Controllo dei tipi e build
+      - name: Type checking and build
         run: npm run build

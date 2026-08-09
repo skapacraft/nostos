@@ -9,15 +9,15 @@ interface NoticesProps {
 }
 
 /**
- * Avvisi non bloccanti emessi dal backend.
+ * Non-blocking notices emitted by the backend.
  *
- * Esiste come componente unico perché il riquadro giallo compariva identico in
- * tre pannelli: tre copie da tenere allineate, e tre punti da ritoccare a ogni
- * lingua nuova.
+ * It exists as a single component because the amber box appeared identically
+ * in three panels: three copies to keep aligned, and three places to touch up
+ * for every new language.
  *
- * Il dettaglio tecnico, quando c'è, sta su una riga a parte e più smorta: è il
- * messaggio del sistema operativo, nella sua lingua, e non va confuso con la
- * frase rivolta all'utente.
+ * The technical detail, when there is one, sits on a separate and dimmer line:
+ * it is the operating system message, in its own language, and must not be
+ * confused with the sentence addressed to the user.
  */
 export function Notices({ items }: NoticesProps) {
   if (items.length === 0) return null;

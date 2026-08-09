@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Release
 
-# I bundle di Tauri non si compilano da una piattaforma all'altra: da macOS non
-# escono .msi né .deb. Ogni sistema va costruito sul proprio runner, ed è il
-# motivo per cui questo file esiste invece di uno script locale.
+# Tauri bundles do not cross-compile between platforms: macOS produces neither
+# .msi nor .deb. Every system has to be built on its own runner, which is why
+# this file exists instead of a local script.
 on:
   push:
     tags: ["v*"]
@@ -22,10 +22,9 @@ jobs:
             label: macOS (Apple Silicon + Intel)
             args: --target universal-apple-darwin
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-          # Il runner Linux più vecchio disponibile: glibc e webkit2gtk del
-          # runner fissano la compatibilità minima del pacchetto prodotto.
-          # Compilare su una distro recente produce binari che non partono su
-          # quelle in LTS.
+          # The oldest Linux runner available: the runner's glibc and webkit2gtk
+          # set the minimum compatibility of the package produced. Building on a
+          # recent distribution yields binaries that will not start on LTS ones.
           - os: ubuntu-22.04
             label: Linux (deb + AppImage)
             args: ""
@@ -51,7 +50,7 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Dipendenze di sistema Tauri
+      - name: Tauri system dependencies
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
@@ -71,18 +70,17 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Open Takeout Hub ${{ github.ref_name }}
           releaseBody: |
-            Elaborazione locale degli export Google Takeout.
+            Local processing of Google Takeout exports.
 
-            Nessuna connessione di rete, nessuna telemetria, nessun
-            aggiornamento automatico. Il vincolo è verificato in CI dal job
-            "Vincolo local-first".
+            No network connections, no telemetry, no automatic updates. The
+            constraint is verified in CI by the "Local-first constraint" job.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
-      # Tauri non produce un eseguibile portatile: i suoi bundle Windows sono
-      # installer. Il binario grezzo lo è già, quindi lo pubblichiamo a parte.
-      - name: Eseguibile portatile Windows
+      # Tauri does not produce a portable executable: its Windows bundles are
+      # installers. The raw binary already is one, so we publish it separately.
+      - name: Windows portable executable
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
