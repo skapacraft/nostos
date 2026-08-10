@@ -1,6 +1,6 @@
 [package]
 name = "nostos"
-version = "1.0.0"
+version = "1.1.0"
 description = "Local-first, privacy-focused processor for Google Takeout archives"
 authors = ["SkapaCraft"]
 edition = "2021"

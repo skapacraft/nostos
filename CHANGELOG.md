@@ -5,6 +5,15 @@ the numbering follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] 2026-08-10
+
+One panel and the tidying that had accumulated since 1.0.0.
+
+The panel answers the question a program that never phones home cannot ask on
+your behalf: is the copy you are running still current. It answers it from the
+compile date and the clock on the desk, which is the only honest way to answer
+it without opening a connection.
+
 ### Fixed
 - CI was red on `main`. `cargo fmt --all --check` had been failing since the
   1.0.0 commit, on three call sites in `lib.rs` that rustfmt wanted on one line.
@@ -31,6 +40,11 @@ the numbering follows [Semantic Versioning](https://semver.org/).
   two rules that are not up for negotiation here: the application opens no
   network connections, which `cargo deny` enforces in CI rather than documenting,
   and no function deletes a file.
+
+### Changed
+- `package-lock.json` had been declaring version `0.1.0` since before 1.0.0,
+  where `package.json`, `Cargo.toml` and `tauri.conf.json` all agreed on the
+  real number. The four now say the same thing.
 
 ## [1.0.0] 2026-08-09
 
