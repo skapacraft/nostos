@@ -188,8 +188,22 @@ it the operation would not be reversible.
 
 ## 7. Other absences
 
-- **No auto-updater.** `createUpdaterArtifacts` is disabled and the plugin is
-  not installed. Updates are downloaded by hand from the releases.
+- **No auto-updater, and no check for one.** `createUpdaterArtifacts` is
+  disabled and the plugin is not installed. Updates are downloaded by hand from
+  the releases.
+
+  The "Version and updates" panel does not weaken this. `build.rs` plants the
+  compile timestamp in the binary as `NOSTOS_BUILD_TIMESTAMP`, and `AppInfo`
+  subtracts it from the local clock: past six months the panel says the copy is
+  old and prints the releases address as text, the way every other address in
+  this application is printed. The arithmetic is local, the address is not
+  fetched, and nothing distinguishes one installation from another.
+
+  This is a deliberate refusal, not an omission. A request asking "is there a
+  version newer than 1.0.0" carries an IP address, a timestamp and a version to
+  whoever answers it, and repeated over months it draws the usage profile of a
+  person who, by definition, is busy taking their data back from Google. The
+  cost of refusing is that the age is only as right as the machine's clock.
 - **No crash reporter.** A panic stays on the machine.
 - **No clickable links to the outside.** URLs found in Google Drive
   placeholders are shown as text. Opening them would mean a connection to

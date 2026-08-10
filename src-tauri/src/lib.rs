@@ -52,8 +52,14 @@ const MENU_HELP_ID: &str = "guida";
 /// Identifier of the menu item that opens the problem report.
 const MENU_REPORT_ID: &str = "oth-report";
 
+/// Identifier of the menu item that opens version and updates.
+const MENU_VERSION_ID: &str = "oth-version";
+
 /// Event with which the menu asks the frontend to show the problem report.
 const SHOW_REPORT_EVENT: &str = "takeout://mostra-segnalazione";
+
+/// Event with which the menu asks the frontend to show version and updates.
+const SHOW_VERSION_EVENT: &str = "takeout://mostra-versione";
 
 /// Event with which the menu asks the frontend to show the guide.
 const SHOW_HELP_EVENT: &str = "takeout://mostra-guida";
@@ -85,6 +91,17 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
     };
 
     let guide = MenuItem::with_id(app, MENU_HELP_ID, "Nostos guide", true, None::<&str>)?;
+
+    // Distinct from the system "About": that window states who wrote the
+    // program, this item says how old the copy in front of you is and where
+    // newer ones appear. Neither asks anything of a server.
+    let version = MenuItem::with_id(
+        app,
+        MENU_VERSION_ID,
+        "Version and updates",
+        true,
+        None::<&str>,
+    )?;
 
     let report = MenuItem::with_id(
         app,
@@ -121,7 +138,7 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
         ],
     )?;
 
-    let help = Submenu::with_items(app, "Help", true, &[&guide, &report])?;
+    let help = Submenu::with_items(app, "Help", true, &[&guide, &version, &report])?;
 
     #[cfg(target_os = "macos")]
     {
@@ -950,6 +967,8 @@ pub fn run() {
                 let _ = app.emit(SHOW_HELP_EVENT, ());
             } else if event.id() == MENU_REPORT_ID {
                 let _ = app.emit(SHOW_REPORT_EVENT, ());
+            } else if event.id() == MENU_VERSION_ID {
+                let _ = app.emit(SHOW_VERSION_EVENT, ());
             }
         })
         .invoke_handler(tauri::generate_handler![

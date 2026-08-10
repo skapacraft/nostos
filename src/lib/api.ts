@@ -59,6 +59,14 @@ export function onShowHelp(handler: () => void): Promise<UnlistenFn> {
   return listen(SHOW_HELP_EVENT, () => handler());
 }
 
+/** Event with which the "Version and updates" menu item asks for the panel. */
+const SHOW_VERSION_EVENT = "takeout://mostra-versione";
+
+/** Listens for the request to open version and updates from the menu. */
+export function onShowVersion(handler: () => void): Promise<UnlistenFn> {
+  return listen(SHOW_VERSION_EVENT, () => handler());
+}
+
 /**
  * Listens for progress.
  *

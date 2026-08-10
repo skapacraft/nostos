@@ -162,6 +162,14 @@ export interface AppInfo {
   homepage: string;
   repository: string;
   license: string;
+  /** Date this binary was compiled, `YYYY-MM-DD`. */
+  buildDate: string;
+  /** Days elapsed since that date, read off this machine's clock. */
+  ageDays: number;
+  /** The age at which the panel starts pointing at the releases page. */
+  staleAfterDays: number;
+  /** Where new versions are published. Text, never opened by the app. */
+  releasesUrl: string;
 }
 
 /** The guarantees declared by the backend, one per verifiable point. */

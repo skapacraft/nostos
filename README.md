@@ -31,8 +31,12 @@ These are not good intentions. They are constraints you can verify in the code.
    dependency graph. Check it with `cargo tree`.
 2. **No telemetry and no crash reporter.** No installation identifier is ever
    generated or stored.
-3. **No auto-updater.** `createUpdaterArtifacts` is disabled and the updater
-   plugin is not installed.
+3. **No auto-updater and no update check.** `createUpdaterArtifacts` is disabled
+   and the updater plugin is not installed. "Version and updates", in the Help
+   menu, states how old the running copy is by subtracting the compile date from
+   the machine's clock, and prints the address where new versions appear. No
+   server is asked anything: a check for updates would reveal an address and the
+   hours of use just as well as any other beacon.
 4. **Restrictive CSP.** `connect-src` is limited to the local IPC channel, so
    even a `fetch` added to the frontend by mistake would be blocked by the
    webview. See `app.security.csp` in `src-tauri/tauri.conf.json`.

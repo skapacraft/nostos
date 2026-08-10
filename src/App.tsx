@@ -41,6 +41,7 @@ export default function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [openReport, setOpenReport] = useState(false);
+  const [openVersion, setOpenVersion] = useState(false);
   // The welcome screen shows once per session: remembering the choice
   // would need a preferences file, which this app does not write.
   // `null` until we know what the user chose: showing the modal and then
@@ -97,6 +98,7 @@ export default function App() {
     api
       .onShowReport(() => {
         setShowWelcome(false);
+        setOpenVersion(false);
         setOpenReport(true);
         setShowHelp(true);
       })
@@ -124,6 +126,34 @@ export default function App() {
       .onShowHelp(() => {
         setShowWelcome(false);
         setOpenReport(false);
+        setOpenVersion(false);
+        setShowHelp(true);
+      })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // The "Version and updates" menu item opens the guide on that section.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    api
+      .onShowVersion(() => {
+        setShowWelcome(false);
+        setOpenReport(false);
+        setOpenVersion(true);
         setShowHelp(true);
       })
       .then((fn) => {
@@ -306,6 +336,7 @@ export default function App() {
             privacy={privacy}
             errors={errorLog}
             openReport={openReport}
+            openVersion={openVersion}
             onError={reportError}
             onClose={() => setShowHelp(false)}
           />

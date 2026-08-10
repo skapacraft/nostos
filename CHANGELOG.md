@@ -18,6 +18,14 @@ the numbering follows [Semantic Versioning](https://semver.org/).
   `index.css`.
 
 ### Added
+- **Version and updates**, from the Help menu. It states the version, the date
+  the binary was compiled and the address where new versions are published, and
+  past six months it says outright that the copy is old. Everything is worked
+  out on the machine: `build.rs` plants the compile timestamp in the binary and
+  the panel subtracts it from the local clock. No server is asked anything,
+  because an update check carries an address, an hour and a version to whoever
+  answers it, which is the trail this application is built not to leave. Where a
+  store or a package manager installed Nostos, that is what updates it.
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and issue and pull request templates,
   matching the other SkapaCraft repositories. The contributing guide states the
   two rules that are not up for negotiation here: the application opens no

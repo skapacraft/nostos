@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 
+import { formatAge } from "../lib/format";
 import { PRIVACY_NOTES } from "../lib/messages";
 import { ProblemReport } from "./ProblemReport";
 import type { AppInfo, PrivacyReport } from "../types";
@@ -14,6 +15,8 @@ interface HelpProps {
   errors: string[];
   /** True when the guide was opened from "Report a problem" in the menu. */
   openReport: boolean;
+  /** True when the guide was opened from "Version and updates" in the menu. */
+  openVersion: boolean;
   onError: (message: string) => void;
   onClose: () => void;
 }
@@ -43,17 +46,21 @@ export function Help({
   privacy,
   errors,
   openReport,
+  openVersion,
   onError,
   onClose,
 }: HelpProps) {
-  // Opened from the menu item, the guide should land on the report rather than
-  // asking the reader to scroll past five sections to find it.
+  // Opened from a menu item, the guide should land on the section that was
+  // asked for rather than making the reader scroll past five others to find it.
   const reportRef = useRef<HTMLDivElement>(null);
+  const versionRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (openReport) {
       reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (openVersion) {
+      versionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [openReport]);
+  }, [openReport, openVersion]);
 
   return (
     <div className="space-y-8">
@@ -286,10 +293,44 @@ export function Help({
       </Section>
 
       {info ? (
+        <div ref={versionRef}>
+          <Section title="Version and updates">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-zinc-600 dark:text-zinc-400">
+              <dt>Version</dt>
+              <dd className="selectable font-mono">{info.version}</dd>
+              <dt>Built on</dt>
+              <dd className="selectable font-mono">{info.buildDate}</dd>
+              <dt>New versions</dt>
+              <dd className="selectable font-mono break-all">
+                {info.releasesUrl}
+              </dd>
+            </dl>
+            {info.ageDays >= info.staleAfterDays ? (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                This copy was built {formatAge(info.ageDays)} ago. There may be
+                a newer one by now: the address above is where they appear.
+              </p>
+            ) : null}
+            <p>
+              The application never checks for itself whether an update exists.
+              Asking a server would tell it your address and the hours at which
+              you open the program, which is the sort of trail this application
+              exists to avoid: a check for updates is a beacon like any other.
+              The age above costs nothing and reveals nothing, being the
+              difference between the compile date and this machine's clock.
+            </p>
+            <p className="text-zinc-500 dark:text-zinc-400">
+              If you installed Nostos from a store or through a package manager,
+              there is nothing to do by hand: that is what keeps it current, and
+              it is the only part of the system that talks to the network.
+            </p>
+          </Section>
+        </div>
+      ) : null}
+
+      {info ? (
         <Section title="About">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-zinc-600 dark:text-zinc-400">
-            <dt>Version</dt>
-            <dd className="selectable font-mono">{info.version}</dd>
             <dt>Author</dt>
             <dd className="selectable">{info.author}</dd>
             <dt>Website</dt>

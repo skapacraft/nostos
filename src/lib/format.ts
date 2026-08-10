@@ -49,6 +49,28 @@ export function formatDate(iso: string | null): string {
   return `${DATE.format(parsed)} UTC`;
 }
 
+/**
+ * A span of days in words, for the age of the running build.
+ *
+ * Rounded on purpose: the point of the sentence is whether the copy is recent
+ * or has been sitting there a while, and "7 months" carries that better than
+ * "213 days".
+ */
+export function formatAge(days: number): string {
+  if (!Number.isFinite(days) || days < 1) return "less than a day";
+  if (days === 1) return "1 day";
+  if (days < 60) return `${days} days`;
+
+  const months = Math.round(days / 30.44);
+  if (months < 18) return `${months} months`;
+
+  const years = Math.floor(days / 365.25);
+  const rest = Math.round((days - years * 365.25) / 30.44);
+  const yearPart = years === 1 ? "1 year" : `${years} years`;
+  if (rest < 1) return yearPart;
+  return `${yearPart} and ${rest === 1 ? "1 month" : `${rest} months`}`;
+}
+
 /** Shortens a long path keeping the start and the end readable. */
 export function shortenPath(path: string, maxLength = 64): string {
   if (path.length <= maxLength) return path;

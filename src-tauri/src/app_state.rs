@@ -10,6 +10,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -214,7 +215,30 @@ macro_rules! trace_dev {
 
 pub(crate) use trace_dev;
 
-/// Identifying data of the application, shown in the guide.
+/// Age past which the information panel suggests looking for a newer version.
+///
+/// Six months: long enough not to pester someone who installed the application
+/// last week, short enough that a copy left behind by a year of releases does
+/// not present itself as current.
+pub const STALE_AFTER_DAYS: i64 = 180;
+
+/// Instant the binary was compiled, planted by `build.rs`.
+fn build_timestamp() -> i64 {
+    env!("NOSTOS_BUILD_TIMESTAMP").parse().unwrap_or_default()
+}
+
+/// Days between the build and `now`, never negative.
+///
+/// The comparison is made against this machine's clock because there is no
+/// other source: the application asks nothing of any server, so a clock set
+/// wrong gives an age that is wrong, and that is the accepted price of not
+/// making the request. A clock set in the past would otherwise yield a negative
+/// age and, further down, a sentence claiming the build comes from the future.
+fn days_since(built: DateTime<Utc>, now: DateTime<Utc>) -> i64 {
+    (now - built).num_days().max(0)
+}
+
+/// Identifying data of the application, shown in the information panel.
 ///
 /// The values come from the variables Cargo exposes at compile time: they are
 /// the same ones as `Cargo.toml`, so they cannot drift from the metadata of the
@@ -228,10 +252,20 @@ pub struct AppInfo {
     pub homepage: String,
     pub repository: String,
     pub license: String,
+    /// Date this binary was compiled, `YYYY-MM-DD`.
+    pub build_date: String,
+    /// Days elapsed since that date, read off this machine's clock.
+    pub age_days: i64,
+    /// The age at which the panel starts pointing at the releases page.
+    pub stale_after_days: i64,
+    /// Where new versions are published. Shown as text: nothing opens it.
+    pub releases_url: String,
 }
 
 impl Default for AppInfo {
     fn default() -> Self {
+        let built = DateTime::from_timestamp(build_timestamp(), 0).unwrap_or(DateTime::UNIX_EPOCH);
+
         Self {
             name: "Nostos".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -239,6 +273,10 @@ impl Default for AppInfo {
             homepage: env!("CARGO_PKG_HOMEPAGE").to_string(),
             repository: env!("CARGO_PKG_REPOSITORY").to_string(),
             license: env!("CARGO_PKG_LICENSE").to_string(),
+            build_date: built.format("%Y-%m-%d").to_string(),
+            age_days: days_since(built, Utc::now()),
+            stale_after_days: STALE_AFTER_DAYS,
+            releases_url: format!("{}/releases", env!("CARGO_PKG_REPOSITORY")),
         }
     }
 }
@@ -690,6 +728,29 @@ mod tests {
             TakeoutSection::GooglePhotos
         );
         assert_eq!(TakeoutSection::from_dir_name("Keep"), TakeoutSection::Other);
+    }
+
+    #[test]
+    fn the_age_of_a_build_never_goes_negative() {
+        let built = DateTime::from_timestamp(1_754_784_000, 0).expect("valid timestamp");
+
+        assert_eq!(days_since(built, built), 0);
+        assert_eq!(days_since(built, built + chrono::Duration::days(200)), 200);
+        // A clock set behind the build date: an age, not a countdown.
+        assert_eq!(days_since(built, built - chrono::Duration::days(5)), 0);
+    }
+
+    #[test]
+    fn the_panel_gets_a_build_date_and_a_releases_page() {
+        let info = AppInfo::default();
+
+        // `build.rs` plants the stamp: without it the date would be the epoch.
+        assert_ne!(info.build_date, "1970-01-01");
+        assert_eq!(info.build_date.len(), "YYYY-MM-DD".len());
+        assert!(info.age_days >= 0);
+        assert_eq!(info.stale_after_days, STALE_AFTER_DAYS);
+        assert!(info.releases_url.starts_with(&info.repository));
+        assert!(info.releases_url.ends_with("/releases"));
     }
 
     #[test]
