@@ -84,13 +84,7 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
         ..Default::default()
     };
 
-    let guide = MenuItem::with_id(
-        app,
-        MENU_HELP_ID,
-        "Nostos guide",
-        true,
-        None::<&str>,
-    )?;
+    let guide = MenuItem::with_id(app, MENU_HELP_ID, "Nostos guide", true, None::<&str>)?;
 
     let report = MenuItem::with_id(
         app,
@@ -136,11 +130,7 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
             APP_NAME,
             true,
             &[
-                &PredefinedMenuItem::about(
-                    app,
-                    Some(&format!("About {APP_NAME}")),
-                    Some(about),
-                )?,
+                &PredefinedMenuItem::about(app, Some(&format!("About {APP_NAME}")), Some(about))?,
                 &PredefinedMenuItem::separator(app)?,
                 &PredefinedMenuItem::services(app, Some("Services"))?,
                 &PredefinedMenuItem::separator(app)?,
@@ -163,11 +153,7 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
             "File",
             true,
             &[
-                &PredefinedMenuItem::about(
-                    app,
-                    Some(&format!("About {APP_NAME}")),
-                    Some(about),
-                )?,
+                &PredefinedMenuItem::about(app, Some(&format!("About {APP_NAME}")), Some(about))?,
                 &PredefinedMenuItem::separator(app)?,
                 &PredefinedMenuItem::quit(app, Some("Quit"))?,
             ],

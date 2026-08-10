@@ -455,9 +455,9 @@ pub fn export_manifest(root: &Path, destination: &Path) -> Result<ExportReport> 
     let manifest = AlbumManifest {
         created_at: Utc::now(),
         source_root: index.root.clone(),
-        note: "Google Foto esporta gli album come cartelle contenenti una copy \
-               della photos. Questo file conserva l'appartenenza agli album prima \
-               che le copie vengano deduplicate."
+        note: "Google Photos exports an album as a folder holding a copy of each \
+               photo in it. This file records which album a photo belonged to, \
+               before those copies are deduplicated away."
             .to_string(),
         albums: index.albums,
         memberships: index.memberships,

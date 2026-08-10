@@ -306,7 +306,7 @@ fn fold_line(line: &str) -> String {
         let width = ch.len_utf8();
         if used + width > budget {
             out.push_str("\r\n ");
-            used = 1; // lo spazio iniziale della continuazione conta
+            used = 1; // The leading space of the continuation counts.
             budget = FOLD_WIDTH;
         }
         out.push(ch);
@@ -447,8 +447,8 @@ mod tests {
 
     #[test]
     fn folds_long_lines_without_splitting_characters() {
-        let lunga = format!("DESCRIPTION:{}", "à".repeat(100));
-        let folded = fold_line(&lunga);
+        let long = format!("DESCRIPTION:{}", "à".repeat(100));
+        let folded = fold_line(&long);
 
         assert!(folded.contains("\r\n "), "the line has to be folded");
         for segment in folded.split("\r\n") {
@@ -459,7 +459,7 @@ mod tests {
             );
         }
         // No character may have been cut in half.
-        let ricomposta = folded.replace("\r\n ", "");
-        assert_eq!(ricomposta, lunga);
+        let rejoined = folded.replace("\r\n ", "");
+        assert_eq!(rejoined, long);
     }
 }

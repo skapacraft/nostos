@@ -36,8 +36,8 @@
     }
   }
 
-  /* In un'app desktop la selezione del testo sulla cornice è rumore: la
-     lasciamo attiva solo sui valori, marcati con .selectable. */
+  /* In a desktop application, selectable chrome is noise. Selection stays on
+     for the values only, which carry .selectable. */
   body {
     user-select: none;
     cursor: default;

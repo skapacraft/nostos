@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest something the project should do and does not.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What are you trying to do, and where does the project get in the way?
+        Describe the situation rather than the solution: there may be a cheaper
+        way to solve it than the one you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >
+        Optional. Workarounds, other tools, or settings that got you part of
+        the way there.
+    validations:
+      required: false

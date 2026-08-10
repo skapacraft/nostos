@@ -3,6 +3,27 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the numbering follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- CI was red on `main`. `cargo fmt --all --check` had been failing since the
+  1.0.0 commit, on three call sites in `lib.rs` that rustfmt wanted on one line.
+  Formatting applied; clippy and the 72 tests were green throughout.
+- The album manifest carried its `note` field in Italian, and ungrammatically at
+  that ("una copy della photos"). It is a string this application writes into a
+  file the user is left holding, so it now reads as English prose and says what
+  the file is for.
+- Four other pieces of Italian left in the source: a comment in `calendar.rs`,
+  two test identifiers, an assertion message in `drive.rs`, and a comment in
+  `index.css`.
+
+### Added
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and issue and pull request templates,
+  matching the other SkapaCraft repositories. The contributing guide states the
+  two rules that are not up for negotiation here: the application opens no
+  network connections, which `cargo deny` enforces in CI rather than documenting,
+  and no function deletes a file.
+
 ## [1.0.0] 2026-08-09
 
 First published version.

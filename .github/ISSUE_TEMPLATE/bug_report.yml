@@ -1,0 +1,58 @@
+name: Bug report
+description: Something behaves differently from what the documentation says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not use this form for a security problem. Use the **Security** tab,
+        then **Report a vulnerability**, so the report stays private until
+        there is a fix. What counts as one is in [SECURITY.md](../blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens
+      description: The behaviour you see, and the behaviour you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >
+        Numbered steps, starting from a clean state. A short, exact sequence is
+        worth more than a long description.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version this was seen on.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system and version, and roughly how large the Takeout export is. If one archive is at fault, say whether it came as a single download or as several split parts.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: >
+        Optional. Error output, a screenshot, or a file that triggers the
+        problem. Remove anything personal before attaching it.
+    validations:
+      required: false

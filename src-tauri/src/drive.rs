@@ -1263,7 +1263,7 @@ mod tests {
             sweep_applied_sidecars(&photos, &quarantena, 10, &crate::app_state::no_progress)
                 .expect("sweep");
 
-        assert_eq!(report.moved, 1, "solo IMG_0001 è pienamente riparata");
+        assert_eq!(report.moved, 1, "only IMG_0001 is fully repaired");
         assert_eq!(report.kept, 3, "the other three stay: {report:?}");
         assert!(
             !photos.join("IMG_0001.JPG.json").exists(),
