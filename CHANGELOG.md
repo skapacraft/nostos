@@ -5,6 +5,26 @@ the numbering follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.1] 2026-08-12
+
+Packaging only. Nothing about what the application does has changed.
+
+### Added
+- An AppStream metainfo file and a desktop entry, both installed by the `.deb`.
+  Before this a software centre had a filename to show and nothing else.
+- A Flatpak manifest and the workflow that builds it. Flathub compiles with no
+  network, so every crate and every npm package is declared with a URL and a
+  checksum, generated from the lock files on each run. The sandbox is granted
+  neither network nor filesystem access.
+- The file dialog backend is a build-time choice. GTK stays the default for the
+  `.deb`, the `.rpm` and the AppImage; the Flatpak selects the XDG portal, which
+  hands back the folder the user picked instead of their whole home directory.
+
+### Fixed
+- The package description was still in Italian. It is what `apt show` prints and
+  what the Windows installer displays.
+
+
 ## [1.1.0] 2026-08-10
 
 One panel and the tidying that had accumulated since 1.0.0.
