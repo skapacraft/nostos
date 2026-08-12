@@ -67,6 +67,18 @@ jobs:
               "$(python3 -c "import json,sys; print(len(json.load(open('packaging/flatpak/${f}-sources.json'))))")"
           done
 
+      # Diagnostica: la stessa richiesta che fa il linter, da un indirizzo di
+      # datacenter, con l'identificativo Cloudflare da cercare nel loro log.
+      - name: What the site answers to a machine
+        run: |
+          echo "--- https://skapacraft.com ---"
+          curl -sS -o /tmp/body.html -D /tmp/head.txt -w 'status: %{http_code}\n' https://skapacraft.com || true
+          grep -iE '^(cf-ray|cf-mitigated|server|cf-cache-status):' /tmp/head.txt || true
+          echo "--- primi 200 byte del corpo ---"
+          head -c 200 /tmp/body.html; echo
+          echo "--- indirizzo di uscita di questo runner ---"
+          curl -sS https://api.ipify.org || true; echo
+
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: nostos.flatpak
