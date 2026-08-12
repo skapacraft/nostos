@@ -1,0 +1,87 @@
+# Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Flatpak manifest.
+#
+# Flathub builds with no network, so nothing here may fetch anything: every
+# crate and every npm package has to be declared with its URL and checksum in
+# the two generated source lists. They are produced from the lock files by the
+# scripts in flatpak-builder-tools and are not committed, because they run to
+# tens of thousands of lines and would churn on every dependency bump. The
+# flatpak workflow regenerates them on each build.
+#
+# The runtime is the GNOME one because it carries WebKitGTK, which is the
+# engine Tauri draws into on Linux.
+id: com.skapacraft.nostos
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: nostos
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+
+# The sandbox is where this application's one promise stops being a promise.
+# There is no --share=network: even if a future dependency tried to open a
+# connection, the sandbox would refuse it. The build already fails when a
+# networking library appears in the dependency graph; this is the same rule
+# enforced a second time, by something outside our own code.
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # A Takeout export is wherever the user put it, and the repaired copy goes
+  # wherever they choose in the system dialog. Both are their own files.
+  - --filesystem=home
+  - --filesystem=xdg-download
+  - --filesystem=/media
+  - --filesystem=/run/media
+
+# No --share=network among the build args, deliberately. Flathub builds
+# offline and ours does too: if the offline caches are wrong we want to find
+# out here, not in the submission review.
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+  env:
+    CARGO_HOME: /run/build/nostos/cargo
+    npm_config_offline: 'true'
+    npm_config_cache: /run/build/nostos/flatpak-node/npm-cache
+    XDG_CACHE_HOME: /run/build/nostos/flatpak-node/cache
+
+modules:
+  - name: nostos
+    buildsystem: simple
+
+    build-commands:
+      # The interface first: cargo embeds the built assets into the binary.
+      - npm ci --no-audit --no-fund
+      - npm run build
+
+      - cargo --offline build --release --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/nostos /app/bin/nostos
+
+      - install -Dm644 src-tauri/packaging/com.skapacraft.nostos.desktop
+        /app/share/applications/com.skapacraft.nostos.desktop
+      - install -Dm644 src-tauri/packaging/com.skapacraft.nostos.metainfo.xml
+        /app/share/metainfo/com.skapacraft.nostos.metainfo.xml
+
+      - install -Dm644 src-tauri/icons/icon.png
+        /app/share/icons/hicolor/512x512/apps/com.skapacraft.nostos.png
+      - install -Dm644 src-tauri/icons/128x128.png
+        /app/share/icons/hicolor/128x128/apps/com.skapacraft.nostos.png
+      - install -Dm644 src-tauri/icons/32x32.png
+        /app/share/icons/hicolor/32x32/apps/com.skapacraft.nostos.png
+
+      # Flathub asks for the licence at a fixed path.
+      - install -Dm644 LICENSE /app/share/licenses/com.skapacraft.nostos/LICENSE
+
+    sources:
+      - type: dir
+        path: ../..
+      # Written by the flatpak workflow before the build. Each declares every
+      # dependency with a URL and a checksum, which is what lets the compile
+      # step run with no network of its own.
+      - cargo-sources.json
+      - node-sources.json
