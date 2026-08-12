@@ -22,7 +22,11 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # Nessuna crate HTTP/telemetria: l'app non apre socket di rete.
 tauri = { version = "2", features = [] }
-tauri-plugin-dialog = "2.7.2"
+# The file dialog backend is chosen at build time. GTK by default, which is
+# what the .deb, .rpm and the AppImage expect. The Flatpak build selects the
+# XDG portal instead: the portal hands back exactly the folder the user picked,
+# so the sandbox never needs access to the whole home directory.
+tauri-plugin-dialog = { version = "2.7.2", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Google comprime i Takeout con deflate. Disattivare le altre codifiche toglie
@@ -47,3 +51,8 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+[features]
+default = ["dialog-gtk3"]
+dialog-gtk3 = ["tauri-plugin-dialog/gtk3"]
+dialog-portal = ["tauri-plugin-dialog/xdg-portal"]

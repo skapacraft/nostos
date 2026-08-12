@@ -33,7 +33,7 @@ jobs:
     name: Build and lint the Flatpak
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged
 
     steps:

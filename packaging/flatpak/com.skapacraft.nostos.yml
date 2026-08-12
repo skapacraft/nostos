@@ -14,7 +14,7 @@
 # engine Tauri draws into on Linux.
 id: com.skapacraft.nostos
 runtime: org.gnome.Platform
-runtime-version: '48'
+runtime-version: '50'
 sdk: org.gnome.Sdk
 command: nostos
 
@@ -32,12 +32,11 @@ finish-args:
   - --socket=fallback-x11
   - --share=ipc
   - --device=dri
-  # A Takeout export is wherever the user put it, and the repaired copy goes
-  # wherever they choose in the system dialog. Both are their own files.
-  - --filesystem=home
-  - --filesystem=xdg-download
-  - --filesystem=/media
-  - --filesystem=/run/media
+  # No filesystem permission is listed, and that is the point. The build below
+  # selects the XDG portal for the file dialog, so the user picks a folder and
+  # the portal hands back access to that folder alone. Asking for the whole
+  # home directory would be simpler and would also be the thing this
+  # application spends its time telling people not to accept.
 
 # No --share=network among the build args, deliberately. Flathub builds
 # offline and ours does too: if the offline caches are wrong we want to find
@@ -60,6 +59,7 @@ modules:
       - npm run build
 
       - cargo --offline build --release --manifest-path src-tauri/Cargo.toml
+        --no-default-features --features dialog-portal
       - install -Dm755 src-tauri/target/release/nostos /app/bin/nostos
 
       - install -Dm644 src-tauri/packaging/com.skapacraft.nostos.desktop
