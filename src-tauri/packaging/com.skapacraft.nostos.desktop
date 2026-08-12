@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Nostos
+GenericName=Data Export Repair
+Comment=Repair dates in exported photos
+Exec=nostos %F
+Icon=com.skapacraft.nostos
+Terminal=false
+Categories=Utility;Graphics;
+Keywords=EXIF;metadata;photo;timestamp;export;duplicates;vCard;iCalendar;
+StartupNotify=true
+StartupWMClass=Nostos
+MimeType=inode/directory;application/zip;

@@ -38,14 +38,24 @@
     "publisher": "SkapaCraft",
     "homepage": "https://skapacraft.com",
     "license": "GPL-3.0-or-later",
-    "shortDescription": "Elabora i tuoi Google Takeout senza uscire dal computer.",
-    "longDescription": "Nostos analizza archivi e cartelle di Google Takeout in locale: metadati delle foto, contatti vCard e contenuto di Drive. Nessuna connessione di rete, nessuna telemetria.",
+    "shortDescription": "Repair dates in exported photos",
+    "longDescription": "Nostos reads a Google Takeout export on your own computer and writes the capture dates, coordinates and descriptions back inside the photographs, merges archives that were split apart, and exports clean contacts and calendars. It opens no network connections and never deletes a file.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/share/metainfo/com.skapacraft.nostos.metainfo.xml": "packaging/com.skapacraft.nostos.metainfo.xml",
+          "/usr/share/applications/com.skapacraft.nostos.desktop": "packaging/com.skapacraft.nostos.desktop",
+          "/usr/share/icons/hicolor/512x512/apps/com.skapacraft.nostos.png": "icons/icon.png",
+          "/usr/share/icons/hicolor/128x128/apps/com.skapacraft.nostos.png": "icons/128x128.png"
+        }
+      }
+    }
   }
 }

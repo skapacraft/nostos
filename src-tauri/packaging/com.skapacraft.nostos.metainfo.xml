@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  AppStream metadata. This is what a software centre reads to describe the
+  application, and what Flathub validates on submission, so the wording here
+  is held to the same standard as the interface: no marketing, and every
+  claim checkable against the source.
+
+  Validate it with appstreamcli, passing this file to "validate".
+-->
+<component type="desktop-application">
+  <id>com.skapacraft.nostos</id>
+
+  <name>Nostos</name>
+  <summary>Repair dates in exported photos</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <developer id="com.skapacraft">
+    <name>SkapaCraft</name>
+  </developer>
+
+  <description>
+    <p>
+      A Google Takeout export keeps the capture date of each photograph in a
+      small JSON file beside the image rather than inside it. Copy the photos
+      into a gallery and that file stays behind, so a lifetime of pictures
+      appears to have been taken on the day the export was downloaded.
+    </p>
+    <p>
+      Nostos writes that information back where every photo manager looks for
+      it, working entirely on your own machine.
+    </p>
+    <ul>
+      <li>Writes capture date, coordinates, description, recognised faces and the favourite mark into the EXIF tags, without recompressing the image</li>
+      <li>Derives the real local time from the coordinates, daylight saving included, instead of writing universal time and shifting every photograph by a time zone</li>
+      <li>Merges an export that was split across several archives, and reports a missing piece from an interrupted download</li>
+      <li>Records which photographs belonged to which album before any deduplication, because an album is exported as a second copy of the file and nothing else</li>
+      <li>Finds duplicates by content rather than by name, so two files that share a name and a size but differ inside both survive</li>
+      <li>Exports deduplicated vCard contacts and iCalendar calendars, with proprietary fields removed</li>
+      <li>Checks free disk space before any operation that copies, and offers a way forward when a library will not fit twice</li>
+    </ul>
+    <p>
+      No function in this application deletes a file. The default is to write
+      repaired copies into a separate folder and leave the originals untouched;
+      where files are moved, a ledger is written beside them and one button puts
+      everything back.
+    </p>
+    <p>
+      The application opens no network connections at all. There is no account,
+      no telemetry, no crash reporting and no automatic updater. That is not a
+      statement of intent: the build fails if a networking library enters the
+      dependency graph, and the check runs on every change.
+    </p>
+    <p>
+      Not affiliated with, endorsed by or sponsored by Google LLC. Google,
+      Google Photos, Google Drive and Google Takeout are trademarks of Google
+      LLC, named here only to identify the export this software reads.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">com.skapacraft.nostos.desktop</launchable>
+
+  <provides>
+    <binary>nostos</binary>
+  </provides>
+
+  <categories>
+    <category>Utility</category>
+    <category>Graphics</category>
+  </categories>
+
+  <keywords>
+    <keyword>EXIF</keyword>
+    <keyword>metadata</keyword>
+    <keyword>photo</keyword>
+    <keyword>timestamp</keyword>
+    <keyword>export</keyword>
+    <keyword>duplicates</keyword>
+    <keyword>vCard</keyword>
+    <keyword>iCalendar</keyword>
+  </keywords>
+
+  <url type="homepage">https://skapacraft.com/tools/apps/nostos/</url>
+  <url type="bugtracker">https://github.com/skapacraft/nostos/issues</url>
+  <url type="vcs-browser">https://github.com/skapacraft/nostos</url>
+  <url type="help">https://skapacraft.com/guides/google-takeout-photo-dates/</url>
+  <url type="contact">https://skapacraft.com/contact/</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://skapacraft.com/assets/images/nostos/foto-2.png</image>
+      <caption>An export of 3237 photographs, none of them carrying a date inside the file</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://skapacraft.com/assets/images/nostos/foto-1.png</image>
+      <caption>Waiting for an export folder, with the promise already on screen</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://skapacraft.com/assets/images/nostos/foto-3.png</image>
+      <caption>Album membership recorded before anything is deduplicated</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://skapacraft.com/assets/images/nostos/foto-4.png</image>
+      <caption>Duplicates compared by content, and every move written down so it can be undone</caption>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="1.1.0" date="2026-08-10">
+      <description>
+        <p>
+          Adds a version panel that states how old the installed copy is,
+          worked out from the compile date and the local clock rather than by
+          asking a server. Formatting and the last untranslated strings fixed.
+        </p>
+      </description>
+      <url type="details">https://github.com/skapacraft/nostos/releases/tag/v1.1.0</url>
+    </release>
+    <release version="1.0.0" date="2026-08-09">
+      <description>
+        <p>First published version.</p>
+      </description>
+      <url type="details">https://github.com/skapacraft/nostos/releases/tag/v1.0.0</url>
+    </release>
+  </releases>
+
+  <!-- Nothing in the application is age sensitive: no user content is shared,
+       no communication, no purchases, no advertising, no data collection. -->
+  <content_rating type="oars-1.1" />
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <recommends>
+    <display_length compare="ge">768</display_length>
+  </recommends>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#d1fae5</color>
+    <color type="primary" scheme_preference="dark">#18181b</color>
+  </branding>
+</component>
