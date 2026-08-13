@@ -30,8 +30,19 @@ permissions:
 
 jobs:
   build:
-    name: Build and lint the Flatpak
-    runs-on: ubuntu-latest
+    name: Build and lint the Flatpak (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          # Flathub publishes for both architectures, so both are built here.
+          # Without this the ARM64 package would first be exercised by whoever
+          # installed it.
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged
@@ -69,14 +80,18 @@ jobs:
 
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          bundle: nostos.flatpak
+          bundle: nostos-${{ matrix.arch }}.flatpak
           manifest-path: packaging/flatpak/com.skapacraft.nostos.yml
-          cache-key: flatpak-${{ hashFiles('src-tauri/Cargo.lock', 'package-lock.json') }}
+          cache-key: flatpak-${{ matrix.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'package-lock.json') }}
+          arch: ${{ matrix.arch }}
           # The same check Flathub runs when the submission is opened.
           run-tests: false
           verbose: false
 
+      # Once, not per architecture: it reads the manifest and the metadata,
+      # which are the same file whichever machine is building.
       - name: Lint the manifest and the metadata as Flathub does
+        if: matrix.arch == 'x86_64'
         run: |
           set -euo pipefail
           flatpak install -y --noninteractive flathub org.flatpak.Builder || true
