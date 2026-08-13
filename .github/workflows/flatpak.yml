@@ -67,16 +67,6 @@ jobs:
               "$(python3 -c "import json,sys; print(len(json.load(open('packaging/flatpak/${f}-sources.json'))))")"
           done
 
-      # Temporary: lets the Flathub submission be prepared without needing
-      # Python 3.10+ locally to run flatpak-node-generator. Remove once the
-      # submission is filed.
-      - uses: actions/upload-artifact@v7
-        with:
-          name: flathub-source-lists
-          path: |
-            packaging/flatpak/cargo-sources.json
-            packaging/flatpak/node-sources.json
-
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: nostos.flatpak
