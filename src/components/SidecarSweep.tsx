@@ -7,6 +7,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "../lib/api";
 import { toMessage } from "../lib/api";
 import { formatBytes, formatCount, shortenPath } from "../lib/format";
+import { locale } from "../lib/locale";
 import { SIDECAR_KEPT_LABELS } from "../lib/messages";
 import type { SidecarSweepReport } from "../types";
 import { RevealButton } from "./RevealButton";
@@ -30,6 +31,7 @@ interface SidecarSweepProps {
  * this application repairs.
  */
 export function SidecarSweep({ path, onError }: SidecarSweepProps) {
+  const it = locale() === "it";
   const [destination, setDestination] = useState<string | null>(null);
   const [report, setReport] = useState<SidecarSweepReport | null>(null);
   const [running, setRunning] = useState(false);
@@ -40,7 +42,9 @@ export function SidecarSweep({ path, onError }: SidecarSweepProps) {
       const chosen = await open({
         directory: true,
         multiple: false,
-        title: "Where to move the sidecars already applied",
+        title: it
+          ? "Dove spostare i sidecar già applicati"
+          : "Where to move the sidecars already applied",
       });
       if (typeof chosen === "string") setDestination(chosen);
     } catch (error) {
@@ -78,24 +82,35 @@ export function SidecarSweep({ path, onError }: SidecarSweepProps) {
   return (
     <details className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
       <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
-        Set aside the JSON files that are now redundant
+        {it
+          ? "Metti da parte i file JSON ora ridondanti"
+          : "Set aside the JSON files that are now redundant"}
       </summary>
 
       <div className="mt-3 space-y-3 text-sm text-zinc-600 dark:text-zinc-300">
         <p>
-          Every repaired photograph now carries inside it what used to be in
-          its <span className="font-mono">.json</span> file: date, coordinates,
-          description, recognised faces and the favourite star. Those JSON
-          files can be moved elsewhere to leave the folder clean.
+          {it ? (
+            <>
+              Ogni fotografia riparata porta ora al suo interno ciò che era
+              nel suo file <span className="font-mono">.json</span>: data,
+              coordinate, descrizione, volti riconosciuti e la stella dei
+              preferiti. Quei file JSON possono essere spostati altrove per
+              lasciare la cartella pulita.
+            </>
+          ) : (
+            <>
+              Every repaired photograph now carries inside it what used to be
+              in its <span className="font-mono">.json</span> file: date,
+              coordinates, description, recognised faces and the favourite
+              star. Those JSON files can be moved elsewhere to leave the
+              folder clean.
+            </>
+          )}
         </p>
         <p className="rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800/50">
-          Only the JSON files that are no longer the sole copy of anything are
-          moved, checking inside each file that the data really is there. The
-          ones for PNG, GIF and video stay where they are, since those are
-          formats we do not write EXIF into, and so do the ones for photographs
-          that were not repaired and the ones holding data with no tag to live
-          in, such as the Google Photos view count. No file is deleted: one
-          click undoes the move.
+          {it
+            ? "Vengono spostati solo i file JSON che non sono più l'unica copia di qualcosa, verificando dentro ogni file che il dato sia davvero presente. Quelli per PNG, GIF e video restano dove sono, poiché sono formati in cui non scriviamo EXIF, così come quelli per fotografie non riparate e quelli che contengono dati senza un tag dove stare, come il conteggio delle visualizzazioni di Google Foto. Nessun file viene eliminato: un clic annulla lo spostamento."
+            : "Only the JSON files that are no longer the sole copy of anything are moved, checking inside each file that the data really is there. The ones for PNG, GIF and video stay where they are, since those are formats we do not write EXIF into, and so do the ones for photographs that were not repaired and the ones holding data with no tag to live in, such as the Google Photos view count. No file is deleted: one click undoes the move."}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -104,7 +119,13 @@ export function SidecarSweep({ path, onError }: SidecarSweepProps) {
             onClick={chooseDestination}
             className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
-            {destination ? "Change destination" : "Choose where to move them"}
+            {destination
+              ? it
+                ? "Cambia destinazione"
+                : "Change destination"
+              : it
+                ? "Scegli dove spostarli"
+                : "Choose where to move them"}
           </button>
           {destination ? (
             <span
@@ -122,21 +143,33 @@ export function SidecarSweep({ path, onError }: SidecarSweepProps) {
           disabled={!destination || running}
           className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
         >
-          {running ? "Working..." : "Move the JSON files already applied"}
+          {running
+            ? it
+              ? "Elaborazione..."
+              : "Working..."
+            : it
+              ? "Sposta i file JSON già applicati"
+              : "Move the JSON files already applied"}
         </button>
 
         {report ? (
           <div className="space-y-2 rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-800/50">
             <p className="text-zinc-900 dark:text-zinc-100">
-              {restored
-                ? `Put back ${formatCount(report.moved)} JSON files.`
-                : `Moved ${formatCount(report.moved)} JSON files, ${formatBytes(report.bytesMoved)}.`}
+              {it
+                ? restored
+                  ? `Rimessi a posto ${formatCount(report.moved)} file JSON.`
+                  : `Spostati ${formatCount(report.moved)} file JSON, ${formatBytes(report.bytesMoved)}.`
+                : restored
+                  ? `Put back ${formatCount(report.moved)} JSON files.`
+                  : `Moved ${formatCount(report.moved)} JSON files, ${formatBytes(report.bytesMoved)}.`}
             </p>
 
             {report.kept > 0 ? (
               <div className="space-y-1 text-xs text-zinc-500 dark:text-zinc-400">
                 <p>
-                  Left where they were: {formatCount(report.kept)}. The reasons:
+                  {it
+                    ? `Lasciati dove erano: ${formatCount(report.kept)}. I motivi:`
+                    : `Left where they were: ${formatCount(report.kept)}. The reasons:`}
                 </p>
                 <ul className="list-inside list-disc space-y-0.5">
                   {report.keptReasons.map(({ reason, count }) => (
@@ -156,7 +189,7 @@ export function SidecarSweep({ path, onError }: SidecarSweepProps) {
                   disabled={running}
                   className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
-                  Undo the move
+                  {it ? "Annulla lo spostamento" : "Undo the move"}
                 </button>
                 <RevealButton path={report.destination} onError={onError} />
               </div>
@@ -165,7 +198,9 @@ export function SidecarSweep({ path, onError }: SidecarSweepProps) {
             {report.failures.length > 0 ? (
               <details className="text-xs">
                 <summary className="cursor-pointer text-amber-700 dark:text-amber-400">
-                  {formatCount(report.failures.length)} files not moved
+                  {it
+                    ? `${formatCount(report.failures.length)} file non spostati`
+                    : `${formatCount(report.failures.length)} files not moved`}
                 </summary>
                 <ul className="selectable mt-1 space-y-0.5 font-mono text-zinc-500 dark:text-zinc-400">
                   {report.failures.slice(0, 20).map((failure) => (

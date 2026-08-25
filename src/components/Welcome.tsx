@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { locale } from "../lib/locale";
 import type { AppInfo } from "../types";
 
 interface WelcomeProps {
@@ -12,24 +13,44 @@ interface WelcomeProps {
   onOpenHelp: () => void;
 }
 
-const POINTS: { title: string; body: string }[] = [
-  {
-    title: "Puts your export back in order",
-    body: "Restores the dates of your photos, merges split archives, deduplicates contacts and calendars, and finds the repeated files.",
-  },
-  {
-    title: "Sends nothing anywhere",
-    body: "The application opens no network connections. That is not a promise: it is a check that fails the build if anyone tries to add one.",
-  },
-  {
-    title: "Deletes nothing",
-    body: "The default changes write copies elsewhere and leave your originals untouched. Anything that moves files can be undone.",
-  },
-  {
-    title: "Checks the room before starting",
-    body: "A library of several hundred gigabytes does not fit twice on the same disk. The application works this out before starting, and offers a way to proceed anyway.",
-  },
-];
+const POINTS: Record<"en" | "it", { title: string; body: string }[]> = {
+  en: [
+    {
+      title: "Puts your export back in order",
+      body: "Restores the dates of your photos, merges split archives, deduplicates contacts and calendars, and finds the repeated files.",
+    },
+    {
+      title: "Sends nothing anywhere",
+      body: "The application opens no network connections. That is not a promise: it is a check that fails the build if anyone tries to add one.",
+    },
+    {
+      title: "Deletes nothing",
+      body: "The default changes write copies elsewhere and leave your originals untouched. Anything that moves files can be undone.",
+    },
+    {
+      title: "Checks the room before starting",
+      body: "A library of several hundred gigabytes does not fit twice on the same disk. The application works this out before starting, and offers a way to proceed anyway.",
+    },
+  ],
+  it: [
+    {
+      title: "Rimette in ordine il tuo export",
+      body: "Ripristina le date delle tue foto, unisce gli archivi divisi, deduplica contatti e calendari, e trova i file ripetuti.",
+    },
+    {
+      title: "Non invia niente da nessuna parte",
+      body: "L'applicazione non apre connessioni di rete. Non è una promessa: è un controllo che fa fallire la build se qualcuno prova ad aggiungerne una.",
+    },
+    {
+      title: "Non cancella niente",
+      body: "Le modifiche predefinite scrivono copie altrove e lasciano intatti i tuoi originali. Tutto ciò che sposta i file può essere annullato.",
+    },
+    {
+      title: "Controlla lo spazio prima di iniziare",
+      body: "Una libreria di centinaia di gigabyte non entra due volte sullo stesso disco. L'applicazione lo verifica prima di iniziare, e offre un modo per procedere comunque.",
+    },
+  ],
+};
 
 /**
  * The introduction shown at startup.
@@ -41,6 +62,7 @@ const POINTS: { title: string; body: string }[] = [
 export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
   const [hideNextTime, setHideNextTime] = useState(false);
   const startRef = useRef<HTMLButtonElement>(null);
+  const it = locale() === "it";
 
   useEffect(() => {
     startRef.current?.focus();
@@ -73,28 +95,28 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            {/* The mark from the application icon: a photo that lost its date. */}
-            <rect x="2.5" y="4.5" width="14" height="11.5" rx="2" />
-            <path d="M2.5 12.5l3.5-3.5 4 4" />
-            <circle cx="12.5" cy="8.5" r="1.2" />
-            <circle cx="16" cy="16" r="5" fill="currentColor" fillOpacity="0" />
-            <path d="M16 13v3l2 1.5" />
+            {/* The mark from the application icon: an orbit not yet closed,
+                and the point travelling back to complete it. */}
+            <path d="M12 4a8 8 0 1 1-8 8" />
+            <circle cx="4" cy="12" r="1.3" fill="currentColor" stroke="none" />
           </svg>
           <div>
             <h2
               id="welcome-title"
               className="text-lg font-semibold text-zinc-900 dark:text-zinc-100"
             >
-              Welcome to Nostos
+              {it ? "Benvenuto in Nostos" : "Welcome to Nostos"}
             </h2>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Your Google data, processed on your own computer.
+              {it
+                ? "I tuoi dati Google, elaborati sul tuo computer."
+                : "Your Google data, processed on your own computer."}
             </p>
           </div>
         </div>
 
         <ul className="mt-5 space-y-4">
-          {POINTS.map((point) => (
+          {POINTS[it ? "it" : "en"].map((point) => (
             <li key={point.title} className="flex gap-3">
               <span
                 aria-hidden="true"
@@ -113,10 +135,22 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
         </ul>
 
         <p className="mt-5 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-300">
-          To begin, drag the <span className="font-mono">Takeout</span> folder
-          into this window, or one of the{" "}
-          <span className="font-mono">takeout-....zip</span> archives you
-          downloaded from Google.
+          {it ? (
+            <>
+              Per iniziare, trascina la cartella{" "}
+              <span className="font-mono">Takeout</span> in questa finestra,
+              oppure uno degli archivi{" "}
+              <span className="font-mono">takeout-....zip</span> scaricati da
+              Google.
+            </>
+          ) : (
+            <>
+              To begin, drag the <span className="font-mono">Takeout</span>{" "}
+              folder into this window, or one of the{" "}
+              <span className="font-mono">takeout-....zip</span> archives you
+              downloaded from Google.
+            </>
+          )}
         </p>
 
         <label className="mt-5 flex cursor-pointer items-center gap-2.5 text-sm text-zinc-600 dark:text-zinc-300">
@@ -125,7 +159,11 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
             checked={hideNextTime}
             onChange={(event) => setHideNextTime(event.target.checked)}
           />
-          <span>Do not show this introduction again</span>
+          <span>
+            {it
+              ? "Non mostrare più questa introduzione"
+              : "Do not show this introduction again"}
+          </span>
         </label>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -134,7 +172,7 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
             onClick={onOpenHelp}
             className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
-            Open the guide
+            {it ? "Apri la guida" : "Open the guide"}
           </button>
           <button
             ref={startRef}
@@ -142,13 +180,14 @@ export function Welcome({ info, onStart, onOpenHelp }: WelcomeProps) {
             onClick={() => onStart(hideNextTime)}
             className="rounded-lg bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
           >
-            Start
+            {it ? "Inizia" : "Start"}
           </button>
         </div>
 
         {info ? (
           <p className="mt-4 text-center text-xs text-zinc-400 dark:text-zinc-500">
-            Version {info.version} · {info.license} · {info.author}
+            {it ? "Versione" : "Version"} {info.version} · {info.license} ·{" "}
+            {info.author}
           </p>
         ) : null}
       </div>

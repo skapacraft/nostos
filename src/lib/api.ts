@@ -12,6 +12,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+import { locale } from "./locale";
 import { errorDetail, errorText } from "./messages";
 import type {
   AlbumIndex,
@@ -230,7 +231,9 @@ export function toMessage(error: unknown): string {
   }
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
-  return "Unexpected error while processing.";
+  return locale() === "it"
+    ? "Errore imprevisto durante l'elaborazione."
+    : "Unexpected error while processing.";
 }
 
 function isErrorPayload(value: unknown): value is ErrorPayload {

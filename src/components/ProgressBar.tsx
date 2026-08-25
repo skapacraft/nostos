@@ -2,13 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { formatCount } from "../lib/format";
+import { locale } from "../lib/locale";
 import type { Progress } from "../types";
 
-const PHASE_LABELS: Record<Progress["phase"], string> = {
-  scanning: "Scansione",
-  extracting: "Estrazione",
-  writing: "Scrittura",
-  done: "Completato",
+const PHASE_LABELS: Record<"en" | "it", Record<Progress["phase"], string>> = {
+  en: {
+    scanning: "Scanning",
+    extracting: "Extracting",
+    writing: "Writing",
+    done: "Done",
+  },
+  it: {
+    scanning: "Scansione",
+    extracting: "Estrazione",
+    writing: "Scrittura",
+    done: "Completato",
+  },
 };
 
 interface ProgressBarProps {
@@ -28,12 +37,17 @@ export function ProgressBar({ progress, label }: ProgressBarProps) {
   const done = progress?.done ?? 0;
   const ratio = total > 0 ? Math.min(done / total, 1) : 0;
   const indeterminate = !progress || total === 0;
+  const it = locale() === "it";
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-3 text-xs">
         <span className="text-zinc-600 dark:text-zinc-300">
-          {progress ? PHASE_LABELS[progress.phase] : "Avvio..."}
+          {progress
+            ? PHASE_LABELS[it ? "it" : "en"][progress.phase]
+            : it
+              ? "Avvio..."
+              : "Starting..."}
           {progress?.current ? (
             <span className="ml-2 truncate font-mono text-zinc-400 dark:text-zinc-500">
               {progress.current}
@@ -63,7 +77,9 @@ export function ProgressBar({ progress, label }: ProgressBarProps) {
 
       {progress && progress.errors > 0 ? (
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          {formatCount(progress.errors)} files with problems
+          {it
+            ? `${formatCount(progress.errors)} file con problemi`
+            : `${formatCount(progress.errors)} files with problems`}
         </p>
       ) : null}
     </div>

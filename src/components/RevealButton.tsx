@@ -5,6 +5,7 @@ import { useCallback } from "react";
 
 import * as api from "../lib/api";
 import { toMessage } from "../lib/api";
+import { locale } from "../lib/locale";
 
 interface RevealButtonProps {
   /** Path to reveal. It has to be one produced by the application. */
@@ -21,11 +22,10 @@ interface RevealButtonProps {
  * the app that reaches the operating system, and it stays clearly distinct
  * from opening URLs, which does not exist here.
  */
-export function RevealButton({
-  path,
-  onError,
-  label = "Show in file manager",
-}: RevealButtonProps) {
+export function RevealButton({ path, onError, label }: RevealButtonProps) {
+  const resolvedLabel =
+    label ??
+    (locale() === "it" ? "Mostra nel file manager" : "Show in file manager");
   const reveal = useCallback(async () => {
     try {
       await api.revealInFileManager(path);
@@ -52,7 +52,7 @@ export function RevealButton({
       >
         <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l1.8 2.4h9A1.5 1.5 0 0 1 21 9.9v8.6a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z" />
       </svg>
-      {label}
+      {resolvedLabel}
     </button>
   );
 }

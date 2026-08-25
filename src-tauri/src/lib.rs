@@ -64,6 +64,18 @@ const SHOW_VERSION_EVENT: &str = "takeout://mostra-versione";
 /// Event with which the menu asks the frontend to show the guide.
 const SHOW_HELP_EVENT: &str = "takeout://mostra-guida";
 
+/// Whether the system locale is Italian.
+///
+/// The native menu is built once at startup, before any web view or
+/// `navigator.language` exists, so the frontend's own locale detection is
+/// out of reach here: this is the OS-level equivalent. Only English and
+/// Italian are translated; anything else falls back to English.
+fn is_italian() -> bool {
+    sys_locale::get_locale()
+        .map(|tag| tag.to_lowercase().starts_with("it"))
+        .unwrap_or(false)
+}
+
 /// Builds the menu bar.
 ///
 /// Tauri could generate a default one, but the macOS "About" and "Hide" items
@@ -74,23 +86,54 @@ const SHOW_HELP_EVENT: &str = "takeout://mostra-guida";
 fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
     use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
+    let it = is_italian();
+
+    // Raw RGBA rather than `Image::from_bytes` on the PNG: decoding a PNG at
+    // runtime needs the `image-png` cargo feature, which pulls in the `image`
+    // crate for the sake of one small icon that never changes. Decoded once
+    // ahead of time instead, so the dependency graph stays as it is.
+    let about_icon = tauri::image::Image::new(
+        include_bytes!("../icons/about-icon.rgba"),
+        128,
+        128,
+    );
+
     let about = AboutMetadata {
         name: Some(APP_NAME.to_string()),
         version: Some(env!("CARGO_PKG_VERSION").to_string()),
         authors: Some(vec![env!("CARGO_PKG_AUTHORS").to_string()]),
         copyright: Some("Copyright (C) 2026 SkapaCraft".to_string()),
         license: Some("GPL-3.0-or-later".to_string()),
+        icon: Some(about_icon),
         // The website stays in the comments as text. The `website` field becomes a
         // clickable link in the system window on some platforms, and this
         // application does not open addresses.
-        comments: Some(format!(
-            "Processes your Google Takeout exports locally.\n{}",
-            env!("CARGO_PKG_HOMEPAGE")
-        )),
+        //
+        // Neither `comments` nor `website` actually renders on macOS: both are
+        // documented as unsupported there. The full picture — website, source,
+        // licence — lives in the in-app "About" section of the guide instead,
+        // which is not limited by what one native dialog exposes per platform.
+        comments: Some(if it {
+            format!(
+                "Elabora i tuoi export di Google Takeout in locale.\n{}",
+                env!("CARGO_PKG_HOMEPAGE")
+            )
+        } else {
+            format!(
+                "Processes your Google Takeout exports locally.\n{}",
+                env!("CARGO_PKG_HOMEPAGE")
+            )
+        }),
         ..Default::default()
     };
 
-    let guide = MenuItem::with_id(app, MENU_HELP_ID, "Nostos guide", true, None::<&str>)?;
+    let guide = MenuItem::with_id(
+        app,
+        MENU_HELP_ID,
+        if it { "Guida di Nostos" } else { "Nostos guide" },
+        true,
+        None::<&str>,
+    )?;
 
     // Distinct from the system "About": that window states who wrote the
     // program, this item says how old the copy in front of you is and where
@@ -98,7 +141,11 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
     let version = MenuItem::with_id(
         app,
         MENU_VERSION_ID,
-        "Version and updates",
+        if it {
+            "Versione e aggiornamenti"
+        } else {
+            "Version and updates"
+        },
         true,
         None::<&str>,
     )?;
@@ -106,56 +153,92 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
     let report = MenuItem::with_id(
         app,
         MENU_REPORT_ID,
-        "Report a problem...",
+        if it {
+            "Segnala un problema..."
+        } else {
+            "Report a problem..."
+        },
         true,
         None::<&str>,
     )?;
 
     let edit = Submenu::with_items(
         app,
-        "Edit",
+        if it { "Modifica" } else { "Edit" },
         true,
         &[
-            &PredefinedMenuItem::undo(app, Some("Undo"))?,
-            &PredefinedMenuItem::redo(app, Some("Redo"))?,
+            &PredefinedMenuItem::undo(app, Some(if it { "Annulla" } else { "Undo" }))?,
+            &PredefinedMenuItem::redo(app, Some(if it { "Ripristina" } else { "Redo" }))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::cut(app, Some("Cut"))?,
-            &PredefinedMenuItem::copy(app, Some("Copy"))?,
-            &PredefinedMenuItem::paste(app, Some("Paste"))?,
-            &PredefinedMenuItem::select_all(app, Some("Select All"))?,
+            &PredefinedMenuItem::cut(app, Some(if it { "Taglia" } else { "Cut" }))?,
+            &PredefinedMenuItem::copy(app, Some(if it { "Copia" } else { "Copy" }))?,
+            &PredefinedMenuItem::paste(app, Some(if it { "Incolla" } else { "Paste" }))?,
+            &PredefinedMenuItem::select_all(
+                app,
+                Some(if it { "Seleziona tutto" } else { "Select All" }),
+            )?,
         ],
     )?;
 
     let window = Submenu::with_items(
         app,
-        "Window",
+        if it { "Finestra" } else { "Window" },
         true,
         &[
-            &PredefinedMenuItem::minimize(app, Some("Minimise"))?,
-            &PredefinedMenuItem::fullscreen(app, Some("Full Screen"))?,
+            &PredefinedMenuItem::minimize(app, Some(if it { "Riduci a icona" } else { "Minimise" }))?,
+            &PredefinedMenuItem::fullscreen(
+                app,
+                Some(if it { "Schermo intero" } else { "Full Screen" }),
+            )?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, Some("Close Window"))?,
+            &PredefinedMenuItem::close_window(
+                app,
+                Some(if it { "Chiudi finestra" } else { "Close Window" }),
+            )?,
         ],
     )?;
 
-    let help = Submenu::with_items(app, "Help", true, &[&guide, &version, &report])?;
+    let help = Submenu::with_items(
+        app,
+        if it { "Aiuto" } else { "Help" },
+        true,
+        &[&guide, &version, &report],
+    )?;
 
     #[cfg(target_os = "macos")]
     {
+        let about_label = if it {
+            format!("Informazioni su {APP_NAME}")
+        } else {
+            format!("About {APP_NAME}")
+        };
+        let hide_label = if it {
+            format!("Nascondi {APP_NAME}")
+        } else {
+            format!("Hide {APP_NAME}")
+        };
+        let quit_label = if it {
+            format!("Esci da {APP_NAME}")
+        } else {
+            format!("Quit {APP_NAME}")
+        };
         let application = Submenu::with_items(
             app,
             APP_NAME,
             true,
             &[
-                &PredefinedMenuItem::about(app, Some(&format!("About {APP_NAME}")), Some(about))?,
+                &PredefinedMenuItem::about(app, Some(&about_label), Some(about))?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::services(app, Some("Services"))?,
+                &PredefinedMenuItem::services(app, Some(if it { "Servizi" } else { "Services" }))?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::hide(app, Some(&format!("Hide {APP_NAME}")))?,
-                &PredefinedMenuItem::hide_others(app, Some("Hide Others"))?,
-                &PredefinedMenuItem::show_all(app, Some("Show All"))?,
+                &PredefinedMenuItem::hide(app, Some(&hide_label))?,
+                &PredefinedMenuItem::hide_others(
+                    app,
+                    Some(if it { "Nascondi altre" } else { "Hide Others" }),
+                )?,
+                &PredefinedMenuItem::show_all(app, Some(if it { "Mostra tutte" } else { "Show All" }))?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::quit(app, Some(&format!("Quit {APP_NAME}")))?,
+                &PredefinedMenuItem::quit(app, Some(&quit_label))?,
             ],
         )?;
         Menu::with_items(app, &[&application, &edit, &window, &help])
@@ -165,14 +248,19 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
     {
         // Outside macOS there is no application menu: "About" and "Quit" go under
         // File, where users look for them.
+        let about_label = if it {
+            format!("Informazioni su {APP_NAME}")
+        } else {
+            format!("About {APP_NAME}")
+        };
         let file = Submenu::with_items(
             app,
             "File",
             true,
             &[
-                &PredefinedMenuItem::about(app, Some(&format!("About {APP_NAME}")), Some(about))?,
+                &PredefinedMenuItem::about(app, Some(&about_label), Some(about))?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::quit(app, Some("Quit"))?,
+                &PredefinedMenuItem::quit(app, Some(if it { "Esci" } else { "Quit" }))?,
             ],
         )?;
         Menu::with_items(app, &[&file, &edit, &window, &help])

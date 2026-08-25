@@ -11,6 +11,7 @@ import {
   shortenPath,
 } from "../lib/format";
 import * as api from "../lib/api";
+import { locale } from "../lib/locale";
 import type {
   CalendarReport,
   ContactsReport,
@@ -61,6 +62,7 @@ export function PhotoReportView({
   onRepaired,
   onError,
 }: PhotoReportProps) {
+  const it = locale() === "it";
   const [albumRisk, setAlbumRisk] = useState(false);
 
   return (
@@ -68,32 +70,32 @@ export function PhotoReportView({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="Media" value={formatCount(report.mediaCount)} />
         <Stat
-          label="With sidecar"
+          label={it ? "Con sidecar" : "With sidecar"}
           value={formatCount(report.withSidecar)}
           hint={percent(report.withSidecar, report.mediaCount)}
         />
         <Stat
-          label="EXIF date"
+          label={it ? "Data EXIF" : "EXIF date"}
           value={formatCount(report.withExifDate)}
           hint={percent(report.withExifDate, report.mediaCount)}
         />
-        <Stat label="With GPS" value={formatCount(report.withGeo)} />
+        <Stat label={it ? "Con GPS" : "With GPS"} value={formatCount(report.withGeo)} />
         <Stat
-          label="To repair"
+          label={it ? "Da riparare" : "To repair"}
           value={formatCount(report.needsRepair)}
-          hint="date not in the EXIF"
+          hint={it ? "data non nell'EXIF" : "date not in the EXIF"}
           tone={report.needsRepair > 0 ? "warning" : "neutral"}
         />
-        <Stat label="Total" value={formatBytes(report.totalBytes)} />
+        <Stat label={it ? "Totale" : "Total"} value={formatBytes(report.totalBytes)} />
       </div>
 
       <AlbumPanel path={path} onError={onError} onRisk={setAlbumRisk} />
 
       {report.dateFromFilename > 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          For {formatCount(report.dateFromFilename)} files the date was taken from
-            the name, because both the EXIF and the sidecar were missing. It is
-            the time the camera app wrote when the shot was taken.
+          {it
+            ? `Per ${formatCount(report.dateFromFilename)} file la data è stata presa dal nome, perché sia l'EXIF sia il sidecar erano assenti. È l'orario che l'app fotocamera ha scritto al momento dello scatto.`
+            : `For ${formatCount(report.dateFromFilename)} files the date was taken from the name, because both the EXIF and the sidecar were missing. It is the time the camera app wrote when the shot was taken.`}
         </p>
       ) : null}
 
@@ -119,7 +121,7 @@ export function PhotoReportView({
 
       {report.sample.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>Preview</SectionTitle>
+          <SectionTitle>{it ? "Anteprima" : "Preview"}</SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.sample.map((media) => (
@@ -135,7 +137,9 @@ export function PhotoReportView({
                   <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                     {formatDate(media.resolvedTakenAt)}
                     {media.takenAtSource !== "missing"
-                      ? ` (from ${media.takenAtSource === "exif" ? "EXIF" : "sidecar"})`
+                      ? it
+                        ? ` (da ${media.takenAtSource === "exif" ? "EXIF" : "sidecar"})`
+                        : ` (from ${media.takenAtSource === "exif" ? "EXIF" : "sidecar"})`
                       : ""}
                     {media.resolvedGeo
                       ? ` · ${media.resolvedGeo.latitude.toFixed(4)}, ${media.resolvedGeo.longitude.toFixed(4)}`
@@ -150,7 +154,9 @@ export function PhotoReportView({
 
       {report.unreadableCount > 0 ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          {formatCount(report.unreadableCount)} unreadable files were skipped.
+          {it
+            ? `${formatCount(report.unreadableCount)} file illeggibili sono stati saltati.`
+            : `${formatCount(report.unreadableCount)} unreadable files were skipped.`}
         </p>
       ) : null}
     </div>
@@ -170,34 +176,40 @@ export function ContactsReportView({
   path,
   onError,
 }: ContactsReportProps) {
+  const it = locale() === "it";
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Stat label="Cards read" value={formatCount(report.total)} />
-        <Stat label="Unique contacts" value={formatCount(report.unique)} />
+        <Stat label={it ? "Schede lette" : "Cards read"} value={formatCount(report.total)} />
+        <Stat label={it ? "Contatti unici" : "Unique contacts"} value={formatCount(report.unique)} />
         <Stat
-          label="Duplicates"
+          label={it ? "Duplicati" : "Duplicates"}
           value={formatCount(report.duplicates)}
           tone={report.duplicates > 0 ? "warning" : "neutral"}
         />
-        <Stat label="With email" value={formatCount(report.withEmail)} />
-        <Stat label="With phone" value={formatCount(report.withPhone)} />
+        <Stat label={it ? "Con email" : "With email"} value={formatCount(report.withEmail)} />
+        <Stat label={it ? "Con telefono" : "With phone"} value={formatCount(report.withPhone)} />
       </div>
 
       {report.withoutContactInfo > 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {formatCount(report.withoutContactInfo)} cards have neither an email nor a
-            phone number.
+          {it
+            ? `${formatCount(report.withoutContactInfo)} schede non hanno né email né numero di telefono.`
+            : `${formatCount(report.withoutContactInfo)} cards have neither an email nor a phone number.`}
         </p>
       ) : null}
 
       {report.unique > 0 ? (
         <ExportButton
-          label="Export a clean vCard"
+          label={it ? "Esporta una vCard pulita" : "Export a clean vCard"}
           defaultName="contacts_cleaned.vcf"
           extension="vcf"
           filterName="vCard"
-          hint={`Writes ${formatCount(report.unique)} deduplicated contacts into a standard vCard 3.0, ready to import into Proton, Tuta and Nextcloud.`}
+          hint={
+            it
+              ? `Scrive ${formatCount(report.unique)} contatti deduplicati in una vCard 3.0 standard, pronta da importare in Proton, Tuta e Nextcloud.`
+              : `Writes ${formatCount(report.unique)} deduplicated contacts into a standard vCard 3.0, ready to import into Proton, Tuta and Nextcloud.`
+          }
           onExport={(destination) => api.exportContacts(path, destination)}
           onError={onError}
         />
@@ -205,7 +217,7 @@ export function ContactsReportView({
 
       {report.sample.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>Preview</SectionTitle>
+          <SectionTitle>{it ? "Anteprima" : "Preview"}</SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.sample.map((contact, index) => (
@@ -218,12 +230,13 @@ export function ContactsReportView({
                       [contact.givenName, contact.familyName]
                         .filter(Boolean)
                         .join(" ") ??
-                      "No name"}
+                      (it ? "Nessun nome" : "No name")}
                   </p>
                   <p className="selectable mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                     {[contact.emails[0], contact.phones[0], contact.organization]
                       .filter(Boolean)
-                      .join(" · ") || "no contact details"}
+                      .join(" · ") ||
+                      (it ? "nessun recapito" : "no contact details")}
                   </p>
                 </li>
               ))}
@@ -254,16 +267,17 @@ export function DriveReportView({
   onCleaned,
   onError,
 }: DriveReportProps) {
+  const it = locale() === "it";
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Files" value={formatCount(report.fileCount)} />
-        <Stat label="Folders" value={formatCount(report.dirCount)} />
-        <Stat label="Total" value={formatBytes(report.totalBytes)} />
+        <Stat label={it ? "File" : "Files"} value={formatCount(report.fileCount)} />
+        <Stat label={it ? "Cartelle" : "Folders"} value={formatCount(report.dirCount)} />
+        <Stat label={it ? "Totale" : "Total"} value={formatBytes(report.totalBytes)} />
         <Stat
-          label="Placeholders"
+          label={it ? "Segnaposto" : "Placeholders"}
           value={formatCount(report.placeholderCount)}
-          hint="with no content"
+          hint={it ? "senza contenuto" : "with no content"}
           tone={report.placeholderCount > 0 ? "warning" : "neutral"}
         />
       </div>
@@ -280,7 +294,7 @@ export function DriveReportView({
 
       {report.categories.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>By category</SectionTitle>
+          <SectionTitle>{it ? "Per categoria" : "By category"}</SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.categories.map((category) => (
@@ -292,8 +306,9 @@ export function DriveReportView({
                     {CATEGORY_LABELS[category.category]}
                   </span>
                   <span className="tabular-nums text-zinc-500 dark:text-zinc-400">
-                    {formatCount(category.fileCount)} files ·{" "}
-                    {formatBytes(category.totalBytes)}
+                    {it
+                      ? `${formatCount(category.fileCount)} file · ${formatBytes(category.totalBytes)}`
+                      : `${formatCount(category.fileCount)} files · ${formatBytes(category.totalBytes)}`}
                   </span>
                 </li>
               ))}
@@ -305,7 +320,9 @@ export function DriveReportView({
       {report.duplicateGroups.length > 0 ? (
         <div className="space-y-2">
           <SectionTitle>
-            Duplicati ({formatBytes(report.duplicateBytes)} recuperabili)
+            {it
+              ? `Duplicati (${formatBytes(report.duplicateBytes)} recuperabili)`
+              : `Duplicates (${formatBytes(report.duplicateBytes)} recoverable)`}
           </SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -315,8 +332,9 @@ export function DriveReportView({
                     {group.fileName}
                   </p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {group.paths.length} copie · {formatBytes(group.sizeBytes)}{" "}
-                    ciascuna
+                    {it
+                      ? `${group.paths.length} copie · ${formatBytes(group.sizeBytes)} ciascuna`
+                      : `${group.paths.length} copies · ${formatBytes(group.sizeBytes)} each`}
                   </p>
                 </li>
               ))}
@@ -327,7 +345,9 @@ export function DriveReportView({
 
       {report.placeholders.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>Placeholders with no content</SectionTitle>
+          <SectionTitle>
+            {it ? "Segnaposto senza contenuto" : "Placeholders with no content"}
+          </SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.placeholders.slice(0, 10).map((placeholder) => (
@@ -343,7 +363,9 @@ export function DriveReportView({
                   >
                     {placeholder.targetUrl
                       ? shortenPath(placeholder.targetUrl, 72)
-                      : "reference not readable"}
+                      : it
+                        ? "riferimento non leggibile"
+                        : "reference not readable"}
                   </p>
                 </li>
               ))}
@@ -365,7 +387,8 @@ interface CalendarReportProps {
 
 /** Renders a raw iCalendar date readable (`20200101T120000Z`). */
 function formatIcsDate(raw: string | null): string {
-  if (!raw || raw.length < 8) return "date not available";
+  const unavailable = locale() === "it" ? "data non disponibile" : "date not available";
+  if (!raw || raw.length < 8) return unavailable;
   const day = `${raw.slice(6, 8)}/${raw.slice(4, 6)}/${raw.slice(0, 4)}`;
   if (raw.length < 15 || raw[8] !== "T") return day;
   return `${day} ${raw.slice(9, 11)}:${raw.slice(11, 13)}`;
@@ -376,35 +399,40 @@ export function CalendarReportView({
   path,
   onError,
 }: CalendarReportProps) {
+  const it = locale() === "it";
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Stat label="Events read" value={formatCount(report.total)} />
-        <Stat label="Unique events" value={formatCount(report.unique)} />
+        <Stat label={it ? "Eventi letti" : "Events read"} value={formatCount(report.total)} />
+        <Stat label={it ? "Eventi unici" : "Unique events"} value={formatCount(report.unique)} />
         <Stat
-          label="Duplicates"
+          label={it ? "Duplicati" : "Duplicates"}
           value={formatCount(report.duplicates)}
           tone={report.duplicates > 0 ? "warning" : "neutral"}
         />
-        <Stat label="Recurring" value={formatCount(report.recurring)} />
-        <Stat label="All day" value={formatCount(report.allDay)} />
+        <Stat label={it ? "Ricorrenti" : "Recurring"} value={formatCount(report.recurring)} />
+        <Stat label={it ? "Tutto il giorno" : "All day"} value={formatCount(report.allDay)} />
       </div>
 
       {report.droppedProperties > 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {formatCount(report.droppedProperties)} proprietary Google properties will
-          be removed from the export: they mean nothing outside its own
-          services.
+          {it
+            ? `${formatCount(report.droppedProperties)} proprietà proprietarie di Google verranno rimosse dall'export: non hanno significato al di fuori dei suoi servizi.`
+            : `${formatCount(report.droppedProperties)} proprietary Google properties will be removed from the export: they mean nothing outside its own services.`}
         </p>
       ) : null}
 
       {report.unique > 0 ? (
         <ExportButton
-          label="Export a clean calendar"
+          label={it ? "Esporta un calendario pulito" : "Export a clean calendar"}
           defaultName="calendar_cleaned.ics"
           extension="ics"
           filterName="iCalendar"
-          hint={`Writes ${formatCount(report.unique)} deduplicated events into a standard iCalendar 2.0, without the proprietary extensions.`}
+          hint={
+            it
+              ? `Scrive ${formatCount(report.unique)} eventi deduplicati in un iCalendar 2.0 standard, senza le estensioni proprietarie.`
+              : `Writes ${formatCount(report.unique)} deduplicated events into a standard iCalendar 2.0, without the proprietary extensions.`
+          }
           onExport={(destination) => api.exportCalendar(path, destination)}
           onError={onError}
         />
@@ -412,19 +440,19 @@ export function CalendarReportView({
 
       {report.sample.length > 0 ? (
         <div className="space-y-2">
-          <SectionTitle>Preview</SectionTitle>
+          <SectionTitle>{it ? "Anteprima" : "Preview"}</SectionTitle>
           <Card>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {report.sample.map((event, index) => (
                 <li key={`${event.uid ?? "no-uid"}-${index}`} className="px-4 py-3">
                   <p className="selectable truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                    {event.summary ?? "No title"}
+                    {event.summary ?? (it ? "Senza titolo" : "No title")}
                   </p>
                   <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                     {event.isAllDay
-                      ? `${formatIcsDate(event.start)} (giornata intera)`
+                      ? `${formatIcsDate(event.start)} (${it ? "tutto il giorno" : "all day"})`
                       : formatIcsDate(event.start)}
-                    {event.isRecurring ? " · recurring" : ""}
+                    {event.isRecurring ? (it ? " · ricorrente" : " · recurring") : ""}
                     {event.location ? ` · ${event.location}` : ""}
                   </p>
                 </li>
