@@ -80,7 +80,9 @@ jobs:
 
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          bundle: nostos-${{ matrix.arch }}.flatpak
+          # No architecture in the name: the action appends it to the artifact
+          # by itself, and naming it here produced nostos-aarch64-aarch64.
+          bundle: nostos.flatpak
           manifest-path: packaging/flatpak/com.skapacraft.nostos.yml
           cache-key: flatpak-${{ matrix.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'package-lock.json') }}
           arch: ${{ matrix.arch }}
