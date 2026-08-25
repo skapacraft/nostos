@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { formatBytes, formatCount, shortenPath } from "../lib/format";
+import { locale } from "../lib/locale";
 import type { SectionSummary, SourceSummary, TakeoutSection } from "../types";
 import { Stat } from "./Stat";
 import { Notices } from "./Notices";
@@ -35,6 +36,7 @@ export function SourcePanel({
   onClose,
 }: SourcePanelProps) {
   const isArchive = summary.kind === "archive";
+  const it = locale() === "it";
 
   return (
     <section className="space-y-6">
@@ -56,21 +58,29 @@ export function SourcePanel({
           disabled={busy}
           className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          Close
+          {it ? "Chiudi" : "Close"}
         </button>
       </header>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat
-          label="Type"
-          value={isArchive ? ".zip archive" : "Folder"}
-          hint={isArchive ? "not extracted" : undefined}
+          label={it ? "Tipo" : "Type"}
+          value={
+            isArchive
+              ? it
+                ? "Archivio .zip"
+                : ".zip archive"
+              : it
+                ? "Cartella"
+                : "Folder"
+          }
+          hint={isArchive ? (it ? "non estratto" : "not extracted") : undefined}
         />
-        <Stat label="Files" value={formatCount(summary.fileCount)} />
+        <Stat label={it ? "File" : "Files"} value={formatCount(summary.fileCount)} />
         <Stat
-          label="Size"
+          label={it ? "Dimensione" : "Size"}
           value={formatBytes(summary.totalBytes)}
-          hint={isArchive ? "uncompressed" : undefined}
+          hint={isArchive ? (it ? "decompresso" : "uncompressed") : undefined}
         />
       </div>
 
@@ -78,12 +88,14 @@ export function SourcePanel({
 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Sections found
+          {it ? "Sezioni trovate" : "Sections found"}
         </h3>
 
         {summary.sections.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            No section recognised in this source.
+            {it
+              ? "Nessuna sezione riconosciuta in questa sorgente."
+              : "No section recognised in this source."}
           </p>
         ) : (
           <ul className="divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
@@ -102,7 +114,9 @@ export function SourcePanel({
                     </p>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       {section.fileCount > 0
-                        ? `${formatCount(section.fileCount)} files, ${formatBytes(section.totalBytes)}`
+                        ? it
+                          ? `${formatCount(section.fileCount)} file, ${formatBytes(section.totalBytes)}`
+                          : `${formatCount(section.fileCount)} files, ${formatBytes(section.totalBytes)}`
                         : SECTION_LABELS[section.section]}
                     </p>
                   </div>
@@ -119,11 +133,23 @@ export function SourcePanel({
                           : "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white",
                       ].join(" ")}
                     >
-                      {isActive ? "Refresh" : "Examine"}
+                      {isActive
+                        ? it
+                          ? "Aggiorna"
+                          : "Refresh"
+                        : it
+                          ? "Analizza"
+                          : "Examine"}
                     </button>
                   ) : (
                     <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">
-                      {isArchive ? "extract first" : "no analyser available"}
+                      {isArchive
+                        ? it
+                          ? "estrai prima"
+                          : "extract first"
+                        : it
+                          ? "nessun analizzatore disponibile"
+                          : "no analyser available"}
                     </span>
                   )}
                 </li>

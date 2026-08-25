@@ -4,18 +4,32 @@
 /**
  * Shared formatting helpers, dependency-free.
  *
- * The locale is fixed to the one the interface is written in rather than taken
- * from the system: an English sentence with an Italian month inside it reads as
- * a bug, and the machine's regional settings say nothing about which language
- * this application speaks.
+ * The locale follows the interface language rather than a fixed one: it used
+ * to be pinned to en-GB regardless of the device, on the reasoning that a
+ * mixed-language sentence reads as a bug. That still holds, it just means the
+ * whole interface has to move together, numbers and dates included, not that
+ * it has to be English for everyone.
  */
 
-const NUMBER = new Intl.NumberFormat("en-GB");
-const DATE = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
+import { locale } from "./locale";
+
+const NUMBER: Record<ReturnType<typeof locale>, Intl.NumberFormat> = {
+  en: new Intl.NumberFormat("en-GB"),
+  it: new Intl.NumberFormat("it-IT"),
+};
+
+const DATE: Record<ReturnType<typeof locale>, Intl.DateTimeFormat> = {
+  en: new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }),
+  it: new Intl.DateTimeFormat("it-IT", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }),
+};
 
 const UNITS = ["B", "kB", "MB", "GB", "TB"] as const;
 
@@ -35,7 +49,7 @@ export function formatBytes(bytes: number): string {
 }
 
 export function formatCount(value: number): string {
-  return NUMBER.format(value);
+  return NUMBER[locale()].format(value);
 }
 
 /**
@@ -43,10 +57,11 @@ export function formatCount(value: number): string {
  * the local zone would falsify the capture time, which in EXIF has no zone.
  */
 export function formatDate(iso: string | null): string {
-  if (!iso) return "non disponibile";
+  const unavailable = locale() === "it" ? "non disponibile" : "not available";
+  if (!iso) return unavailable;
   const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return "non disponibile";
-  return `${DATE.format(parsed)} UTC`;
+  if (Number.isNaN(parsed.getTime())) return unavailable;
+  return `${DATE[locale()].format(parsed)} UTC`;
 }
 
 /**
@@ -57,6 +72,21 @@ export function formatDate(iso: string | null): string {
  * "213 days".
  */
 export function formatAge(days: number): string {
+  if (locale() === "it") {
+    if (!Number.isFinite(days) || days < 1) return "meno di un giorno";
+    if (days === 1) return "1 giorno";
+    if (days < 60) return `${days} giorni`;
+
+    const months = Math.round(days / 30.44);
+    if (months < 18) return `${months} mesi`;
+
+    const years = Math.floor(days / 365.25);
+    const rest = Math.round((days - years * 365.25) / 30.44);
+    const yearPart = years === 1 ? "1 anno" : `${years} anni`;
+    if (rest < 1) return yearPart;
+    return `${yearPart} e ${rest === 1 ? "1 mese" : `${rest} mesi`}`;
+  }
+
   if (!Number.isFinite(days) || days < 1) return "less than a day";
   if (days === 1) return "1 day";
   if (days < 60) return `${days} days`;

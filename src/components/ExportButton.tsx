@@ -6,6 +6,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 
 import { toMessage } from "../lib/api";
 import { formatBytes, formatCount, shortenPath } from "../lib/format";
+import { locale } from "../lib/locale";
 import type { ExportReport } from "../types";
 
 interface ExportButtonProps {
@@ -37,6 +38,7 @@ export function ExportButton({
 }: ExportButtonProps) {
   const [report, setReport] = useState<ExportReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const it = locale() === "it";
 
   const run = useCallback(async () => {
     try {
@@ -66,14 +68,15 @@ export function ExportButton({
         disabled={busy}
         className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
       >
-        {busy ? "Scrittura..." : label}
+        {busy ? (it ? "Scrittura..." : "Writing...") : label}
       </button>
 
       {report ? (
         <div className="text-sm">
           <p className="text-zinc-900 dark:text-zinc-100">
-            Scritti {formatCount(report.written)} elementi,{" "}
-            {formatBytes(report.bytes)}.
+            {it
+              ? `Scritti ${formatCount(report.written)} elementi, ${formatBytes(report.bytes)}.`
+              : `Wrote ${formatCount(report.written)} items, ${formatBytes(report.bytes)}.`}
           </p>
           <p
             className="selectable truncate font-mono text-xs text-zinc-500 dark:text-zinc-400"

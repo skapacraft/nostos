@@ -7,6 +7,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { toMessage } from "../lib/api";
+import { locale } from "../lib/locale";
 
 interface DropzoneProps {
   onSelect: (path: string) => void;
@@ -24,6 +25,7 @@ interface DropzoneProps {
  */
 export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
   const [hovering, setHovering] = useState(false);
+  const it = locale() === "it";
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
@@ -70,7 +72,7 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Select the Takeout folder",
+        title: it ? "Seleziona la cartella Takeout" : "Select the Takeout folder",
       });
       if (typeof selected === "string") onSelect(selected);
     } catch (error) {
@@ -82,8 +84,10 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
     try {
       const selected = await open({
         multiple: false,
-        title: "Select a Takeout archive",
-        filters: [{ name: "Archivio Takeout", extensions: ["zip"] }],
+        title: it ? "Seleziona un archivio Takeout" : "Select a Takeout archive",
+        filters: [
+          { name: it ? "Archivio Takeout" : "Takeout archive", extensions: ["zip"] },
+        ],
       });
       if (typeof selected === "string") onSelect(selected);
     } catch (error) {
@@ -125,14 +129,21 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
       <div className="space-y-1">
         <p className="text-base font-medium text-zinc-900 dark:text-zinc-100">
           {busy
-            ? "Examining..."
+            ? it
+              ? "Analisi in corso..."
+              : "Examining..."
             : hovering
-              ? "Drop to examine"
-              : "Drag the Takeout folder here, or a .zip archive"}
+              ? it
+                ? "Rilascia per analizzare"
+                : "Drop to examine"
+              : it
+                ? "Trascina qui la cartella Takeout o un archivio .zip"
+                : "Drag the Takeout folder here, or a .zip archive"}
         </p>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          The files stay on your computer. Nothing is uploaded, copied or
-          sent.
+          {it
+            ? "I file restano sul tuo computer. Nulla viene caricato, copiato o inviato."
+            : "The files stay on your computer. Nothing is uploaded, copied or sent."}
         </p>
       </div>
 
@@ -143,7 +154,7 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
           disabled={busy}
           className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
         >
-          Choose folder
+          {it ? "Scegli cartella" : "Choose folder"}
         </button>
         <button
           type="button"
@@ -151,7 +162,7 @@ export function Dropzone({ onSelect, onError, busy }: DropzoneProps) {
           disabled={busy}
           className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          Choose .zip archive
+          {it ? "Scegli archivio .zip" : "Choose .zip archive"}
         </button>
       </div>
     </div>

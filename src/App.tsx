@@ -15,6 +15,7 @@ import {
 import { SourcePanel } from "./components/SourcePanel";
 import * as api from "./lib/api";
 import { toMessage } from "./lib/api";
+import { locale } from "./lib/locale";
 import type {
   AppInfo,
   Preferences,
@@ -35,6 +36,7 @@ type Analysis =
   | { kind: "calendar"; path: string; label: string; data: CalendarReport };
 
 export default function App() {
+  const it = locale() === "it";
   const [summary, setSummary] = useState<SourceSummary | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [privacy, setPrivacy] = useState<PrivacyReport | null>(null);
@@ -236,7 +238,11 @@ export default function App() {
           });
           break;
         default:
-          reportError(`No analyser for the ${section.dirName} section.`);
+          reportError(
+            it
+              ? `Nessun analizzatore per la sezione ${section.dirName}.`
+              : `No analyser for the ${section.dirName} section.`,
+          );
       }
     } catch (err) {
       setAnalysis(null);
@@ -288,7 +294,9 @@ export default function App() {
               Nostos
             </h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Your Google data, processed on your own computer.
+              {it
+                ? "I tuoi dati Google, elaborati sul tuo computer."
+                : "Your Google data, processed on your own computer."}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3">
@@ -298,7 +306,13 @@ export default function App() {
               aria-pressed={showHelp}
               className="rounded-lg border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
-              {showHelp ? "Close guide" : "Guide"}
+              {showHelp
+                ? it
+                  ? "Chiudi guida"
+                  : "Close guide"
+                : it
+                  ? "Guida"
+                  : "Guide"}
             </button>
           {privacy && !privacy.networkCalls ? (
             <span
@@ -325,7 +339,7 @@ export default function App() {
               onClick={() => setError(null)}
               className="shrink-0 font-medium underline underline-offset-2"
             >
-              Close
+              {it ? "Chiudi" : "Close"}
             </button>
           </div>
         ) : null}
@@ -396,14 +410,14 @@ export default function App() {
 
       <footer className="mx-auto max-w-4xl px-6 pb-8">
         <p className="text-xs text-zinc-400 dark:text-zinc-600">
-          No network connections, no telemetry, no automatic updates. What is
-          examined stays in memory until you close the window.
+          {it
+            ? "Nessuna connessione di rete, nessuna telemetria, nessun aggiornamento automatico. Ciò che viene esaminato resta in memoria finché non chiudi la finestra."
+            : "No network connections, no telemetry, no automatic updates. What is examined stays in memory until you close the window."}
         </p>
         <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-600">
-          Not affiliated with, endorsed by or sponsored by Google LLC.
-          Google, Google Photos, Google Drive and Google Takeout are
-          trademarks of Google LLC, named here only to identify the
-          export this software reads.
+          {it
+            ? "Non affiliata, approvata o sponsorizzata da Google LLC. Google, Google Photos, Google Drive e Google Takeout sono marchi di Google LLC, citati qui solo per identificare l'export letto da questo software."
+            : "Not affiliated with, endorsed by or sponsored by Google LLC. Google, Google Photos, Google Drive and Google Takeout are trademarks of Google LLC, named here only to identify the export this software reads."}
         </p>
       </footer>
     </div>
