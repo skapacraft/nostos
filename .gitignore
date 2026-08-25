@@ -27,3 +27,8 @@ dist-ssr
 # lines that would churn on every dependency bump.
 packaging/flatpak/cargo-sources.json
 packaging/flatpak/node-sources.json
+
+# The icon generator (npm run tauri icon) always emits mobile assets too,
+# even though this project ships no mobile build.
+src-tauri/icons/android/
+src-tauri/icons/ios/

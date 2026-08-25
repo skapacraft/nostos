@@ -6,34 +6,37 @@
 
       npm run tauri icon src-tauri/icons/app-icon.svg
 
-  A photograph with a clock: the fault this application repairs. A Takeout
-  export arrives with the capture date sitting in a JSON file beside the photo
-  rather than inside it, so a gallery shows three thousand pictures all taken
-  on the day they were downloaded. Anyone who has seen that recognises this
-  without being told what the application does.
+  Home Arc: an orbit that has not closed yet, with the piece travelling back
+  to complete it. Nostos is the return, so the mark is about the return
+  itself rather than about photographs specifically — the earlier "photo
+  with a clock" mark told only the photo half of what the application does,
+  the same narrowing a photo-specific store name was turned down for once
+  contacts and calendars were in scope.
 
-  The first version was a folder with an arrow coming out of it, meaning "take
-  your data back". It was replaced because an upward arrow reads as "upload" in
-  every icon vocabulary there is, which is the opposite of what an application
-  promising that nothing leaves the machine should say. No arrows here, and
-  that is deliberate.
+  No arrowhead: the very first version of this icon was a folder with an
+  arrow coming out of it, and it was replaced because an upward arrow reads
+  as "upload" in every icon vocabulary there is. The dot here is a point
+  arriving, not a direction pointing outward.
+
+  Colour follows the site's current accent (#7f9cff on #0b0d10) rather than
+  the emerald the icon shipped with originally: the site moved to this
+  palette after the icon's colours were set, and the two had drifted apart.
+  The rest of the application interface still uses the older emerald accent
+  throughout; recolouring that is a separate, larger decision this file does
+  not make on its own.
 
   The corner radius of 22% approximates the rounded square macOS draws around
   app icons, and stays reasonable on Windows and Linux, which do not mask.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
-  <rect width="1024" height="1024" rx="228" fill="#18181b" />
-  <g
-    stroke="#34d399"
-    stroke-width="42"
+  <rect width="1024" height="1024" rx="228" fill="#0b0d10" />
+  <circle cx="512" cy="512" r="300" fill="none" stroke="#3c4f8f" stroke-width="18" />
+  <path
+    d="M 512 212 A 300 300 0 0 1 772 662"
+    fill="none"
+    stroke="#7f9cff"
+    stroke-width="76"
     stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <rect x="232" y="262" width="500" height="420" rx="48" />
-    <path d="M232 566l120-118 132 130" />
-    <circle cx="600" cy="392" r="42" />
-    <!-- Filled with the background so the clock reads as being in front. -->
-    <circle cx="700" cy="700" r="150" fill="#18181b" />
-    <path d="M700 616v88l58 44" />
-  </g>
+  />
+  <circle cx="772" cy="662" r="54" fill="#7f9cff" />
 </svg>

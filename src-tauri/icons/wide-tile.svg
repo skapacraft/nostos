@@ -1,16 +1,22 @@
+<!--
+  Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  The Windows Start tile at its wide ratio (310x150), since app-icon.svg is
+  square and the icon generator does not produce this shape. Same Home Arc
+  mark as app-icon.svg, recentred for a wide frame instead of a square one.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 300" fill="none">
-  <rect width="620" height="300" fill="#18181b" />
-  <g
-    transform="translate(160, 20) scale(0.2539)"
-    stroke="#34d399"
-    stroke-width="42"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <rect x="232" y="262" width="500" height="420" rx="48" />
-    <path d="M232 566l120-118 132 130" />
-    <circle cx="600" cy="392" r="42" />
-    <circle cx="700" cy="700" r="150" fill="#18181b" />
-    <path d="M700 616v88l58 44" />
+  <rect width="620" height="300" fill="#0b0d10" />
+  <g transform="translate(310 150) scale(0.34) translate(-512 -512)">
+    <circle cx="512" cy="512" r="300" fill="none" stroke="#3c4f8f" stroke-width="18" />
+    <path
+      d="M 512 212 A 300 300 0 0 1 772 662"
+      fill="none"
+      stroke="#7f9cff"
+      stroke-width="76"
+      stroke-linecap="round"
+    />
+    <circle cx="772" cy="662" r="54" fill="#7f9cff" />
   </g>
 </svg>
