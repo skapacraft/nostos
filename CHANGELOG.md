@@ -5,6 +5,21 @@ the numbering follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- A Mac App Store build, with the packaging the Store requires: App Sandbox,
+  an embedded provisioning profile and a signed installer package. Building it
+  is `scripts/mac-app-store.sh`, because Tauri's bundler stops at the `.app`.
+- The Store build, and only that build, requests
+  `com.apple.security.network.client`. App Sandbox is mandatory there and
+  WKWebView will not start inside it without that permission: the WebContent
+  process is refused at launch and the window stays empty. Measured from one
+  binary signed twice, 1836 WebContent restarts in nine seconds without it and
+  none with it. No networking library enters the dependency graph, the check
+  that enforces that still runs on every change, and the content security
+  policy still admits no remote origin. What changes is that on this one build
+  the sandbox is no longer what makes a connection impossible. Section 4b of
+  PRIVACY_AUDIT.md documents it.
+
 ## [1.2.0] 2026-08-27
 
 ### Added

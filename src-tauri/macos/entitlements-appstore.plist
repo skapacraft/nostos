@@ -4,10 +4,39 @@
   Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
   SPDX-License-Identifier: GPL-3.0-or-later
 
-  Mac App Store entitlements. Identical to entitlements.plist plus the two
-  identifiers the Store requires, which must match the provisioning profile
-  byte for byte or the upload is rejected. They are not in the base file
-  because a Developer ID build carrying them fails notarisation instead.
+  Mac App Store entitlements. This is the only build of Nostos on any platform
+  that requests a network permission, and the reason is worth stating plainly
+  rather than burying.
+
+  App Sandbox is mandatory on the Mac App Store. Under it, WKWebView will not
+  start: its WebContent process is refused at launch, exits with status 1, and
+  the application shows an empty window while the webview restarts forever.
+  Measured on this project, signed both ways from the same binary: without
+  network.client, 1836 WebContent restarts in nine seconds; with it, none. The
+  process is denied reads of /Library/Preferences/com.apple.networkd.plist and
+  /private/var/db/nsurlstoraged/dafsaData.bin, which WebKit needs to bring up
+  its networking process even for a page that will only ever load from disk.
+
+  So this entitlement is what the operating system charges to render local HTML
+  in a sandbox, not a capability the application wanted. What it does not
+  change:
+
+  - No networking library exists in the dependency graph. cargo-deny fails the
+    build if one appears, and that check runs on every change.
+  - The content security policy still limits connect-src to the local IPC
+    channel, so a fetch added by mistake is refused by the webview.
+  - No code in this application opens a connection, because there is nothing
+    in it that can.
+
+  What it does change, and the reason the wording was revised everywhere it
+  appeared: on this build the sandbox no longer makes a connection impossible
+  at the OS level. It remains absent from the code. Every other build of
+  Nostos, the Flatpak included, still has no network permission at all.
+
+  application-identifier and team-identifier must match the provisioning
+  profile exactly or the upload is rejected. They are absent from the
+  non-store entitlements because a Developer ID build carrying them fails
+  notarisation instead.
 -->
 <plist version="1.0">
 <dict>
@@ -18,6 +47,8 @@
     <key>com.apple.security.app-sandbox</key>
     <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
     <true/>
 </dict>
 </plist>

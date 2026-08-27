@@ -4,25 +4,29 @@
   Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
   SPDX-License-Identifier: GPL-3.0-or-later
 
-  App Sandbox entitlements for the Mac App Store build. Two capabilities,
-  because two are all the application uses:
+  Entitlements for macOS builds distributed outside the Mac App Store, which
+  is what tauri.conf.json points at. One entitlement, and no App Sandbox.
 
-  - app-sandbox is mandatory for Mac App Store distribution.
-  - files.user-selected.read-write covers every file access the app makes:
-    the Takeout source and the destination for repaired copies both come
-    from the system's own Open/Save panel, never from a path the app
-    guesses or remembers. No app-scoped bookmark entitlement is requested
-    because no path is kept past the session that chose it.
+  The sandbox is deliberately absent here. It is mandatory on the Mac App
+  Store and nowhere else, and it cannot be had without also granting
+  com.apple.security.network.client, because WKWebView refuses to start
+  without it (see entitlements-appstore.plist, which records the measurement).
+  Applying it to a build that is not going to the Store would therefore buy a
+  network permission this build has no reason to hold. Hardened runtime, set
+  in tauri.conf.json, is what notarisation actually requires.
 
-  No network entitlement. That omission is not a placeholder to fill in
-  later, it is the sandbox enforcing at the OS level the same constraint
-  the build already enforces in the dependency graph: this application
-  cannot open a connection even if something in it tried to.
+  files.user-selected.read-write covers every file access the application
+  makes: the Takeout source and the destination for repaired copies both come
+  from the system's own Open/Save panel, never from a path the application
+  guesses or remembers. No app-scoped bookmark entitlement is requested
+  because no path is kept past the session that chose it.
+
+  There is no network entitlement here, and on this build that is not merely a
+  statement of intent: nothing in the dependency graph can open a connection,
+  and nothing in the sandbox would permit one.
 -->
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
 </dict>
