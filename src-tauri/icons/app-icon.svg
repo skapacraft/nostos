@@ -27,16 +27,27 @@
 
   The corner radius of 22% approximates the rounded square macOS draws around
   app icons, and stays reasonable on Windows and Linux, which do not mask.
+
+  The artwork occupies 896 of the 1024 canvas, leaving a margin of 64 on each
+  side. That ratio, 0.875, is not a guess: it is what Apple ships. Measured
+  across Notes, Reminders, Calculator, Preview and Music, every one of them
+  draws its square at 224 of a 256 canvas. Filling the canvas edge to edge,
+  as this icon did until now, makes it sit noticeably larger than every
+  neighbour in the Dock. Windows wants the same restraint for a different
+  reason: the Store's tile guidance puts the content area at about two thirds
+  of the tile, so a full-bleed logo overflows there too.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
-  <rect width="1024" height="1024" rx="228" fill="#0b0d10" />
-  <circle cx="512" cy="512" r="300" fill="none" stroke="#3c4f8f" stroke-width="18" />
-  <path
-    d="M 512 212 A 300 300 0 0 1 772 662"
-    fill="none"
-    stroke="#7f9cff"
-    stroke-width="76"
-    stroke-linecap="round"
-  />
-  <circle cx="772" cy="662" r="54" fill="#7f9cff" />
+  <g transform="translate(64 64) scale(0.875)">
+    <rect width="1024" height="1024" rx="228" fill="#0b0d10" />
+    <circle cx="512" cy="512" r="300" fill="none" stroke="#3c4f8f" stroke-width="18" />
+    <path
+      d="M 512 212 A 300 300 0 0 1 772 662"
+      fill="none"
+      stroke="#7f9cff"
+      stroke-width="76"
+      stroke-linecap="round"
+    />
+    <circle cx="772" cy="662" r="54" fill="#7f9cff" />
+  </g>
 </svg>

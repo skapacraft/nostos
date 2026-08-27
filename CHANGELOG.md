@@ -24,6 +24,11 @@ the numbering follows [Semantic Versioning](https://semver.org/).
   error message shown when nothing more specific applies.
 - The native "About" window showed the generic system folder icon, because
   no icon had ever been set on it.
+- The new icon filled its canvas edge to edge, which left it sitting larger
+  than every neighbour in the Dock. Apple leaves a margin: Notes, Reminders,
+  Calculator, Preview and Music all draw their square at 224 of a 256 canvas,
+  and the icon now uses the same ratio. Windows tiles gain from it too, where
+  the content area is about two thirds of the tile.
 
 ## [1.1.1] 2026-08-12
 
