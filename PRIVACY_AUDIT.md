@@ -132,6 +132,45 @@ In development a separate `devCsp` applies, reopening only
 `ws://localhost:1420` for Vite's hot reload. That is not the policy that ends up
 in the distributed binary.
 
+## 4b. The one build that holds a network permission
+
+Anyone who inspects the Mac App Store build will find this in its entitlements,
+and should find it explained here first rather than discover it:
+
+```
+com.apple.security.network.client
+```
+
+It is there because the Mac App Store requires App Sandbox, and WKWebView does
+not start inside that sandbox without it. The failure is not subtle: the
+WebContent process is refused at launch and exits with status 1, the webview
+restarts it forever, and the window stays empty. Measured on this project, from
+one binary signed twice, changing nothing but the entitlements: 1836 WebContent
+restarts in nine seconds without the permission, none with it. The sandbox
+denies the process a read of `/private/var/db/nsurlstoraged/dafsaData.bin`,
+which WebKit needs to bring up its networking process even for a page that will
+only ever be loaded from disk.
+
+So the permission is the price macOS charges to render local HTML in a sandbox.
+It is worth being exact about what it does and does not change.
+
+It does not change the dependency graph: no networking library is present, and
+the `cargo deny` check in section 2 still fails the build if one appears. It
+does not change the Content Security Policy in section 4, which still admits no
+remote origin. It does not change the code: nothing in this application calls
+out, because there is nothing in it that can.
+
+What it does change is one specific claim. On this build, and only this build,
+the operating system is no longer the thing that makes a connection impossible.
+The absence is enforced by the dependency graph and the CSP, not by the
+sandbox. Every other build ships without any network permission at all, and the
+Flatpak's sandbox is granted neither network nor filesystem access.
+
+The entitlements for builds distributed outside the App Store are in
+`src-tauri/macos/entitlements.plist` and contain one line, for user-selected
+files. The Store's are in `src-tauri/macos/entitlements-appstore.plist`. The
+difference between the two files is the whole of what this section describes.
+
 ## 5. The surface granted to the frontend
 
 The React code has no direct filesystem access. The window capability, in

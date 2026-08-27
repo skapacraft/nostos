@@ -60,7 +60,8 @@
     "macOS": {
       "entitlements": "macos/entitlements.plist",
       "hardenedRuntime": true,
-      "minimumSystemVersion": "12.0"
+      "minimumSystemVersion": "12.0",
+      "bundleVersion": "2"
     }
   }
 }
