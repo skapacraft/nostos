@@ -32,3 +32,6 @@ packaging/flatpak/node-sources.json
 # even though this project ships no mobile build.
 src-tauri/icons/android/
 src-tauri/icons/ios/
+
+# Signed Mac App Store package, rebuilt by scripts/mac-app-store.sh.
+*.pkg

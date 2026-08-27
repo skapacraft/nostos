@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  Mac App Store entitlements. Identical to entitlements.plist plus the two
+  identifiers the Store requires, which must match the provisioning profile
+  byte for byte or the upload is rejected. They are not in the base file
+  because a Developer ID build carrying them fails notarisation instead.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.application-identifier</key>
+    <string>8Z8ZP4SX98.com.skapacraft.nostos</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>8Z8ZP4SX98</string>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+</dict>
+</plist>
