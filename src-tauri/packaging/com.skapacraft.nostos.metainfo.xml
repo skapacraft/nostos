@@ -110,6 +110,25 @@
   </screenshots>
 
   <releases>
+    <release version="1.2.0" date="2026-08-27">
+      <description>
+        <p>
+          The interface now follows the language of the device instead of
+          always speaking English: English and Italian for now, with English
+          as the fallback for everything else. Translating it surfaced six
+          strings that had been sitting in Italian by mistake since before the
+          English migration, including the fallback error message and the
+          whole progress bar.
+        </p>
+        <p>
+          New icon: an orbit that has not closed yet, with the piece
+          travelling back to complete it. The earlier mark, a photograph with
+          a clock, described only the photo half of what the application
+          does.
+        </p>
+      </description>
+      <url type="details">https://github.com/skapacraft/nostos/releases/tag/v1.2.0</url>
+    </release>
     <release version="1.1.1" date="2026-08-12">
       <description>
         <p>

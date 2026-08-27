@@ -5,6 +5,26 @@ the numbering follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] 2026-08-27
+
+### Added
+- The interface now follows the device's language instead of always speaking
+  English. English and Italian for now; anything else falls back to English
+  rather than mixing an unfinished language in. The native menu picks it up
+  the same way, read from the OS locale via `sys-locale` since it is built
+  before any web view exists and `navigator.language` is not reachable there.
+- A new icon: an orbit that has not closed yet, with the piece travelling
+  back to complete it. Colour now follows the site's accent, `#7f9cff` on
+  `#0b0d10`, rather than the emerald the icon shipped with originally.
+
+### Fixed
+- Translating surfaced six strings left in Italian since before the English
+  migration and never caught: the whole progress bar, the export-button busy
+  state, a file dialog filter name, a default button label, and the fallback
+  error message shown when nothing more specific applies.
+- The native "About" window showed the generic system folder icon, because
+  no icon had ever been set on it.
+
 ## [1.1.1] 2026-08-12
 
 Packaging only. Nothing about what the application does has changed.
