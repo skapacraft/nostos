@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  Merged into the Info.plist the Tauri CLI generates. Only keys the CLI does
+  not already write belong here.
+
+  The export compliance declaration is false because the application performs
+  no encryption: the one cryptographic primitive it uses is BLAKE3, and only
+  to hash file contents so duplicates can be recognised. Nothing is enciphered
+  and there is no key. Stating it here means App Store Connect stops asking on
+  every upload.
+-->
+<plist version="1.0">
+<dict>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+</dict>
+</plist>

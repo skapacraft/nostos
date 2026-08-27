@@ -56,6 +56,11 @@
           "/usr/share/icons/hicolor/128x128/apps/com.skapacraft.nostos.png": "icons/128x128.png"
         }
       }
+    },
+    "macOS": {
+      "entitlements": "macos/entitlements.plist",
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "12.0"
     }
   }
 }
