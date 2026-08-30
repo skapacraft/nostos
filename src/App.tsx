@@ -361,6 +361,8 @@ export default function App() {
               activeSection={analysis?.path ?? null}
               busy={busy}
               onAnalyze={handleAnalyze}
+              onExtracted={handleSelect}
+              onError={reportError}
               onClose={handleClose}
             />
 

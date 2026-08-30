@@ -110,6 +110,17 @@
   </screenshots>
 
   <releases>
+    <release version="1.2.1" date="2026-08-30">
+      <description>
+        <p>
+          Archives can now be extracted from inside the application: choosing
+          a `.zip` export used to leave the sections unreadable with no way
+          forward. It merges the rest of the same series in automatically,
+          same as it always did once a Takeout folder was already extracted.
+        </p>
+      </description>
+      <url type="details">https://github.com/skapacraft/nostos/releases/tag/v1.2.1</url>
+    </release>
     <release version="1.2.0" date="2026-08-27">
       <description>
         <p>

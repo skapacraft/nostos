@@ -3,7 +3,6 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 
-import { formatAge } from "../lib/format";
 import { locale } from "../lib/locale";
 import { PRIVACY_NOTES } from "../lib/messages";
 import { ProblemReport } from "./ProblemReport";
@@ -315,33 +314,12 @@ export function Help({
                   <dd className="selectable font-mono">{info.version}</dd>
                   <dt>Compilata il</dt>
                   <dd className="selectable font-mono">{info.buildDate}</dd>
-                  <dt>Nuove versioni</dt>
-                  <dd className="selectable font-mono break-all">
-                    {info.releasesUrl}
-                  </dd>
                 </dl>
-                {info.ageDays >= info.staleAfterDays ? (
-                  <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                    Questa copia è stata compilata {formatAge(info.ageDays)} fa.
-                    Potrebbe essercene una più recente ormai: l'indirizzo qui
-                    sopra è dove appaiono.
-                  </p>
-                ) : null}
                 <p>
                   L'applicazione non controlla mai da sola se esiste un
-                  aggiornamento. Chiederlo a un server rivelerebbe il tuo
-                  indirizzo e le ore in cui apri il programma, che è
-                  esattamente il tipo di traccia che questa applicazione
-                  esiste per evitare: un controllo di aggiornamento è un
-                  faro come un altro. L'età qui sopra non costa nulla e non
-                  rivela nulla, essendo la differenza fra la data di
-                  compilazione e l'orologio di questa macchina.
-                </p>
-                <p className="text-zinc-500 dark:text-zinc-400">
-                  Se hai installato Nostos da uno store o tramite un
-                  gestore di pacchetti, non c'è nulla da fare a mano: è quello
-                  che lo tiene aggiornato, ed è l'unica parte del sistema che
-                  parla con la rete.
+                  aggiornamento. È lo store da cui l'hai installata a tenerla
+                  aggiornata, ed è l'unica parte del sistema che parla con la
+                  rete.
                 </p>
               </Section>
             </div>
@@ -595,29 +573,12 @@ export function Help({
                   <dd className="selectable font-mono">{info.version}</dd>
                   <dt>Built on</dt>
                   <dd className="selectable font-mono">{info.buildDate}</dd>
-                  <dt>New versions</dt>
-                  <dd className="selectable font-mono break-all">
-                    {info.releasesUrl}
-                  </dd>
                 </dl>
-                {info.ageDays >= info.staleAfterDays ? (
-                  <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                    This copy was built {formatAge(info.ageDays)} ago. There may be
-                    a newer one by now: the address above is where they appear.
-                  </p>
-                ) : null}
                 <p>
-                  The application never checks for itself whether an update exists.
-                  Asking a server would tell it your address and the hours at which
-                  you open the program, which is the sort of trail this application
-                  exists to avoid: a check for updates is a beacon like any other.
-                  The age above costs nothing and reveals nothing, being the
-                  difference between the compile date and this machine's clock.
-                </p>
-                <p className="text-zinc-500 dark:text-zinc-400">
-                  If you installed Nostos from a store or through a package manager,
-                  there is nothing to do by hand: that is what keeps it current, and
-                  it is the only part of the system that talks to the network.
+                  The application never checks for itself whether an update
+                  exists. The store you installed it from is what keeps it
+                  current, and it is the only part of the system that talks to
+                  the network.
                 </p>
               </Section>
             </div>

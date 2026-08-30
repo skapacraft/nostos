@@ -285,6 +285,11 @@ pub fn extract_series(
 
     let mut written_files: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
     let mut done = 0usize;
+    // Google wraps the whole export in one directory (`Takeout/`, here
+    // `sample-takeout/`): the folder worth handing back to the caller is the
+    // one actually holding the sections, not the pick destination itself.
+    let mut common_top: Option<std::ffi::OsString> = None;
+    let mut single_top_level = true;
 
     for archive_path in archives {
         let mut archive = open_archive(archive_path)?;
@@ -302,11 +307,32 @@ pub fn extract_series(
                 continue;
             };
 
+            // AppleDouble junk from zipping on a Mac: resource forks with
+            // nothing Takeout ever put there, and the reason a real export,
+            // zipped and re-shared through Finder, would otherwise show up
+            // as two top-level folders instead of one.
+            if matches!(relative.components().next(), Some(Component::Normal(first)) if first == "__MACOSX")
+                || relative.file_name().is_some_and(|name| name == ".DS_Store")
+            {
+                continue;
+            }
+
             let target = dest_root.join(&relative);
             // Second barrier: even after normalisation the target must stay
             // under the destination root.
             if !target.starts_with(&dest_root) {
                 return Err(TakeoutError::UnsafeEntry(raw_name));
+            }
+
+            if single_top_level {
+                match relative.components().next() {
+                    Some(Component::Normal(first)) => match &common_top {
+                        None => common_top = Some(first.to_os_string()),
+                        Some(top) if top == first => {}
+                        Some(_) => single_top_level = false,
+                    },
+                    _ => single_top_level = false,
+                }
             }
 
             if entry.is_dir() {
@@ -350,6 +376,15 @@ pub fn extract_series(
         total_entries,
         report.skipped.len() + report.collisions.len(),
     ));
+
+    if single_top_level {
+        if let Some(top) = common_top {
+            let inner = dest_root.join(&top);
+            if inner.is_dir() {
+                report.destination = inner;
+            }
+        }
+    }
 
     Ok(report)
 }
@@ -513,6 +548,43 @@ mod tests {
             "secondo"
         );
         assert!(dest.join("Takeout/Drive/relazione.docx").is_file());
+        // Google wraps every export in one folder: callers that load the
+        // returned destination straight away must land inside it, not beside
+        // it, or every section looks unrecognised.
+        assert_eq!(
+            report.destination,
+            dest.join("Takeout").canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn ignores_macos_zip_junk_when_finding_the_export_root() {
+        let temp = crate::app_state::testing::TempDir::new("macosx_junk");
+        let dir = temp.path();
+
+        // Finder's "Compress" adds a resource-fork mirror beside the real
+        // content: two top-level entries in the archive, but only one of
+        // them is the export.
+        build_archive(
+            &dir.join("Takeout.zip"),
+            &[
+                ("Takeout/Contatti/Contacts.vcf", "x"),
+                ("__MACOSX/Takeout/Contatti/._Contacts.vcf", "junk"),
+                ("Takeout/.DS_Store", "junk"),
+            ],
+        );
+
+        let dest = dir.join("extracted");
+        let report = extract_series(
+            &[dir.join("Takeout.zip")],
+            &dest,
+            &crate::app_state::no_progress,
+        )
+        .expect("extraction");
+
+        assert_eq!(report.files_written, 1, "only the real file, junk skipped");
+        assert_eq!(report.destination, dest.join("Takeout").canonicalize().unwrap());
+        assert!(!dest.join("__MACOSX").exists());
     }
 
     #[test]
