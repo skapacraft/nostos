@@ -3,22 +3,13 @@
 #
 # Builds the Flatpak and runs the linter Flathub runs on submission.
 #
-# It exists so the answer to "does it still build as a Flatpak" is a job that
-# ran this morning rather than a memory of it working once. flatpak-builder
-# does not run on macOS, so without this the package could only be tested by
-# someone who happens to be sitting at a Linux machine.
+# flatpak-builder does not run on macOS, so without this the package could
+# only be tested by someone who happens to be sitting at a Linux machine.
+# Manual only: run it before a release, or after touching packaging/flatpak,
+# not on every push that happens to touch src-tauri or src.
 name: Flatpak
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'packaging/flatpak/**'
-      - 'src-tauri/**'
-      - 'src/**'
-      - 'package-lock.json'
-      - '.github/workflows/flatpak.yml'
-  pull_request:
   workflow_dispatch:
 
 concurrency:
