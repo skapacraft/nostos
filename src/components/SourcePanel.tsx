@@ -4,6 +4,7 @@
 import { formatBytes, formatCount, shortenPath } from "../lib/format";
 import { locale } from "../lib/locale";
 import type { SectionSummary, SourceSummary, TakeoutSection } from "../types";
+import { ArchiveExtractor } from "./ArchiveExtractor";
 import { Stat } from "./Stat";
 import { Notices } from "./Notices";
 import { SECTION_LABELS } from "../lib/messages";
@@ -25,6 +26,8 @@ interface SourcePanelProps {
   activeSection: string | null;
   busy: boolean;
   onAnalyze: (section: SectionSummary) => void;
+  onExtracted: (destination: string) => void;
+  onError: (message: string) => void;
   onClose: () => void;
 }
 
@@ -33,6 +36,8 @@ export function SourcePanel({
   activeSection,
   busy,
   onAnalyze,
+  onExtracted,
+  onError,
   onClose,
 }: SourcePanelProps) {
   const isArchive = summary.kind === "archive";
@@ -85,6 +90,14 @@ export function SourcePanel({
       </div>
 
       <Notices items={summary.warnings} />
+
+      {isArchive ? (
+        <ArchiveExtractor
+          path={summary.root}
+          onExtracted={onExtracted}
+          onError={onError}
+        />
+      ) : null}
 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
