@@ -40,9 +40,6 @@ the numbering follows [Semantic Versioning](https://semver.org/).
 - The in-app guide no longer links to GitHub releases, now that distribution
   goes through the Mac App Store and Microsoft Store: Apple's review note
   2.4.5(vii) rules out pointing at an update mechanism outside the Store.
-- The Flatpak workflow now runs by hand only. It used to fire on nearly every
-  push to `main`, since `src-tauri/**` and `src/**` cover almost every change,
-  duplicating what CI already checks on the same commit.
 
 ## [1.2.0] 2026-08-27
 
