@@ -35,3 +35,6 @@ src-tauri/icons/ios/
 
 # Signed Mac App Store package, rebuilt by scripts/mac-app-store.sh.
 *.pkg
+
+# Release build output.
+dist-release/
