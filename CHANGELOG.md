@@ -19,6 +19,30 @@ the numbering follows [Semantic Versioning](https://semver.org/).
   policy still admits no remote origin. What changes is that on this one build
   the sandbox is no longer what makes a connection impossible. Section 4b of
   PRIVACY_AUDIT.md documents it.
+- Extraction of a loaded `.zip` Takeout export, from a panel in the source
+  step. The backend commands for it existed already; nothing had ever called
+  them, so a `.zip` always ended on "not extracted".
+- `Square300x300Logo.png`, the one tile size missing from the MSIX set, and
+  `scripts/capture-app-store-screenshots.sh`, which standardises the four Mac
+  App Store screenshots at 1440x900 without window automation.
+
+### Fixed
+- Two bugs found while testing extraction live: the reported destination
+  pointed at the folder the user picked rather than the Takeout root actually
+  written inside it, and `__MACOSX` junk left by zipping on a Mac broke that
+  root detection entirely.
+- The About window's icon was decoded once ahead of time from its own copy of
+  the artwork rather than read from a PNG at runtime, so the margin fix above
+  passed over it: every other rendered size moved to the 0.875 ratio and this
+  one kept the old full-bleed art. Regenerated from the same source.
+
+### Changed
+- The in-app guide no longer links to GitHub releases, now that distribution
+  goes through the Mac App Store and Microsoft Store: Apple's review note
+  2.4.5(vii) rules out pointing at an update mechanism outside the Store.
+- The Flatpak workflow now runs by hand only. It used to fire on nearly every
+  push to `main`, since `src-tauri/**` and `src/**` cover almost every change,
+  duplicating what CI already checks on the same commit.
 
 ## [1.2.0] 2026-08-27
 
