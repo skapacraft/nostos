@@ -3,6 +3,17 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the numbering follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.2] 2026-08-31
+
+Packaging only. Nothing about what the application does has changed.
+
+### Fixed
+- The `v1.2.1` tag had been pushed from a commit that diverged from `main`
+  before the About window's icon was corrected to the same 0.875 margin as
+  every other rendered size, so any build made from that tag was missing the
+  fix. This retags the release from the actual current history rather than
+  moving the already-pushed tag.
+
 ## [1.2.1] 2026-08-31
 
 ### Added

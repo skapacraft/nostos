@@ -110,6 +110,18 @@
   </screenshots>
 
   <releases>
+    <release version="1.2.2" date="2026-08-31">
+      <description>
+        <p>
+          Packaging only. The 1.2.1 tag had been pushed from a commit that
+          diverged from the main line before the About window's icon was
+          corrected to the same margin as every other size, so a build made
+          from that tag was missing the fix. This retags the release from the
+          actual current history.
+        </p>
+      </description>
+      <url type="details">https://github.com/skapacraft/nostos/releases/tag/v1.2.2</url>
+    </release>
     <release version="1.2.1" date="2026-08-30">
       <description>
         <p>
