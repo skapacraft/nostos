@@ -196,7 +196,7 @@ export function ProblemReport({ info, errors, onError }: ProblemReportProps) {
         {it ? (
           <>
             L'indirizzo è{" "}
-            <span className="selectable font-mono">support@skapacraft.com</span>
+            <span className="selectable font-mono">dpgagliardi.dev@gmail.com</span>
             . Se preferisci GitHub, il progetto si trova su{" "}
             <span className="selectable font-mono break-all">
               {info?.repository ?? "github.com/skapacraft/nostos"}
@@ -207,7 +207,7 @@ export function ProblemReport({ info, errors, onError }: ProblemReportProps) {
         ) : (
           <>
             The address is{" "}
-            <span className="selectable font-mono">support@skapacraft.com</span>
+            <span className="selectable font-mono">dpgagliardi.dev@gmail.com</span>
             . If you prefer GitHub, the project lives at{" "}
             <span className="selectable font-mono break-all">
               {info?.repository ?? "github.com/skapacraft/nostos"}

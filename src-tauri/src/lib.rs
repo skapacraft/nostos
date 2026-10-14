@@ -864,7 +864,7 @@ fn save_text_file(path: String, content: String) -> Result<()> {
 /// Compiled in and never composed from anything the user or a file supplies:
 /// the one argument that reaches the system is a `mailto:` built around this
 /// constant, so there is no address an archive could redirect a report to.
-const SUPPORT_EMAIL: &str = "support@skapacraft.com";
+const SUPPORT_EMAIL: &str = "dpgagliardi.dev@gmail.com";
 
 /// Percent-encodes a string for use inside a `mailto:` URL.
 ///

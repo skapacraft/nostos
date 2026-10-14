@@ -276,7 +276,7 @@ read would be a contradiction.
 
 The constraints match the ones above:
 
-- the address is a **compile-time constant**, `support@skapacraft.com`. Nothing
+- the address is a **compile-time constant**, `dpgagliardi.dev@gmail.com`. Nothing
   in an archive, a filename or a preference can redirect a report elsewhere;
 - subject and body are percent-encoded down to the unreserved set of RFC 3986,
   which is what stops a newline in a path from closing the `subject` field and

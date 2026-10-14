@@ -6,6 +6,6 @@ contact_links:
   - name: How the privacy guarantees are enforced
     url: https://github.com/skapacraft/nostos/blob/main/PRIVACY_AUDIT.md
     about: What the application promises, and how to verify each promise yourself.
-  - name: Product page
-    url: https://skapacraft.com/tools/apps/nostos/
-    about: What it does, and where to download it.
+  - name: Downloads
+    url: https://github.com/skapacraft/nostos/releases
+    about: Every released build, with its changelog.

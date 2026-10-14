@@ -3,6 +3,17 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the numbering follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.3] 2026-10-14
+
+### Changed
+- Problem reports now go to `dpgagliardi.dev@gmail.com`. The previous address
+  was on the skapacraft.com domain, which is being retired. It is still a
+  compile-time constant, so nothing in an archive or a preference can redirect
+  a report elsewhere.
+- The AppStream metainfo no longer points at skapacraft.com: homepage, help
+  and contact go to the GitHub repository, and the four screenshots now live
+  in `packaging/screenshots/` and are served from it.
+
 ## [1.2.2] 2026-08-31
 
 Packaging only. Nothing about what the application does has changed.

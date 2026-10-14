@@ -84,32 +84,41 @@
     <keyword>iCalendar</keyword>
   </keywords>
 
-  <url type="homepage">https://skapacraft.com/tools/apps/nostos/</url>
+  <url type="homepage">https://github.com/skapacraft/nostos</url>
   <url type="bugtracker">https://github.com/skapacraft/nostos/issues</url>
   <url type="vcs-browser">https://github.com/skapacraft/nostos</url>
-  <url type="help">https://skapacraft.com/guides/google-takeout-photo-dates/</url>
-  <url type="contact">https://skapacraft.com/contact/</url>
+  <url type="help">https://github.com/skapacraft/nostos#readme</url>
+  <url type="contact">https://github.com/skapacraft/nostos/issues</url>
 
   <screenshots>
     <screenshot type="default">
-      <image>https://skapacraft.com/assets/images/nostos/foto-2.png</image>
+      <image>https://raw.githubusercontent.com/skapacraft/nostos/main/packaging/screenshots/foto-2.png</image>
       <caption>An export of 3237 photographs, none of them carrying a date inside the file</caption>
     </screenshot>
     <screenshot>
-      <image>https://skapacraft.com/assets/images/nostos/foto-1.png</image>
+      <image>https://raw.githubusercontent.com/skapacraft/nostos/main/packaging/screenshots/foto-1.png</image>
       <caption>Waiting for an export folder, with the promise already on screen</caption>
     </screenshot>
     <screenshot>
-      <image>https://skapacraft.com/assets/images/nostos/foto-3.png</image>
+      <image>https://raw.githubusercontent.com/skapacraft/nostos/main/packaging/screenshots/foto-3.png</image>
       <caption>Album membership recorded before anything is deduplicated</caption>
     </screenshot>
     <screenshot>
-      <image>https://skapacraft.com/assets/images/nostos/foto-4.png</image>
+      <image>https://raw.githubusercontent.com/skapacraft/nostos/main/packaging/screenshots/foto-4.png</image>
       <caption>Duplicates compared by content, and every move written down so it can be undone</caption>
     </screenshot>
   </screenshots>
 
   <releases>
+    <release version="1.2.3" date="2026-10-14">
+      <description>
+        <p>
+          Problem reports are now addressed to a new contact address, because
+          the previous one belonged to a domain that is being retired.
+        </p>
+      </description>
+      <url type="details">https://github.com/skapacraft/nostos/releases/tag/v1.2.3</url>
+    </release>
     <release version="1.2.2" date="2026-08-31">
       <description>
         <p>
